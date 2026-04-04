@@ -8,3 +8,6 @@ export 'langchain_chat_adapter.dart';
 export 'chat_model_factory.dart';
 export 'session_memory_manager.dart';
 export 'provider_config.dart';
+export 'token_estimator.dart';
+export 'context_compression_config.dart';
+export 'context_compressor.dart';

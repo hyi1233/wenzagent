@@ -1,10 +1,7 @@
+import 'context_compression_config.dart';
+
 /// LLM 提供商类型
-enum LLMProvider {
-  openai,
-  anthropic,
-  google,
-  ollama,
-}
+enum LLMProvider { openai, anthropic, google, ollama }
 
 /// LLM 提供商配置
 class ProviderConfig {
@@ -26,6 +23,11 @@ class ProviderConfig {
   /// OpenAI 组织 ID
   final String? organization;
 
+  /// 上下文压缩配置（可选）
+  ///
+  /// 设置后启用上下文压缩，控制发送给 LLM 的消息总 token 数。
+  final ContextCompressionConfig? compressionConfig;
+
   const ProviderConfig({
     required this.provider,
     required this.model,
@@ -33,6 +35,7 @@ class ProviderConfig {
     this.baseUrl,
     this.options = const LLMOptions(),
     this.organization,
+    this.compressionConfig,
   });
 
   /// 从 Map 创建配置
@@ -46,6 +49,11 @@ class ProviderConfig {
     final optionsMap = map['options'] as Map<String, dynamic>? ?? {};
     final options = LLMOptions.fromMap(optionsMap);
 
+    final compressionMap = map['compression'] as Map<String, dynamic>?;
+    final compressionConfig = compressionMap != null
+        ? ContextCompressionConfig.fromMap(compressionMap)
+        : null;
+
     return ProviderConfig(
       provider: provider,
       model: map['model'] as String? ?? 'gpt-4o',
@@ -53,18 +61,20 @@ class ProviderConfig {
       baseUrl: map['baseUrl'] as String?,
       options: options,
       organization: map['organization'] as String?,
+      compressionConfig: compressionConfig,
     );
   }
 
   /// 转换为 Map
   Map<String, dynamic> toMap() => {
-        'provider': provider.name,
-        'model': model,
-        'apiKey': apiKey,
-        'baseUrl': baseUrl,
-        'options': options.toMap(),
-        'organization': organization,
-      };
+    'provider': provider.name,
+    'model': model,
+    'apiKey': apiKey,
+    'baseUrl': baseUrl,
+    'options': options.toMap(),
+    'organization': organization,
+    if (compressionConfig != null) 'compression': compressionConfig!.toMap(),
+  };
 
   /// 验证配置
   void validate() {
@@ -123,9 +133,9 @@ class LLMOptions {
 
   /// 转换为 Map
   Map<String, dynamic> toMap() => {
-        'temperature': temperature,
-        if (maxTokens != null) 'maxTokens': maxTokens,
-        if (topP != null) 'topP': topP,
-        if (stop != null) 'stop': stop,
-      };
+    'temperature': temperature,
+    if (maxTokens != null) 'maxTokens': maxTokens,
+    if (topP != null) 'topP': topP,
+    if (stop != null) 'stop': stop,
+  };
 }

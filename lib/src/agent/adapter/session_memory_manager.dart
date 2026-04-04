@@ -8,12 +8,20 @@ class SessionHistory {
   final DateTime createdAt;
   final List<ChatMessage> messages;
 
+  /// 缓存的 LLM 生成的对话摘要
+  String? conversationSummary;
+
+  /// 摘要覆盖的消息范围: messages[0..summarizedUpToIndex-1]
+  int summarizedUpToIndex;
+
   SessionHistory({
     required this.sessionUuid,
     required this.employeeUuid,
     this.title,
     DateTime? createdAt,
     List<ChatMessage>? messages,
+    this.conversationSummary,
+    this.summarizedUpToIndex = 0,
   }) : createdAt = createdAt ?? DateTime.now(),
        messages = messages ?? [];
 
@@ -25,6 +33,8 @@ class SessionHistory {
   /// 清空消息
   void clear() {
     messages.clear();
+    conversationSummary = null;
+    summarizedUpToIndex = 0;
   }
 
   /// 转换为 Map（用于持久化）
@@ -34,6 +44,8 @@ class SessionHistory {
     'title': title,
     'createdAt': createdAt.toIso8601String(),
     'messages': messages.map((m) => m.toMap()).toList(),
+    if (conversationSummary != null) 'conversationSummary': conversationSummary,
+    if (summarizedUpToIndex > 0) 'summarizedUpToIndex': summarizedUpToIndex,
   };
 
   /// 从 Map 创建
@@ -51,6 +63,8 @@ class SessionHistory {
           ? DateTime.parse(map['createdAt'] as String)
           : null,
       messages: messages,
+      conversationSummary: map['conversationSummary'] as String?,
+      summarizedUpToIndex: map['summarizedUpToIndex'] as int? ?? 0,
     );
   }
 }

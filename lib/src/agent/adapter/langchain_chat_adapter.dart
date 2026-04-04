@@ -12,6 +12,7 @@ import '../tool/agent_tool.dart';
 import '../tool/permission_manager.dart';
 import '../tool/tool_registry.dart';
 import 'chat_model_factory.dart';
+import 'context_compressor.dart';
 import 'provider_config.dart';
 import 'session_memory_manager.dart';
 
@@ -52,6 +53,9 @@ class LangChainChatAdapter implements IChatAdapter {
 
   /// 工具事件回调
   void Function(Map<String, dynamic> event)? _toolEventCallback;
+
+  /// 上下文压缩器
+  ContextCompressor? _compressor;
 
   LangChainChatAdapter();
 
@@ -127,6 +131,20 @@ class LangChainChatAdapter implements IChatAdapter {
       // 检查是否有可用工具
       final hasTools = _toolRegistry != null && !_toolRegistry!.isEmpty;
 
+      // 准备上下文压缩（每轮用户消息调用一次）
+      final systemPrompt = _buildSystemPrompt();
+      if (_compressor != null) {
+        final session = _memoryManager.getSession(_currentSessionUuid!);
+        if (session != null) {
+          await _compressor!.prepareCompression(
+            sessionUuid: _currentSessionUuid!,
+            allMessages: session.messages,
+            session: session,
+            systemPrompt: systemPrompt,
+          );
+        }
+      }
+
       // Tool calling 循环
       for (var iteration = 0; iteration < _maxToolCallIterations; iteration++) {
         // 检查取消
@@ -135,12 +153,21 @@ class LangChainChatAdapter implements IChatAdapter {
           return;
         }
 
-        // 构建消息列表
-        final systemPrompt = _buildSystemPrompt();
-        final messages = _memoryManager.buildMessages(
-          sessionUuid: _currentSessionUuid!,
-          systemPrompt: systemPrompt,
-        );
+        // 构建消息列表（启用压缩时使用压缩器）
+        final List<ChatMessage> messages;
+        if (_compressor != null) {
+          final session = _memoryManager.getSession(_currentSessionUuid!);
+          messages = _compressor!.buildCompressedMessages(
+            sessionUuid: _currentSessionUuid!,
+            allMessages: session?.messages ?? [],
+            systemPrompt: systemPrompt,
+          );
+        } else {
+          messages = _memoryManager.buildMessages(
+            sessionUuid: _currentSessionUuid!,
+            systemPrompt: systemPrompt,
+          );
+        }
 
         // 构建调用选项（带工具定义）
         final options = hasTools
@@ -410,6 +437,23 @@ class LangChainChatAdapter implements IChatAdapter {
 
     _chatModel = ChatModelFactory.create(config);
     _providerConfig = config;
+
+    // 配置上下文压缩器
+    final compression = config.compressionConfig;
+    if (compression != null && compression.enabled) {
+      _compressor = ContextCompressor(
+        config: compression,
+        onSummarize: (prompt) async {
+          final result = await _chatModel!.invoke(
+            PromptValue.chat([ChatMessage.humanText(prompt)]),
+          );
+          return result.output.content;
+        },
+      );
+    } else {
+      _compressor?.dispose();
+      _compressor = null;
+    }
   }
 
   @override
@@ -447,6 +491,8 @@ class LangChainChatAdapter implements IChatAdapter {
   Future<void> dispose() async {
     await stopStreaming();
     _memoryManager.dispose();
+    _compressor?.dispose();
+    _compressor = null;
     _chatModel = null;
     _providerConfig = null;
     _context = null;
