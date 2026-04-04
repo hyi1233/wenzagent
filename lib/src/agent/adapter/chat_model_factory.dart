@@ -1,4 +1,7 @@
+import 'package:langchain_anthropic/langchain_anthropic.dart';
 import 'package:langchain_core/chat_models.dart';
+import 'package:langchain_core/tools.dart';
+import 'package:langchain_google/langchain_google.dart';
 import 'package:langchain_openai/langchain_openai.dart';
 
 import 'provider_config.dart';
@@ -16,19 +19,30 @@ class ChatModelFactory {
         return _createOpenAI(config);
 
       case LLMProvider.anthropic:
-        throw UnimplementedError(
-          'Anthropic support requires langchain_anthropic package. '
-          'Add it to pubspec.yaml and implement _createAnthropic().',
-        );
+        return _createAnthropic(config);
 
       case LLMProvider.google:
-        throw UnimplementedError(
-          'Google AI support requires langchain_google package. '
-          'Add it to pubspec.yaml and implement _createGoogle().',
-        );
+        return _createGoogle(config);
 
       case LLMProvider.ollama:
         return _createOllama(config);
+    }
+  }
+
+  /// 根据提供商类型创建包含工具定义的 ChatModelOptions
+  static ChatModelOptions? createToolOptions(
+    LLMProvider provider,
+    List<ToolSpec>? toolSpecs,
+  ) {
+    if (toolSpecs == null || toolSpecs.isEmpty) return null;
+    switch (provider) {
+      case LLMProvider.openai:
+      case LLMProvider.ollama:
+        return ChatOpenAIOptions(tools: toolSpecs);
+      case LLMProvider.anthropic:
+        return ChatAnthropicOptions(tools: toolSpecs);
+      case LLMProvider.google:
+        return ChatGoogleGenerativeAIOptions(tools: toolSpecs);
     }
   }
 
@@ -43,6 +57,34 @@ class ChatModelFactory {
         maxTokens: config.options.maxTokens,
         topP: config.options.topP,
         stop: config.options.stop,
+      ),
+    );
+  }
+
+  /// 创建 Anthropic ChatModel (Claude)
+  static ChatAnthropic _createAnthropic(ProviderConfig config) {
+    return ChatAnthropic(
+      apiKey: config.apiKey!,
+      defaultOptions: ChatAnthropicOptions(
+        model: config.model,
+        temperature: config.options.temperature,
+        maxTokens: config.options.maxTokens,
+        topP: config.options.topP,
+        stopSequences: config.options.stop,
+      ),
+    );
+  }
+
+  /// 创建 Google AI ChatModel (Gemini)
+  static ChatGoogleGenerativeAI _createGoogle(ProviderConfig config) {
+    return ChatGoogleGenerativeAI(
+      apiKey: config.apiKey!,
+      defaultOptions: ChatGoogleGenerativeAIOptions(
+        model: config.model,
+        temperature: config.options.temperature,
+        maxOutputTokens: config.options.maxTokens,
+        topP: config.options.topP,
+        stopSequences: config.options.stop,
       ),
     );
   }
@@ -63,28 +105,4 @@ class ChatModelFactory {
       ),
     );
   }
-
-  // 可以扩展支持更多提供商:
-  //
-  // static ChatAnthropic _createAnthropic(ProviderConfig config) {
-  //   return ChatAnthropic(
-  //     apiKey: config.apiKey,
-  //     defaultOptions: ChatAnthropicOptions(
-  //       model: config.model,
-  //       temperature: config.options.temperature,
-  //       maxTokens: config.options.maxTokens,
-  //     ),
-  //   );
-  // }
-  //
-  // static ChatGoogleGenerativeAI _createGoogle(ProviderConfig config) {
-  //   return ChatGoogleGenerativeAI(
-  //     apiKey: config.apiKey,
-  //     defaultOptions: ChatGoogleGenerativeAIOptions(
-  //       model: config.model,
-  //       temperature: config.options.temperature,
-  //       maxOutputTokens: config.options.maxTokens,
-  //     ),
-  //   );
-  // }
 }

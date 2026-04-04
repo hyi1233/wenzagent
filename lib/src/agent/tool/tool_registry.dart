@@ -52,7 +52,7 @@ class ToolRegistry {
 
   /// 获取所有工具的 LangChain ToolSpec 列表
   ///
-  /// 用于传递给 ChatOpenAIOptions(tools: ...)
+  /// 用于传递给各 LLM 提供商的 options.tools
   List<ToolSpec> get toolSpecs {
     return _tools.values.map((t) => t.toToolSpec()).toList();
   }

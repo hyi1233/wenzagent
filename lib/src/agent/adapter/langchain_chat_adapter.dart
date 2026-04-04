@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:langchain_core/chat_models.dart';
 import 'package:langchain_core/prompts.dart';
-import 'package:langchain_openai/langchain_openai.dart';
 import 'package:uuid/uuid.dart';
 
 import '../agent_state.dart';
@@ -171,7 +170,10 @@ class LangChainChatAdapter implements IChatAdapter {
 
         // 构建调用选项（带工具定义）
         final options = hasTools
-            ? ChatOpenAIOptions(tools: _toolRegistry!.toolSpecs)
+            ? ChatModelFactory.createToolOptions(
+                _providerConfig!.provider,
+                _toolRegistry!.toolSpecs,
+              )
             : null;
 
         // 调用 LLM 流式接口并累积完整响应
