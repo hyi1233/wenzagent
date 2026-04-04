@@ -56,6 +56,7 @@ class LanClientServiceImpl implements LanClientService {
   bool _isConnected = false;
   bool _isConnecting = false;
   bool _manualDisconnect = false;
+  bool _kickedOffline = false;  // 被踢下线标志（相同 deviceId 重复登录）
   String? _hostIp;
   int _hostPort = 9090;
   String? _myId;
@@ -127,6 +128,14 @@ class LanClientServiceImpl implements LanClientService {
       (data) {
         try {
           final msg = LanMessage.fromJson(_parseJson(data));
+          
+          // 检查是否被踢下线（重复登录）
+          if (msg.type == LanMessageType.system &&
+              msg.content == 'kicked:duplicate_login') {
+            _kickedOffline = true;
+            _addSystemMessage('已被踢下线：相同 deviceId 在其他位置登录');
+          }
+          
           _messageController.add(msg);
 
           if (msg.type == LanMessageType.file && msg.fileId != null) {
@@ -139,6 +148,10 @@ class LanClientServiceImpl implements LanClientService {
         _isConnecting = false;
         _stopHeartbeat();
         if (_manualDisconnect) return;
+        if (_kickedOffline) {
+          _addSystemMessage('已被踢下线，不再重连');
+          return;
+        }
         _addSystemMessage('已断开局域网连接');
         _scheduleReconnect();
       },
@@ -147,6 +160,7 @@ class LanClientServiceImpl implements LanClientService {
         _isConnecting = false;
         _stopHeartbeat();
         if (_manualDisconnect) return;
+        if (_kickedOffline) return;
         _addSystemMessage('连接出错');
         _scheduleReconnect();
       },
@@ -155,6 +169,7 @@ class LanClientServiceImpl implements LanClientService {
     _isConnecting = false;
     _isConnected = true;
     _manualDisconnect = false;
+    _kickedOffline = false;
     _addSystemMessage('已加入局域网 $hostIp:$port');
 
     _sendClientInfo();

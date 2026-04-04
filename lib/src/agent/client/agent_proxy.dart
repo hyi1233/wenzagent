@@ -3,12 +3,14 @@ import 'dart:async';
 import '../agent_state.dart';
 import '../i_agent.dart';
 import '../rpc/agent_rpc_config.dart';
+import '../tool/agent_tool.dart';
 
 /// RPC 调用回调类型
-typedef RpcCall = Future<Map<String, dynamic>> Function(
-  String method,
-  Map<String, dynamic> params,
-);
+typedef RpcCall =
+    Future<Map<String, dynamic>> Function(
+      String method,
+      Map<String, dynamic> params,
+    );
 
 /// Agent Proxy（纯 Dart）
 ///
@@ -41,21 +43,19 @@ class AgentProxy {
   StreamSubscription<Map<String, dynamic>>? _remoteEventSubscription;
 
   /// 创建本地模式 Proxy
-  AgentProxy.local({
-    required this.employeeUuid,
-    required IAgent localAgent,
-  })  : isLocalMode = true,
-        _localAgent = localAgent,
-        _rpcCall = null;
+  AgentProxy.local({required this.employeeUuid, required IAgent localAgent})
+    : isLocalMode = true,
+      _localAgent = localAgent,
+      _rpcCall = null;
 
   /// 创建远程模式 Proxy
   AgentProxy.remote({
     required this.employeeUuid,
     required RpcCall rpcCall,
     Stream<Map<String, dynamic>>? remoteEventStream,
-  })  : isLocalMode = false,
-        _localAgent = null,
-        _rpcCall = rpcCall {
+  }) : isLocalMode = false,
+       _localAgent = null,
+       _rpcCall = rpcCall {
     if (remoteEventStream != null) {
       _subscribeRemoteEvents(remoteEventStream);
     }
@@ -130,7 +130,8 @@ class AgentProxy {
 
   /// 获取会话消息
   Future<List<Map<String, dynamic>>> getSessionMessages(
-      String sessionUuid) async {
+    String sessionUuid,
+  ) async {
     if (isLocalMode && _localAgent != null) {
       return _localAgent.getSessionMessages(sessionUuid);
     }
@@ -220,6 +221,49 @@ class AgentProxy {
     return _remoteCache.projectUuid;
   }
 
+  // ===== 工具管理 =====
+
+  void registerTool(AgentTool tool) {
+    if (isLocalMode && _localAgent != null) {
+      _localAgent.registerTool(tool);
+    }
+  }
+
+  void registerTools(List<AgentTool> tools) {
+    if (isLocalMode && _localAgent != null) {
+      _localAgent.registerTools(tools);
+    }
+  }
+
+  void unregisterTool(String name) {
+    if (isLocalMode && _localAgent != null) {
+      _localAgent.unregisterTool(name);
+    }
+  }
+
+  List<Map<String, dynamic>> getRegisteredTools() {
+    if (isLocalMode && _localAgent != null) {
+      return _localAgent.getRegisteredTools();
+    }
+    return [];
+  }
+
+  // ===== 权限管理 =====
+
+  Future<void> respondToPermission(
+    String requestId,
+    PermissionDecision decision,
+  ) async {
+    if (isLocalMode && _localAgent != null) {
+      return _localAgent.respondToPermission(requestId, decision);
+    }
+    await _rpc(AgentRpcConfig.methodRespondPermission, {
+      'employeeUuid': employeeUuid,
+      'requestId': requestId,
+      'decision': decision.name,
+    });
+  }
+
   // ===== 状态查询 =====
 
   AgentStateSnapshot getStateSnapshot() {
@@ -282,6 +326,12 @@ class AgentProxy {
   void _onRemoteEvent(Map<String, dynamic> eventData) {
     final type = eventData['type'] as String?;
     final data = eventData['data'] as Map<String, dynamic>? ?? {};
+    final eventEmployeeUuid = eventData['employeeUuid'] as String?;
+
+    // 只处理与当前 Agent 相关的事件
+    if (eventEmployeeUuid != null && eventEmployeeUuid != employeeUuid) {
+      return;
+    }
 
     switch (type) {
       case 'agentStatusChanged':
@@ -292,7 +342,9 @@ class AgentProxy {
         break;
 
       case 'messageStatusChanged':
-        _stateController.add(_remoteCache.snapshot ?? AgentStateSnapshot.idle());
+        _stateController.add(
+          _remoteCache.snapshot ?? AgentStateSnapshot.idle(),
+        );
         break;
 
       default:

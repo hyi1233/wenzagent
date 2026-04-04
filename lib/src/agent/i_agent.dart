@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'agent_state.dart';
+import 'tool/agent_tool.dart';
 
 /// Agent 主体接口
 ///
@@ -107,6 +108,31 @@ abstract class IAgent {
 
   /// 获取当前项目UUID
   String? getCurrentProjectUuid();
+
+  // ===== 工具管理 =====
+
+  /// 注册单个工具
+  void registerTool(AgentTool tool);
+
+  /// 批量注册工具
+  void registerTools(List<AgentTool> tools);
+
+  /// 注销工具
+  void unregisterTool(String name);
+
+  /// 获取已注册工具列表（JSON 序列化）
+  List<Map<String, dynamic>> getRegisteredTools();
+
+  // ===== 权限管理 =====
+
+  /// 响应权限请求
+  ///
+  /// [requestId] 权限请求ID
+  /// [decision] 用户的权限决策
+  Future<void> respondToPermission(
+    String requestId,
+    PermissionDecision decision,
+  );
 
   // ===== 状态查询 =====
 

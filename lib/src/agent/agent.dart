@@ -8,3 +8,5 @@ export 'client/agent_client.dart';
 export 'client/agent_proxy.dart';
 export 'rpc/agent_rpc.dart';
 export 'processor/processor.dart';
+export 'adapter/adapter.dart';
+export 'tool/tool.dart';

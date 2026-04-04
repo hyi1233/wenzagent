@@ -3,12 +3,18 @@ import 'dart:async';
 import '../agent_state.dart';
 import '../i_agent.dart';
 import '../processor/message_processor.dart';
+import '../tool/agent_tool.dart';
+import '../tool/builtin/builtin_tools.dart';
+import '../tool/permission_manager.dart';
+import '../tool/tool_registry.dart';
 
 /// Agent 主体实现类（纯 Dart）
 ///
 /// 实现 [IAgent] 接口，组装所有内部组件：
 /// - [IChatAdapter]: 对话适配器（流式消息、持久化）
 /// - [MessageProcessor]: 消息处理调度器
+/// - [ToolRegistry]: 工具注册器
+/// - [ToolPermissionManager]: 权限管理器
 ///
 /// 设计原则：
 /// - 纯 Dart，不依赖 Flutter
@@ -26,6 +32,15 @@ class AgentImpl implements IAgent {
   /// 消息处理调度器（延迟初始化）
   MessageProcessor? _processor;
 
+  /// 工具注册器
+  final ToolRegistry _toolRegistry = ToolRegistry();
+
+  /// 权限管理器
+  final ToolPermissionManager _permissionManager = ToolPermissionManager();
+
+  /// 待处理的权限请求
+  final Map<String, Completer<PermissionDecision>> _pendingPermissions = {};
+
   // ===== 内部状态 =====
 
   /// 当前 Agent 状态
@@ -40,10 +55,8 @@ class AgentImpl implements IAgent {
   /// 异步操作锁
   Completer<void>? _lockCompleter;
 
-  AgentImpl({
-    required this.employeeUuid,
-    required IChatAdapter chatAdapter,
-  }) : _chatAdapter = chatAdapter;
+  AgentImpl({required this.employeeUuid, required IChatAdapter chatAdapter})
+    : _chatAdapter = chatAdapter;
 
   // ===== IAgent: 基础信息 =====
 
@@ -74,8 +87,7 @@ class AgentImpl implements IAgent {
       _processor?.currentProcessingMessageId;
 
   @override
-  List<String> get queuedMessageIds =>
-      _processor?.queuedMessageIds ?? [];
+  List<String> get queuedMessageIds => _processor?.queuedMessageIds ?? [];
 
   @override
   int get queueLength => _processor?.queueLength ?? 0;
@@ -90,16 +102,56 @@ class AgentImpl implements IAgent {
       sessionUuid: sessionUuid,
     );
 
+    // 注册内置工具
+    _toolRegistry.registerTools(BuiltinTools.all());
+
+    // 设置工具注册器和权限管理器到适配器
+    _chatAdapter.setToolRegistry(_toolRegistry);
+    _chatAdapter.setPermissionManager(_permissionManager);
+
+    // 设置权限回调：通过事件流广播权限请求
+    _permissionManager.onPermissionRequest = (request) async {
+      final completer = Completer<PermissionDecision>();
+      _pendingPermissions[request.requestId] = completer;
+
+      // 设置处理器状态为等待权限
+      _processor?.setPermissionBlocked(request.requestId);
+
+      // 广播权限请求事件
+      _eventController.add({
+        'type': 'toolPermissionRequest',
+        'data': request.toMap(),
+        'employeeUuid': employeeUuid,
+      });
+
+      try {
+        return await completer.future;
+      } finally {
+        _pendingPermissions.remove(request.requestId);
+        // 恢复处理状态
+        _processor?.setPermissionBlocked(null);
+      }
+    };
+
+    // 设置工具事件回调：通过事件流广播
+    _chatAdapter.setToolEventCallback((event) {
+      _eventController.add({...event, 'employeeUuid': employeeUuid});
+    });
+
     // 初始化消息处理调度器
     _processor = MessageProcessor(
       streamMessage: (messageId, messageData, {cancellationToken}) {
         return _chatAdapter
             .streamMessage(messageData, cancellationToken: cancellationToken)
-            .map((r) => StreamResponse(
-                  content: r.content,
-                  error: r.error,
-                  isDone: r.isDone,
-                ));
+            .map(
+              (r) => StreamResponse(
+                content: r.content,
+                error: r.error,
+                isDone: r.isDone,
+                type: r.type,
+                data: r.data,
+              ),
+            );
       },
       stopStreaming: () => _chatAdapter.stopStreaming(),
     );
@@ -110,8 +162,7 @@ class AgentImpl implements IAgent {
     };
 
     // 监听消息处理状态变更
-    _processor!.onMessageStatusChanged =
-        (messageId, msgStatus, {error}) async {
+    _processor!.onMessageStatusChanged = (messageId, msgStatus, {error}) async {
       _broadcasterBroadcastMessageStatusChange(
         messageId: messageId,
         status: msgStatus,
@@ -128,6 +179,14 @@ class AgentImpl implements IAgent {
     if (_status == AgentStatus.disposed) return;
 
     _setStatus(AgentStatus.disposed);
+
+    // 取消所有待处理的权限请求
+    for (final completer in _pendingPermissions.values) {
+      if (!completer.isCompleted) {
+        completer.complete(PermissionDecision.deny);
+      }
+    }
+    _pendingPermissions.clear();
 
     _processor?.dispose();
     _processor = null;
@@ -159,7 +218,8 @@ class AgentImpl implements IAgent {
 
     return await _withLock(() async {
       // 生成消息ID
-      final messageId = messageData['id'] as String? ??
+      final messageId =
+          messageData['id'] as String? ??
           'msg_${DateTime.now().millisecondsSinceEpoch}_${Object().hashCode}';
       messageData['id'] = messageId;
       messageData['role'] = 'user';
@@ -167,10 +227,7 @@ class AgentImpl implements IAgent {
       messageData['createdAt'] = DateTime.now().toIso8601String();
 
       // 提交到处理器
-      await _processor?.submitMessage(
-        messageId,
-        messageData,
-      );
+      await _processor?.submitMessage(messageId, messageData);
 
       return messageId;
     });
@@ -192,14 +249,17 @@ class AgentImpl implements IAgent {
 
   @override
   Future<List<Map<String, dynamic>>> getSessionMessages(
-      String sessionUuid) async {
+    String sessionUuid,
+  ) async {
     return _chatAdapter.getSessionMessages(sessionUuid);
   }
 
   @override
   Future<String> createSession() async {
     _touch();
-    final uuid = await _chatAdapter.createNewSession(employeeUuid: employeeUuid);
+    final uuid = await _chatAdapter.createNewSession(
+      employeeUuid: employeeUuid,
+    );
     return uuid;
   }
 
@@ -269,6 +329,48 @@ class AgentImpl implements IAgent {
   String? getCurrentProjectUuid() {
     final context = _chatAdapter.currentContext;
     return context?['projectUuid'] as String?;
+  }
+
+  // ===== IAgent: 工具管理 =====
+
+  @override
+  void registerTool(AgentTool tool) {
+    _toolRegistry.registerTool(tool);
+  }
+
+  @override
+  void registerTools(List<AgentTool> tools) {
+    _toolRegistry.registerTools(tools);
+  }
+
+  @override
+  void unregisterTool(String name) {
+    _toolRegistry.unregisterTool(name);
+  }
+
+  @override
+  List<Map<String, dynamic>> getRegisteredTools() {
+    return _toolRegistry.toMapList();
+  }
+
+  // ===== IAgent: 权限管理 =====
+
+  @override
+  Future<void> respondToPermission(
+    String requestId,
+    PermissionDecision decision,
+  ) async {
+    final completer = _pendingPermissions[requestId];
+    if (completer != null && !completer.isCompleted) {
+      completer.complete(decision);
+
+      // 广播权限响应事件
+      _eventController.add({
+        'type': 'toolPermissionResponse',
+        'data': {'requestId': requestId, 'decision': decision.name},
+        'employeeUuid': employeeUuid,
+      });
+    }
   }
 
   // ===== IAgent: 状态查询 =====

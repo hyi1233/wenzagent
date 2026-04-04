@@ -38,6 +38,14 @@ class AgentRpcConfig {
   static const String methodSetProject = 'agentSetProject';
   static const String methodGetProjectUuid = 'agentGetProjectUuid';
 
+  // ===== Agent 工具管理 =====
+
+  static const String methodGetRegisteredTools = 'agentGetRegisteredTools';
+
+  // ===== Agent 权限管理 =====
+
+  static const String methodRespondPermission = 'agentRespondPermission';
+
   // ===== Agent 状态查询 =====
 
   static const String methodGetState = 'agentGetState';

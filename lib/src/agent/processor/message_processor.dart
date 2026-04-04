@@ -1,17 +1,31 @@
 import '../agent_state.dart';
+import '../tool/tool_registry.dart';
+import '../tool/permission_manager.dart';
 import 'cancellation_token.dart';
 import 'message_queue.dart';
 
 /// 流式响应
+///
+/// 承载文本 chunk、完成信号、错误信息，以及工具调用事件。
 class StreamResponse {
   final String? content;
   final bool isDone;
   final String? error;
 
+  /// 事件类型（null 表示普通文本 chunk）
+  ///
+  /// 可选值: 'toolCallStart', 'toolCallResult', 'permissionRequest'
+  final String? type;
+
+  /// 结构化事件数据
+  final Map<String, dynamic>? data;
+
   const StreamResponse({
     this.content,
     this.isDone = false,
     this.error,
+    this.type,
+    this.data,
   });
 
   factory StreamResponse.chunk(String content) {
@@ -24,6 +38,58 @@ class StreamResponse {
 
   factory StreamResponse.error(String error) {
     return StreamResponse(error: error, isDone: true);
+  }
+
+  /// 工具调用开始事件
+  factory StreamResponse.toolCallStart({
+    required String toolCallId,
+    required String toolName,
+    required Map<String, dynamic> arguments,
+  }) {
+    return StreamResponse(
+      type: 'toolCallStart',
+      data: {
+        'toolCallId': toolCallId,
+        'toolName': toolName,
+        'arguments': arguments,
+      },
+    );
+  }
+
+  /// 工具调用结果事件
+  factory StreamResponse.toolCallResult({
+    required String toolCallId,
+    required String toolName,
+    required String result,
+    required bool isError,
+    int? durationMs,
+  }) {
+    return StreamResponse(
+      type: 'toolCallResult',
+      data: {
+        'toolCallId': toolCallId,
+        'toolName': toolName,
+        'result': result,
+        'isError': isError,
+        if (durationMs != null) 'durationMs': durationMs,
+      },
+    );
+  }
+
+  /// 权限请求事件
+  factory StreamResponse.permissionRequest({
+    required String requestId,
+    required String toolName,
+    required String description,
+  }) {
+    return StreamResponse(
+      type: 'permissionRequest',
+      data: {
+        'requestId': requestId,
+        'toolName': toolName,
+        'description': description,
+      },
+    );
   }
 }
 
@@ -45,10 +111,7 @@ abstract class IChatAdapter {
   bool get isStreaming;
 
   /// 初始化会话
-  Future<void> initSession({
-    required String employeeUuid,
-    String? sessionUuid,
-  });
+  Future<void> initSession({required String employeeUuid, String? sessionUuid});
 
   /// 流式发送消息
   Stream<StreamResponse> streamMessage(
@@ -66,7 +129,10 @@ abstract class IChatAdapter {
   Future<List<Map<String, dynamic>>> getSessionMessages(String sessionUuid);
 
   /// 创建新会话
-  Future<String> createNewSession({required String employeeUuid, String? title});
+  Future<String> createNewSession({
+    required String employeeUuid,
+    String? title,
+  });
 
   /// 切换会话
   Future<void> switchSession(String sessionUuid);
@@ -89,23 +155,32 @@ abstract class IChatAdapter {
   /// 更新项目上下文
   Future<void> updateProjectContext(Map<String, dynamic>? projectContext);
 
+  /// 设置工具注册器
+  void setToolRegistry(ToolRegistry? registry);
+
+  /// 设置权限管理器
+  void setPermissionManager(ToolPermissionManager? manager);
+
+  /// 设置工具事件回调
+  void setToolEventCallback(
+    void Function(Map<String, dynamic> event)? callback,
+  );
+
   /// 释放资源
   Future<void> dispose();
 }
 
 /// 消息处理器状态回调
-typedef MessageStatusCallback = void Function(
-  String messageId,
-  AgentMessageStatus status, {
-  String? error,
-});
+typedef MessageStatusCallback =
+    void Function(String messageId, AgentMessageStatus status, {String? error});
 
 /// 流式消息函数类型
-typedef StreamMessageFunc = Stream<StreamResponse> Function(
-  String messageId,
-  Map<String, dynamic> messageData, {
-  CancellationToken? cancellationToken,
-});
+typedef StreamMessageFunc =
+    Stream<StreamResponse> Function(
+      String messageId,
+      Map<String, dynamic> messageData, {
+      CancellationToken? cancellationToken,
+    });
 
 /// 消息处理器
 ///
@@ -130,8 +205,8 @@ class MessageProcessor {
   MessageProcessor({
     required StreamMessageFunc streamMessage,
     required Future<void> Function() stopStreaming,
-  })  : _streamMessage = streamMessage,
-        _stopStreaming = stopStreaming;
+  }) : _streamMessage = streamMessage,
+       _stopStreaming = stopStreaming;
 
   /// 当前处理中的消息ID
   String? get currentProcessingMessageId => _currentProcessingMessageId;
@@ -262,7 +337,9 @@ class MessageProcessor {
           return;
         }
 
-        if (!hasContent && response.content != null && response.content!.isNotEmpty) {
+        if (!hasContent &&
+            response.content != null &&
+            response.content!.isNotEmpty) {
           hasContent = true;
           _setStatus(AgentStatus.streaming);
         }

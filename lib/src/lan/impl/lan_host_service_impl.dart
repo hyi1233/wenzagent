@@ -400,11 +400,23 @@ class LanHostServiceImpl implements LanHostService {
 
     for (final idx in staleIndices.reversed) {
       final staleChannel = _clientChannels[idx];
+      // 先发送被踢下线消息
+      try {
+        _sendToChannel(staleChannel, LanMessage(
+          id: _uuid.v4(),
+          type: LanMessageType.system,
+          content: 'kicked:duplicate_login',
+          timestamp: DateTime.now(),
+        ));
+      } catch (_) {}
       _clients.removeAt(idx);
       _clientChannels.removeAt(idx);
-      try {
-        staleChannel.sink.close();
-      } catch (_) {}
+      // 延迟关闭连接，确保消息能被接收
+      Future.delayed(const Duration(milliseconds: 100), () {
+        try {
+          staleChannel.sink.close();
+        } catch (_) {}
+      });
     }
   }
 

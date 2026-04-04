@@ -3,10 +3,12 @@ import 'dart:convert';
 
 import '../../agent/client/agent_proxy.dart';
 import '../../agent/i_agent.dart';
+import '../../agent/rpc/agent_rpc_config.dart';
 import '../../entity/lan_device_info.dart';
 import '../../entity/lan_message.dart';
 import '../../lan/impl/lan_client_service_impl.dart';
 import '../../rpc/remote_call_manager.dart';
+import '../../rpc/remote_call_server.dart';
 import '../../rpc/rpc_config.dart';
 import '../device_client.dart';
 
@@ -30,8 +32,11 @@ class DeviceClientImpl implements DeviceClient {
   /// LAN 客户端
   LanClientServiceImpl? _lanClient;
 
-  /// RPC 管理器
+  /// RPC 管理器（发起调用）
   RemoteCallManager? _rpcManager;
+
+  /// RPC 服务器（处理调用）
+  RemoteCallServer? _rpcServer;
 
   /// 本地 Agent 注册表
   final Map<String, IAgent> _localAgents = {};
@@ -41,6 +46,9 @@ class DeviceClientImpl implements DeviceClient {
 
   /// 远程代理缓存（断线时保留）
   final Map<String, AgentProxy> _remoteProxies = {};
+
+  /// Agent 事件订阅（用于广播到 LAN）
+  final Map<String, StreamSubscription<Map<String, dynamic>>> _agentEventSubscriptions = {};
 
   /// 连接状态控制器
   final _stateController = StreamController<DeviceConnectionState>.broadcast();
@@ -110,16 +118,23 @@ class DeviceClientImpl implements DeviceClient {
       // 2. 连接服务器
       await _lanClient!.connect(host, port: port);
 
-      // 3. 创建 RPC 管理器
+      // 3. 创建 RPC 管理器（发起调用）
       _rpcManager = RemoteCallManager(
         clientService: _lanClient!,
         localDeviceId: deviceId,
       );
 
-      // 4. 订阅消息流
+      // 4. 创建 RPC 服务器（处理调用）
+      _rpcServer = RemoteCallServer(
+        clientService: _lanClient!,
+        localDeviceId: deviceId,
+      );
+      _registerRpcMethods();
+
+      // 5. 订阅消息流
       _messageSubscription = _lanClient!.messageStream.listen(_handleMessage);
 
-      // 5. 发送设备注册信息
+      // 6. 发送设备注册信息
       _sendDeviceRegistration();
 
       _updateState(DeviceConnectionState.connected);
@@ -127,6 +142,167 @@ class DeviceClientImpl implements DeviceClient {
       _updateState(DeviceConnectionState.disconnected);
       rethrow;
     }
+  }
+
+  /// 注册 RPC 方法处理器
+  void _registerRpcMethods() {
+    // 发送消息
+    _rpcServer!.register(
+      AgentRpcConfig.methodSendMessage,
+      (params) async {
+        final employeeUuid = params['employeeUuid'] as String;
+        final messageData = params['messageData'] as Map<String, dynamic>;
+        final agent = _localAgents[employeeUuid];
+        if (agent == null) {
+          throw Exception('Agent not found: $employeeUuid');
+        }
+        final messageId = await agent.sendMessage(messageData);
+        return {'messageId': messageId};
+      },
+    );
+
+    // 中断处理
+    _rpcServer!.register(
+      AgentRpcConfig.methodInterrupt,
+      (params) async {
+        final employeeUuid = params['employeeUuid'] as String;
+        final agent = _localAgents[employeeUuid];
+        if (agent == null) {
+          throw Exception('Agent not found: $employeeUuid');
+        }
+        await agent.interrupt();
+        return {};
+      },
+    );
+
+    // 获取会话列表
+    _rpcServer!.register(
+      AgentRpcConfig.methodGetSessionList,
+      (params) async {
+        final employeeUuid = params['employeeUuid'] as String;
+        final agent = _localAgents[employeeUuid];
+        if (agent == null) {
+          throw Exception('Agent not found: $employeeUuid');
+        }
+        final sessions = await agent.getSessionList();
+        return {'sessions': sessions};
+      },
+    );
+
+    // 获取会话消息
+    _rpcServer!.register(
+      AgentRpcConfig.methodGetSessionMessages,
+      (params) async {
+        final employeeUuid = params['employeeUuid'] as String?;
+        final sessionUuid = params['sessionUuid'] as String;
+        final agent = employeeUuid != null ? _localAgents[employeeUuid] : null;
+        if (agent == null) {
+          throw Exception('Agent not found: $employeeUuid');
+        }
+        final messages = await agent.getSessionMessages(sessionUuid);
+        return {'messages': messages};
+      },
+    );
+
+    // 创建会话
+    _rpcServer!.register(
+      AgentRpcConfig.methodCreateSession,
+      (params) async {
+        final employeeUuid = params['employeeUuid'] as String;
+        final agent = _localAgents[employeeUuid];
+        if (agent == null) {
+          throw Exception('Agent not found: $employeeUuid');
+        }
+        final sessionUuid = await agent.createSession();
+        return {'sessionUuid': sessionUuid};
+      },
+    );
+
+    // 切换会话
+    _rpcServer!.register(
+      AgentRpcConfig.methodSwitchSession,
+      (params) async {
+        final employeeUuid = params['employeeUuid'] as String;
+        final sessionUuid = params['sessionUuid'] as String;
+        final agent = _localAgents[employeeUuid];
+        if (agent == null) {
+          throw Exception('Agent not found: $employeeUuid');
+        }
+        await agent.switchSession(sessionUuid);
+        return {};
+      },
+    );
+
+    // 获取状态
+    _rpcServer!.register(
+      AgentRpcConfig.methodGetState,
+      (params) async {
+        final employeeUuid = params['employeeUuid'] as String;
+        final agent = _localAgents[employeeUuid];
+        if (agent == null) {
+          throw Exception('Agent not found: $employeeUuid');
+        }
+        return agent.getStateSnapshot().toMap();
+      },
+    );
+
+    // 设置上下文
+    _rpcServer!.register(
+      AgentRpcConfig.methodSetContext,
+      (params) async {
+        final employeeUuid = params['employeeUuid'] as String;
+        final contextData = params['contextData'] as Map<String, dynamic>;
+        final agent = _localAgents[employeeUuid];
+        if (agent == null) {
+          throw Exception('Agent not found: $employeeUuid');
+        }
+        await agent.setContext(contextData);
+        return {};
+      },
+    );
+
+    // 获取上下文
+    _rpcServer!.register(
+      AgentRpcConfig.methodGetContext,
+      (params) async {
+        final employeeUuid = params['employeeUuid'] as String;
+        final agent = _localAgents[employeeUuid];
+        if (agent == null) {
+          throw Exception('Agent not found: $employeeUuid');
+        }
+        return {'context': agent.getCurrentContext()};
+      },
+    );
+
+    // 设置 Provider
+    _rpcServer!.register(
+      AgentRpcConfig.methodSetProvider,
+      (params) async {
+        final employeeUuid = params['employeeUuid'] as String;
+        final providerConfig = params['providerConfig'] as Map<String, dynamic>;
+        final agent = _localAgents[employeeUuid];
+        if (agent == null) {
+          throw Exception('Agent not found: $employeeUuid');
+        }
+        await agent.setProvider(providerConfig);
+        return {};
+      },
+    );
+
+    // 设置项目
+    _rpcServer!.register(
+      AgentRpcConfig.methodSetProject,
+      (params) async {
+        final employeeUuid = params['employeeUuid'] as String;
+        final projectData = params['projectData'] as Map<String, dynamic>?;
+        final agent = _localAgents[employeeUuid];
+        if (agent == null) {
+          throw Exception('Agent not found: $employeeUuid');
+        }
+        await agent.setProject(projectData);
+        return {};
+      },
+    );
   }
 
   @override
@@ -141,6 +317,9 @@ class DeviceClientImpl implements DeviceClient {
     _rpcManager?.dispose();
     _rpcManager = null;
 
+    _rpcServer?.dispose();
+    _rpcServer = null;
+
     // 注意：断线时保留 remoteProxies，重连后可继续使用
     _updateState(DeviceConnectionState.disconnected);
   }
@@ -151,6 +330,12 @@ class DeviceClientImpl implements DeviceClient {
     _disposed = true;
 
     await disconnect();
+
+    // 取消所有 Agent 事件订阅
+    for (final subscription in _agentEventSubscriptions.values) {
+      await subscription.cancel();
+    }
+    _agentEventSubscriptions.clear();
 
     // 清理本地代理
     for (final proxy in _localProxies.values) {
@@ -187,12 +372,55 @@ class DeviceClientImpl implements DeviceClient {
     );
     proxy.attach(); // 增加引用计数
     _localProxies[employeeId] = proxy;
+
+    // 订阅 Agent 事件，广播到 LAN
+    final subscription = agent.onEvent.listen((event) {
+      _broadcastAgentEvent(employeeId, event);
+    });
+    _agentEventSubscriptions[employeeId] = subscription;
+  }
+
+  /// 广播 Agent 事件到 LAN
+  void _broadcastAgentEvent(String employeeId, Map<String, dynamic> event) {
+    final lanClient = _lanClient;
+    if (lanClient == null || !lanClient.isConnected) return;
+
+    final type = event['type'] as String?;
+    final data = event['data'] as Map<String, dynamic>? ?? {};
+
+    // 根据事件类型构造消息
+    LanMessageType msgType;
+    switch (type) {
+      case 'agentStatusChanged':
+        msgType = LanMessageType.agentStatusChanged;
+      case 'messageStatusChanged':
+        msgType = LanMessageType.agentMessageStatusChanged;
+      default:
+        return; // 不广播其他类型
+    }
+
+    final msg = LanMessage(
+      type: msgType,
+      fromId: deviceId,
+      content: jsonEncode({
+        'employeeUuid': employeeId,
+        'type': type,
+        'data': data,
+      }),
+      topic: topic,
+    );
+
+    lanClient.sendLanMessage(msg);
   }
 
   @override
   void unregisterLocalAgent(String employeeId) {
     final agent = _localAgents.remove(employeeId);
     if (agent == null) return;
+
+    // 取消事件订阅
+    _agentEventSubscriptions[employeeId]?.cancel();
+    _agentEventSubscriptions.remove(employeeId);
 
     // 减少引用计数
     final proxy = _localProxies.remove(employeeId);
@@ -360,6 +588,9 @@ class DeviceClientImpl implements DeviceClient {
   /// 处理收到的消息
   void _handleMessage(LanMessage msg) {
     switch (msg.type) {
+      case LanMessageType.rpcRequest:
+        _handleRpcRequest(msg);
+
       case LanMessageType.rpcResponse:
         _handleRpcResponse(msg);
 
@@ -373,7 +604,8 @@ class DeviceClientImpl implements DeviceClient {
         _handleStreamEnd(msg);
 
       case LanMessageType.agentStatusChanged:
-        _handleAgentStatusChanged(msg);
+      case LanMessageType.agentMessageStatusChanged:
+        _handleAgentEvent(msg);
 
       case LanMessageType.system:
         _handleSystemMessage(msg);
@@ -383,12 +615,24 @@ class DeviceClientImpl implements DeviceClient {
     }
   }
 
+  /// 处理 RPC 请求
+  void _handleRpcRequest(LanMessage msg) {
+    if (_rpcServer == null) return;
+
+    try {
+      final content = jsonDecode(msg.content ?? '{}') as Map<String, dynamic>;
+      final payload = content['payload'] as Map<String, dynamic>? ?? {};
+      _rpcServer!.handleRequest(payload);
+    } catch (_) {}
+  }
+
   /// 处理 RPC 响应
   void _handleRpcResponse(LanMessage msg) {
     if (_rpcManager == null) return;
 
     try {
-      final payload = jsonDecode(msg.content ?? '{}') as Map<String, dynamic>;
+      final content = jsonDecode(msg.content ?? '{}') as Map<String, dynamic>;
+      final payload = content['payload'] as Map<String, dynamic>? ?? content;
       _rpcManager!.handleResponse(payload);
     } catch (_) {}
   }
@@ -398,7 +642,8 @@ class DeviceClientImpl implements DeviceClient {
     if (_rpcManager == null) return;
 
     try {
-      final payload = jsonDecode(msg.content ?? '{}') as Map<String, dynamic>;
+      final content = jsonDecode(msg.content ?? '{}') as Map<String, dynamic>;
+      final payload = content['payload'] as Map<String, dynamic>? ?? content;
       _rpcManager!.handleError(payload);
     } catch (_) {}
   }
@@ -408,7 +653,8 @@ class DeviceClientImpl implements DeviceClient {
     if (_rpcManager == null) return;
 
     try {
-      final payload = jsonDecode(msg.content ?? '{}') as Map<String, dynamic>;
+      final content = jsonDecode(msg.content ?? '{}') as Map<String, dynamic>;
+      final payload = content['payload'] as Map<String, dynamic>? ?? content;
       _rpcManager!.handleStreamChunk(payload);
     } catch (_) {}
   }
@@ -418,28 +664,41 @@ class DeviceClientImpl implements DeviceClient {
     if (_rpcManager == null) return;
 
     try {
-      final payload = jsonDecode(msg.content ?? '{}') as Map<String, dynamic>;
+      final content = jsonDecode(msg.content ?? '{}') as Map<String, dynamic>;
+      final payload = content['payload'] as Map<String, dynamic>? ?? content;
       _rpcManager!.handleStreamEnd(payload);
     } catch (_) {}
   }
 
-  /// 处理 Agent 状态变更
-  void _handleAgentStatusChanged(LanMessage msg) {
+  /// 处理 Agent 事件（状态变更、消息状态变更等）
+  void _handleAgentEvent(LanMessage msg) {
     try {
-      final data = jsonDecode(msg.content ?? '{}') as Map<String, dynamic>;
+      final content = jsonDecode(msg.content ?? '{}') as Map<String, dynamic>;
+      final type = content['type'] as String?;
+      final data = content['data'] as Map<String, dynamic>? ?? {};
+      final employeeUuid = content['employeeUuid'] as String?;
+
       _eventController.add({
-        'type': 'agentStatusChanged',
+        'type': type,
         'data': data,
+        'employeeUuid': employeeUuid,
         'fromId': msg.fromId,
-        'fromDeviceId': msg.fromId, // fromId 即发送方的 deviceId
+        'fromDeviceId': msg.fromId,
       });
     } catch (_) {}
   }
 
   /// 处理系统消息
   void _handleSystemMessage(LanMessage msg) {
-    // 检测重连成功
     final content = msg.content ?? '';
+    
+    // 检测被踢下线
+    if (content == 'kicked:duplicate_login') {
+      _updateState(DeviceConnectionState.disconnected);
+      return;
+    }
+    
+    // 检测重连成功
     if (content.contains('重连成功')) {
       _updateState(DeviceConnectionState.connected);
       _sendDeviceRegistration();
