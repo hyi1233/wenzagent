@@ -453,14 +453,18 @@ class DeviceClientImpl implements DeviceClient {
       throw StateError('Employee not found: $employeeId');
     }
 
-    // 3. 确定目标设备ID（从Employee.currentDeviceId获取）
-    // 如果currentDeviceId为空，设置为当前设备（首次打开）
+    // 3. 确定目标设备ID（优先从Employee.currentDeviceId获取，否则使用传入的deviceId，最后使用当前设备ID）
     String targetDeviceId;
-    if (employee.currentDeviceId == null || employee.currentDeviceId!.isEmpty) {
-      targetDeviceId = this.deviceId;
-      await _employeeManager.updateCurrentDeviceId(employeeId, this.deviceId);
-    } else {
+    if (employee.currentDeviceId != null && employee.currentDeviceId!.isNotEmpty) {
       targetDeviceId = employee.currentDeviceId!;
+    } else if (deviceId != null && deviceId.isNotEmpty) {
+      targetDeviceId = deviceId;
+    } else {
+      targetDeviceId = this.deviceId;
+      // 如果currentDeviceId为空，设置为当前设备（首次打开）
+      if (employee.currentDeviceId == null || employee.currentDeviceId!.isEmpty) {
+        await _employeeManager.updateCurrentDeviceId(employeeId, this.deviceId);
+      }
     }
 
     // 4. 判断本地还是远程
@@ -475,7 +479,11 @@ class DeviceClientImpl implements DeviceClient {
         employee,
         session,
       );
-      proxy = AgentProxy.local(employeeId: employeeId, localAgent: agent);
+      proxy = AgentProxy.local(
+        employeeId: employeeId,
+        deviceId: targetDeviceId,
+        localAgent: agent,
+      );
       proxy.attach();
       _localProxies[employeeId] = proxy;
 
@@ -492,6 +500,7 @@ class DeviceClientImpl implements DeviceClient {
 
     proxy = AgentProxy.remote(
       employeeId: employeeId,
+      deviceId: targetDeviceId,
       rpcCall: (method, params) =>
           _invokeRemote(targetDeviceId, method, params),
       remoteEventStream: _eventController.stream,
@@ -623,7 +632,16 @@ class DeviceClientImpl implements DeviceClient {
     };
 
     adapter.loadMessages = (employeeId) async {
-      final messages = await _messageStoreService.getMessages(employeeId);
+      // 优先从 employee.currentDeviceId 获取消息，如果没有则使用当前设备
+      final employee = await _employeeManager.getEmployee(employeeId);
+      final messageDeviceId = (employee?.currentDeviceId != null && employee!.currentDeviceId!.isNotEmpty)
+          ? employee.currentDeviceId
+          : deviceId;
+      
+      final messages = await _messageStoreService.getMessagesWithDeviceId(
+        messageDeviceId,
+        employeeId,
+      );
       return messages.map((m) => m.toMap()).toList();
     };
 

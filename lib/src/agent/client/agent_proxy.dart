@@ -23,6 +23,9 @@ class AgentProxy {
   /// 员工UUID
   final String employeeId;
 
+  /// 设备ID
+  final String deviceId;
+
   /// 是否为本地模式
   final bool isLocalMode;
 
@@ -43,14 +46,18 @@ class AgentProxy {
   StreamSubscription<Map<String, dynamic>>? _remoteEventSubscription;
 
   /// 创建本地模式 Proxy
-  AgentProxy.local({required this.employeeId, required IAgent localAgent})
-    : isLocalMode = true,
-      _localAgent = localAgent,
-      _rpcCall = null;
+  AgentProxy.local({
+    required this.employeeId,
+    required this.deviceId,
+    required IAgent localAgent,
+  }) : isLocalMode = true,
+       _localAgent = localAgent,
+       _rpcCall = null;
 
   /// 创建远程模式 Proxy
   AgentProxy.remote({
     required this.employeeId,
+    required this.deviceId,
     required RpcCall rpcCall,
     Stream<Map<String, dynamic>>? remoteEventStream,
   }) : isLocalMode = false,

@@ -29,8 +29,16 @@ class MessageChangeEvent {
 
 /// 消息存储服务接口
 abstract class MessageStoreService {
-  /// 获取会话消息列表
+  /// 获取会话消息列表（使用默认 deviceId）
   Future<List<AiEmployeeMessageEntity>> getMessages(
+    String employeeId, {
+    int? limit,
+    int? offset,
+  });
+
+  /// 获取会话消息列表（指定 deviceId）
+  Future<List<AiEmployeeMessageEntity>> getMessagesWithDeviceId(
+    String? deviceId,
     String employeeId, {
     int? limit,
     int? offset,
@@ -84,6 +92,17 @@ class MessageStoreServiceImpl implements MessageStoreService {
     int? offset,
   }) async {
     return _store.getMessages(_deviceId, employeeId,
+        limit: limit, offset: offset);
+  }
+
+  @override
+  Future<List<AiEmployeeMessageEntity>> getMessagesWithDeviceId(
+    String? deviceId,
+    String employeeId, {
+    int? limit,
+    int? offset,
+  }) async {
+    return _store.getMessages(deviceId, employeeId,
         limit: limit, offset: offset);
   }
 
