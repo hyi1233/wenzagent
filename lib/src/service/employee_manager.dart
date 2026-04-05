@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 
 import '../persistence/persistence.dart';
 
@@ -8,12 +8,12 @@ enum EmployeeChangeType { created, updated, deleted }
 /// 员工变更事件
 class EmployeeChangeEvent {
   final EmployeeChangeType type;
-  final String employeeUuid;
+  final String employeeId;
   final AiEmployeeEntity? employee;
 
   EmployeeChangeEvent({
     required this.type,
-    required this.employeeUuid,
+    required this.employeeId,
     this.employee,
   });
 }
@@ -145,13 +145,13 @@ class EmployeeManagerImpl implements EmployeeManager {
       _changeController.add(
         EmployeeChangeEvent(
           type: type,
-          employeeUuid: employeeOrUuid.uuid,
+          employeeId: employeeOrUuid.uuid,
           employee: employeeOrUuid,
         ),
       );
     } else if (employeeOrUuid is String) {
       _changeController.add(
-        EmployeeChangeEvent(type: type, employeeUuid: employeeOrUuid),
+        EmployeeChangeEvent(type: type, employeeId: employeeOrUuid),
       );
     }
   }

@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -313,10 +313,10 @@ class FullExample {
 
     // 注册 Agent 相关 RPC 方法
     rpcServer.register('agentGetOrCreate', (params) async {
-      final employeeUuid = params['employeeUuid'] as String? ?? 'default-agent';
+      final employeeId = params['employeeId'] as String? ?? 'default-agent';
       return {
-        'employeeUuid': employeeUuid,
-        'sessionUuid': 'session-${DateTime.now().millisecondsSinceEpoch}',
+        'employeeId': employeeId,
+        'sessionId': 'session-${DateTime.now().millisecondsSinceEpoch}',
         'status': 'idle',
       };
     });
@@ -342,17 +342,17 @@ class FullExample {
     print('创建 Agent...');
     var result = await rpcManager.invoke<Map<String, dynamic>>(
       'agentGetOrCreate',
-      {'employeeUuid': 'agent-demo-001'},
+      {'employeeId': 'agent-demo-001'},
       toDeviceId: 'server-001',
     );
-    print('  Agent ID: ${result['employeeUuid']}');
-    print('  会话 ID: ${result['sessionUuid']}');
+    print('  Agent ID: ${result['employeeId']}');
+    print('  会话 ID: ${result['sessionId']}');
     print('  状态: ${result['status']}\n');
 
     print('获取 Agent 状态...');
     result = await rpcManager.invoke<Map<String, dynamic>>(
       'agentGetState',
-      {'employeeUuid': 'agent-demo-001'},
+      {'employeeId': 'agent-demo-001'},
       toDeviceId: 'server-001',
     );
     print('  状态: ${result['status']}');
@@ -362,7 +362,7 @@ class FullExample {
     result = await rpcManager.invoke<Map<String, dynamic>>(
       'agentSendMessage',
       {
-        'employeeUuid': 'agent-demo-001',
+        'employeeId': 'agent-demo-001',
         'messageData': {'content': 'Hello from remote!'},
       },
       toDeviceId: 'server-001',

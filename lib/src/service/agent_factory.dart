@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:convert';
 
 import '../agent/adapter/persistent_chat_adapter.dart';
@@ -17,12 +17,12 @@ enum AgentLifecycleType { created, destroyed }
 /// Agent生命周期事件
 class AgentLifecycleEvent {
   final AgentLifecycleType type;
-  final String employeeUuid;
+  final String employeeId;
   final IAgent? agent;
 
   AgentLifecycleEvent({
     required this.type,
-    required this.employeeUuid,
+    required this.employeeId,
     this.agent,
   });
 }
@@ -31,20 +31,20 @@ class AgentLifecycleEvent {
 abstract class AgentFactory {
   /// 创建或获取Agent实例
   ///
-  /// [employeeUuid] 员工UUID
-  /// [employeeId] 会话UUID，为null则使用最近会话或创建新会话
+  /// [employeeId] 员工ID
+  /// [sessionId] 会话ID，为null则使用最近会话或创建新会话
   /// [autoCreate] 如果Agent不存在是否自动创建
   Future<IAgent> getOrCreateAgent({
-    required String employeeUuid,
-    String? employeeId,
+    required String employeeId,
+    String? sessionId,
     bool autoCreate = true,
   });
 
   /// 获取已存在的Agent（不自动创建）
-  IAgent? getAgent(String employeeUuid);
+  IAgent? getAgent(String employeeId);
 
   /// 销毁Agent实例
-  Future<void> destroyAgent(String employeeUuid);
+  Future<void> destroyAgent(String employeeId);
 
   /// 获取所有活跃Agent
   List<MapEntry<String, IAgent>> getActiveAgents();
@@ -76,32 +76,32 @@ class AgentFactoryImpl implements AgentFactory {
 
   @override
   Future<IAgent> getOrCreateAgent({
-    required String employeeUuid,
-    String? employeeId,
+    required String employeeId,
+    String? sessionId,
     bool autoCreate = true,
   }) async {
     // 检查是否已存在
-    var agent = _agents[employeeUuid];
+    var agent = _agents[employeeId];
     if (agent != null) {
       return agent;
     }
 
     if (!autoCreate) {
-      throw StateError('Agent not found: $employeeUuid');
+      throw StateError('Agent not found: $employeeId');
     }
 
     // 获取员工配置
-    final employee = await _employeeManager.getEmployee(employeeUuid);
+    final employee = await _employeeManager.getEmployee(employeeId);
     if (employee == null) {
-      throw StateError('Employee not found: $employeeUuid');
+      throw StateError('Employee not found: $employeeId');
     }
 
     // 创建PersistentChatAdapter并设置持久化回调
     final chatAdapter = PersistentChatAdapter();
-    _setupPersistCallbacks(chatAdapter, employeeUuid);
+    _setupPersistCallbacks(chatAdapter, employeeId);
 
     // 创建Agent
-    agent = AgentImpl(employeeUuid: employeeUuid, chatAdapter: chatAdapter);
+    agent = AgentImpl(employeeId: employeeId, chatAdapter: chatAdapter);
 
     // 初始化Agent
     await agent.initialize(employeeId: employeeId);
@@ -131,7 +131,7 @@ class AgentFactoryImpl implements AgentFactory {
       await agent.setContext({'systemPrompt': employee.systemPrompt});
     }
 
-    _agents[employeeUuid] = agent;
+    _agents[employeeId] = agent;
     _notifyLifecycle(AgentLifecycleType.created, agent);
 
     return agent;
@@ -139,15 +139,15 @@ class AgentFactoryImpl implements AgentFactory {
 
   void _setupPersistCallbacks(
     PersistentChatAdapter adapter,
-    String employeeUuid,
+    String employeeId,
   ) {
     // 持久化会话回调
     adapter.persistSession = (session) async {
-      var existingSession = await _sessionManager.getSession(employeeUuid);
+      var existingSession = await _sessionManager.getSession(employeeId);
       if (existingSession == null) {
         // Session应该已由getOrCreateSession创建
         existingSession = await _sessionManager.getOrCreateSession(
-          employeeUuid,
+          employeeId,
         );
       }
 
@@ -171,13 +171,13 @@ class AgentFactoryImpl implements AgentFactory {
 
     // 加载会话回调
     adapter.loadSession = (employeeId) async {
-      final session = await _sessionManager.getSession(employeeUuid);
+      final session = await _sessionManager.getSession(employeeId);
       if (session == null) return null;
 
       // 返回基本会话数据（不包含设备特定配置）
       return {
-        'uuid': employeeUuid, // 兼容旧格式
-        'employeeUuid': session.employeeUuid,
+        'uuid': employeeId, // 兼容旧格式
+        'employeeId': session.employeeId,
         'title': session.title,
         // 设备配置由DeviceClient负责
       };
@@ -223,13 +223,13 @@ class AgentFactoryImpl implements AgentFactory {
   }
 
   @override
-  IAgent? getAgent(String employeeUuid) {
-    return _agents[employeeUuid];
+  IAgent? getAgent(String employeeId) {
+    return _agents[employeeId];
   }
 
   @override
-  Future<void> destroyAgent(String employeeUuid) async {
-    final agent = _agents.remove(employeeUuid);
+  Future<void> destroyAgent(String employeeId) async {
+    final agent = _agents.remove(employeeId);
     if (agent != null) {
       await agent.dispose();
       _notifyLifecycle(AgentLifecycleType.destroyed, agent);
@@ -249,7 +249,7 @@ class AgentFactoryImpl implements AgentFactory {
     _lifecycleController.add(
       AgentLifecycleEvent(
         type: type,
-        employeeUuid: agent.employeeUuid,
+        employeeId: agent.employeeId,
         agent: agent,
       ),
     );
@@ -257,8 +257,8 @@ class AgentFactoryImpl implements AgentFactory {
 
   /// 销毁所有Agent
   Future<void> destroyAll() async {
-    for (final employeeUuid in _agents.keys.toList()) {
-      await destroyAgent(employeeUuid);
+    for (final employeeId in _agents.keys.toList()) {
+      await destroyAgent(employeeId);
     }
   }
 

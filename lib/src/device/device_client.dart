@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 
 import '../agent/client/agent_proxy.dart';
 import '../entity/lan_device_info.dart';
@@ -61,10 +61,10 @@ abstract class DeviceClient {
   /// 是否已连接
   bool get isConnected;
 
-  /// 本地 AgentProxy ID 列表 (格式: employeeUuid)
+  /// 本地 AgentProxy ID 列表 (格式: employeeId)
   List<String> get localAgentProxyIds;
 
-  /// 远程 AgentProxy ID 列表 (格式: deviceId:employeeUuid)
+  /// 远程 AgentProxy ID 列表 (格式: deviceId:employeeId)
   List<String> get remoteAgentProxyIds;
 
   /// 连接状态流
@@ -109,7 +109,7 @@ abstract class DeviceClient {
 
   /// 获取或创建 AgentProxy
   ///
-  /// [employeeUuid] 员工UUID
+  /// [employeeId] 员工UUID
   /// [deviceId] 设备ID，为null则使用本设备
   ///
   /// - 如果员工在本设备上线，创建本地AgentProxy（直接调用Agent）
@@ -117,17 +117,17 @@ abstract class DeviceClient {
   ///
   /// 每个 AgentProxy 代表一个员工会话窗口
   Future<AgentProxy> getOrCreateAgentProxy({
-    required String employeeUuid,
+    required String employeeId,
     String? deviceId,
   });
 
   /// 销毁 AgentProxy
   ///
-  /// [employeeUuid] 员工UUID
-  Future<void> destroyAgentProxy(String employeeUuid);
+  /// [employeeId] 员工UUID
+  Future<void> destroyAgentProxy(String employeeId);
 
   /// 获取已创建的 AgentProxy
-  AgentProxy? getAgentProxy(String employeeUuid);
+  AgentProxy? getAgentProxy(String employeeId);
 
   /// 获取所有本地 AgentProxy
   List<AgentProxy> getLocalAgentProxies();

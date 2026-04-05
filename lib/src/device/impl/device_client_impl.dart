@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -191,21 +191,21 @@ class DeviceClientImpl implements DeviceClient {
   void _registerRpcMethods() {
     // Agent相关方法
     _rpcServer!.register(AgentRpcConfig.methodSendMessage, (params) async {
-      final employeeUuid = params['employeeUuid'] as String;
+      final employeeId = params['employeeId'] as String;
       final messageData = params['messageData'] as Map<String, dynamic>;
-      final agent = _localAgents[employeeUuid];
+      final agent = _localAgents[employeeId];
       if (agent == null) {
-        throw Exception('Agent not found: $employeeUuid');
+        throw Exception('Agent not found: $employeeId');
       }
       final messageId = await agent.sendMessage(messageData);
       return {'messageId': messageId};
     });
 
     _rpcServer!.register(AgentRpcConfig.methodInterrupt, (params) async {
-      final employeeUuid = params['employeeUuid'] as String;
-      final agent = _localAgents[employeeUuid];
+      final employeeId = params['employeeId'] as String;
+      final agent = _localAgents[employeeId];
       if (agent == null) {
-        throw Exception('Agent not found: $employeeUuid');
+        throw Exception('Agent not found: $employeeId');
       }
       await agent.interrupt();
       return {};
@@ -214,74 +214,73 @@ class DeviceClientImpl implements DeviceClient {
     _rpcServer!.register(AgentRpcConfig.methodGetSessionMessages, (
       params,
     ) async {
-      final employeeUuid = params['employeeUuid'] as String?;
       final employeeId = params['employeeId'] as String?;
-      final agent = employeeUuid != null ? _localAgents[employeeUuid] : null;
+      final agent = employeeId != null ? _localAgents[employeeId] : null;
       if (agent == null) {
-        throw Exception('Agent not found: $employeeUuid');
+        throw Exception('Agent not found: $employeeId');
       }
-      final uuid = employeeId ?? agent.employeeUuid;
+      final uuid = employeeId ?? agent.employeeId;
       final messages = await agent.getSessionMessages(uuid);
       return {'messages': messages};
     });
 
     _rpcServer!.register(AgentRpcConfig.methodGetState, (params) async {
-      final employeeUuid = params['employeeUuid'] as String;
-      final agent = _localAgents[employeeUuid];
+      final employeeId = params['employeeId'] as String;
+      final agent = _localAgents[employeeId];
       if (agent == null) {
-        throw Exception('Agent not found: $employeeUuid');
+        throw Exception('Agent not found: $employeeId');
       }
       return agent.getStateSnapshot().toMap();
     });
 
     _rpcServer!.register(AgentRpcConfig.methodSetContext, (params) async {
-      final employeeUuid = params['employeeUuid'] as String;
+      final employeeId = params['employeeId'] as String;
       final contextData = params['contextData'] as Map<String, dynamic>;
-      final agent = _localAgents[employeeUuid];
+      final agent = _localAgents[employeeId];
       if (agent == null) {
-        throw Exception('Agent not found: $employeeUuid');
+        throw Exception('Agent not found: $employeeId');
       }
       await agent.setContext(contextData);
       return {};
     });
 
     _rpcServer!.register(AgentRpcConfig.methodGetContext, (params) async {
-      final employeeUuid = params['employeeUuid'] as String;
-      final agent = _localAgents[employeeUuid];
+      final employeeId = params['employeeId'] as String;
+      final agent = _localAgents[employeeId];
       if (agent == null) {
-        throw Exception('Agent not found: $employeeUuid');
+        throw Exception('Agent not found: $employeeId');
       }
       return {'context': agent.getCurrentContext()};
     });
 
     _rpcServer!.register(AgentRpcConfig.methodSetProvider, (params) async {
-      final employeeUuid = params['employeeUuid'] as String;
+      final employeeId = params['employeeId'] as String;
       final providerConfig = params['providerConfig'] as Map<String, dynamic>;
-      final agent = _localAgents[employeeUuid];
+      final agent = _localAgents[employeeId];
       if (agent == null) {
-        throw Exception('Agent not found: $employeeUuid');
+        throw Exception('Agent not found: $employeeId');
       }
       await agent.setProvider(providerConfig);
       return {};
     });
 
     _rpcServer!.register(AgentRpcConfig.methodClearSession, (params) async {
-      final employeeUuid = params['employeeUuid'] as String;
-      final agent = _localAgents[employeeUuid];
+      final employeeId = params['employeeId'] as String;
+      final agent = _localAgents[employeeId];
       if (agent == null) {
-        throw Exception('Agent not found: $employeeUuid');
+        throw Exception('Agent not found: $employeeId');
       }
       await agent.clearCurrentSession();
       return {};
     });
 
     _rpcServer!.register(AgentRpcConfig.methodPing, (params) async {
-      final employeeUuid = params['employeeUuid'] as String?;
-      if (employeeUuid != null) {
-        final agent = _localAgents[employeeUuid];
+      final employeeId = params['employeeId'] as String?;
+      if (employeeId != null) {
+        final agent = _localAgents[employeeId];
         return {
           'alive': agent != null && agent.isAlive,
-          'employeeUuid': employeeUuid,
+          'employeeId': employeeId,
         };
       }
       return {
@@ -292,15 +291,15 @@ class DeviceClientImpl implements DeviceClient {
     });
 
     _rpcServer!.register(AgentRpcConfig.methodGetOrCreateAgent, (params) async {
-      final employeeUuid = params['employeeUuid'] as String;
-      var agent = _localAgents[employeeUuid];
+      final employeeId = params['employeeId'] as String;
+      var agent = _localAgents[employeeId];
       if (agent == null) {
         throw Exception(
-          'Agent not found and auto-creation not supported: $employeeUuid',
+          'Agent not found and auto-creation not supported: $employeeId',
         );
       }
       return {
-        'employeeUuid': employeeUuid,
+        'employeeId': employeeId,
         'status': agent.status.name,
       };
     });
@@ -333,8 +332,8 @@ class DeviceClientImpl implements DeviceClient {
 
     // 技能管理方法
     _rpcServer!.register(HostRpcConfig.methodGetSkills, (params) async {
-      final employeeUuid = params['employeeUuid'] as String;
-      final skills = await _skillManager.getSkills(employeeUuid);
+      final employeeId = params['employeeId'] as String;
+      final skills = await _skillManager.getSkills(employeeId);
       return {'skills': skills.map((s) => s.toMap()).toList()};
     });
 
@@ -363,7 +362,7 @@ class DeviceClientImpl implements DeviceClient {
           )
           .toList();
       for (final session in sessions) {
-        final existing = await _sessionManager.getSession(session.employeeUuid);
+        final existing = await _sessionManager.getSession(session.employeeId);
         if (existing == null ||
             session.updateTime.isAfter(existing.updateTime)) {
           await _sessionManager.save(session);
@@ -442,16 +441,16 @@ class DeviceClientImpl implements DeviceClient {
 
   @override
   Future<AgentProxy> getOrCreateAgentProxy({
-    required String employeeUuid,
+    required String employeeId,
     String? deviceId,
   }) async {
-    // 1. 确保Session存在（只需要employeeUuid）
-    final session = await _sessionManager.getOrCreateSession(employeeUuid);
+    // 1. 确保Session存在（只需要employeeId）
+    final session = await _sessionManager.getOrCreateSession(employeeId);
 
     // 2. 获取员工配置
-    final employee = await _employeeManager.getEmployee(employeeUuid);
+    final employee = await _employeeManager.getEmployee(employeeId);
     if (employee == null) {
-      throw StateError('Employee not found: $employeeUuid');
+      throw StateError('Employee not found: $employeeId');
     }
 
     // 3. 确定目标设备ID（从Employee.currentDeviceId获取）
@@ -459,7 +458,7 @@ class DeviceClientImpl implements DeviceClient {
     String targetDeviceId;
     if (employee.currentDeviceId == null || employee.currentDeviceId!.isEmpty) {
       targetDeviceId = this.deviceId;
-      await _employeeManager.updateCurrentDeviceId(employeeUuid, this.deviceId);
+      await _employeeManager.updateCurrentDeviceId(employeeId, this.deviceId);
     } else {
       targetDeviceId = employee.currentDeviceId!;
     }
@@ -467,32 +466,32 @@ class DeviceClientImpl implements DeviceClient {
     // 4. 判断本地还是远程
     if (targetDeviceId == this.deviceId) {
       // ===== 本地会话 =====
-      var proxy = _localProxies[employeeUuid];
+      var proxy = _localProxies[employeeId];
       if (proxy != null) return proxy;
 
       // 创建本地 Agent 和 Proxy
       final agent = await _getOrCreateLocalAgent(
-        employeeUuid,
+        employeeId,
         employee,
         session,
       );
-      proxy = AgentProxy.local(employeeUuid: employeeUuid, localAgent: agent);
+      proxy = AgentProxy.local(employeeId: employeeId, localAgent: agent);
       proxy.attach();
-      _localProxies[employeeUuid] = proxy;
+      _localProxies[employeeId] = proxy;
 
       // 订阅 Agent 事件
-      _subscribeAgentEvents(employeeUuid, agent);
+      _subscribeAgentEvents(employeeId, agent);
 
       return proxy;
     }
 
     // ===== 远程会话 =====
-    final key = '$targetDeviceId:$employeeUuid';
+    final key = '$targetDeviceId:$employeeId';
     var proxy = _remoteProxies[key];
     if (proxy != null) return proxy;
 
     proxy = AgentProxy.remote(
-      employeeUuid: employeeUuid,
+      employeeId: employeeId,
       rpcCall: (method, params) =>
           _invokeRemote(targetDeviceId, method, params),
       remoteEventStream: _eventController.stream,
@@ -503,20 +502,20 @@ class DeviceClientImpl implements DeviceClient {
 
   /// 获取或创建本地 Agent
   Future<IAgent> _getOrCreateLocalAgent(
-    String employeeUuid,
+    String employeeId,
     AiEmployeeEntity employee,
     AiEmployeeSessionEntity session,
   ) async {
-    var agent = _localAgents[employeeUuid];
+    var agent = _localAgents[employeeId];
     if (agent != null) return agent;
 
     // 创建 ChatAdapter
     final chatAdapter = PersistentChatAdapter();
-    _setupPersistCallbacks(chatAdapter, employeeUuid);
+    _setupPersistCallbacks(chatAdapter, employeeId);
 
     // 创建 Agent
-    agent = AgentImpl(employeeUuid: employeeUuid, chatAdapter: chatAdapter);
-    await agent.initialize(employeeId: employeeUuid); // 传递 employeeUuid 以加载历史消息
+    agent = AgentImpl(employeeId: employeeId, chatAdapter: chatAdapter);
+    await agent.initialize(employeeId: employeeId); // 传递 employeeId 以加载历史消息
 
     // 设置 Provider 配置（从当前设备配置获取）
     final deviceConfig = session.getConfig(deviceId);
@@ -553,17 +552,17 @@ class DeviceClientImpl implements DeviceClient {
       await agent.setContext({'systemPrompt': systemPrompt});
     }
 
-    _localAgents[employeeUuid] = agent;
+    _localAgents[employeeId] = agent;
     return agent;
   }
 
   /// 设置持久化回调
   void _setupPersistCallbacks(
     PersistentChatAdapter adapter,
-    String employeeUuid,
+    String employeeId,
   ) {
     adapter.persistSession = (session) async {
-      var existingSession = await _sessionManager.getSession(employeeUuid);
+      var existingSession = await _sessionManager.getSession(employeeId);
       if (existingSession == null) {
         // Session应该已由getOrCreateSession创建
         return;
@@ -588,7 +587,7 @@ class DeviceClientImpl implements DeviceClient {
           projectUuid != null ||
           contextData != null) {
         await _sessionManager.updateDeviceConfig(
-          employeeUuid,
+          employeeId,
           deviceId,
           providerConfig: providerConfig != null
               ? jsonEncode(providerConfig)
@@ -605,14 +604,13 @@ class DeviceClientImpl implements DeviceClient {
     };
 
     adapter.loadSession = (employeeId) async {
-      // employeeId现在实际上是employeeUuid
-      final session = await _sessionManager.getSession(employeeUuid);
+      final session = await _sessionManager.getSession(employeeId);
       if (session == null) return null;
 
       final deviceConfig = session.getConfig(deviceId);
       return {
-        'uuid': employeeUuid, // 兼容旧格式
-        'employeeUuid': session.employeeUuid,
+        'uuid': employeeId, // 兼容旧格式
+        'employeeId': session.employeeId,
         'title': session.title,
         'providerConfig': deviceConfig?.providerConfig != null
             ? jsonDecode(deviceConfig!.providerConfig!)
@@ -666,15 +664,15 @@ class DeviceClientImpl implements DeviceClient {
   }
 
   /// 订阅 Agent 事件
-  void _subscribeAgentEvents(String employeeUuid, IAgent agent) {
+  void _subscribeAgentEvents(String employeeId, IAgent agent) {
     final subscription = agent.onEvent.listen((event) {
-      _broadcastAgentEvent(employeeUuid, event);
+      _broadcastAgentEvent(employeeId, event);
     });
-    _agentEventSubscriptions[employeeUuid] = subscription;
+    _agentEventSubscriptions[employeeId] = subscription;
   }
 
   /// 广播 Agent 事件
-  void _broadcastAgentEvent(String employeeUuid, Map<String, dynamic> event) {
+  void _broadcastAgentEvent(String employeeId, Map<String, dynamic> event) {
     final lanClient = _lanClient;
     if (lanClient == null || !lanClient.isConnected) return;
 
@@ -695,7 +693,7 @@ class DeviceClientImpl implements DeviceClient {
       type: msgType,
       fromId: deviceId,
       content: jsonEncode({
-        'employeeUuid': employeeUuid,
+        'employeeId': employeeId,
         'type': type,
         'data': data,
       }),
@@ -706,27 +704,27 @@ class DeviceClientImpl implements DeviceClient {
   }
 
   @override
-  Future<void> destroyAgentProxy(String employeeUuid) async {
+  Future<void> destroyAgentProxy(String employeeId) async {
     // 销毁本地代理
-    final proxy = _localProxies.remove(employeeUuid);
+    final proxy = _localProxies.remove(employeeId);
     if (proxy != null) {
       await proxy.dispose();
     }
 
     // 销毁 Agent
-    final agent = _localAgents.remove(employeeUuid);
+    final agent = _localAgents.remove(employeeId);
     if (agent != null) {
       await agent.dispose();
     }
 
     // 取消事件订阅
-    _agentEventSubscriptions[employeeUuid]?.cancel();
-    _agentEventSubscriptions.remove(employeeUuid);
+    _agentEventSubscriptions[employeeId]?.cancel();
+    _agentEventSubscriptions.remove(employeeId);
   }
 
   @override
-  AgentProxy? getAgentProxy(String employeeUuid) {
-    return _localProxies[employeeUuid];
+  AgentProxy? getAgentProxy(String employeeId) {
+    return _localProxies[employeeId];
   }
 
   @override
@@ -892,7 +890,7 @@ class DeviceClientImpl implements DeviceClient {
             data as Map<String, dynamic>,
           );
           final existing = await _sessionManager.getSession(
-            session.employeeUuid,
+            session.employeeId,
           );
           if (existing == null ||
               session.updateTime.isAfter(existing.updateTime)) {
@@ -1088,12 +1086,12 @@ class DeviceClientImpl implements DeviceClient {
       final content = jsonDecode(msg.content ?? '{}') as Map<String, dynamic>;
       final type = content['type'] as String?;
       final data = content['data'] as Map<String, dynamic>? ?? {};
-      final employeeUuid = content['employeeUuid'] as String?;
+      final employeeId = content['employeeId'] as String?;
 
       _eventController.add({
         'type': type,
         'data': data,
-        'employeeUuid': employeeUuid,
+        'employeeId': employeeId,
         'fromId': msg.fromId,
         'fromDeviceId': msg.fromId,
       });

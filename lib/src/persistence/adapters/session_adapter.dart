@@ -1,4 +1,4 @@
-import 'dart:convert';
+﻿import 'dart:convert';
 
 import 'package:hive/hive.dart';
 
@@ -36,7 +36,7 @@ class AiEmployeeSessionAdapter extends TypeAdapter<AiEmployeeSessionEntity> {
     }
 
     return AiEmployeeSessionEntity(
-      employeeUuid: fields[0] as String,
+      employeeId: fields[0] as String,
       title: fields[1] as String? ?? '新对话',
       config: config,
       isArchived: fields[5] as int? ?? 0,
@@ -62,7 +62,7 @@ class AiEmployeeSessionAdapter extends TypeAdapter<AiEmployeeSessionEntity> {
     writer
       ..writeByte(10)
       ..writeByte(0)
-      ..write(obj.employeeUuid)
+      ..write(obj.employeeId)
       ..writeByte(1)
       ..write(obj.title)
       ..writeByte(2)

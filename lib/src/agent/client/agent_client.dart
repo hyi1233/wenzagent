@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 
 import 'package:wenzagent/wenzagent.dart';
 
@@ -13,8 +13,8 @@ class AgentClient {
   final _stateController = StreamController<AgentStateSnapshot>.broadcast();
   StreamSubscription? _eventSubscription;
 
-  String? _currentEmployeeUuid;
-  String? _currentSessionUuid;
+  String? _currentEmployeeId;
+  String? _currentSessionId;
 
   AgentClient({
     required Future<Map<String, dynamic>> Function(String method, Map<String, dynamic> params) rpcCall,
@@ -24,11 +24,11 @@ class AgentClient {
     _subscribeEvents();
   }
 
-  /// 当前员工UUID
-  String? get currentEmployeeUuid => _currentEmployeeUuid;
+  /// 当前员工ID
+  String? get currentEmployeeId => _currentEmployeeId;
 
-  /// 当前会话UUID
-  String? get currentSessionUuid => _currentSessionUuid;
+  /// 当前会话ID
+  String? get currentSessionId => _currentSessionId;
 
   /// 状态变更流
   Stream<AgentStateSnapshot> get onStateChanged => _stateController.stream;
@@ -51,19 +51,17 @@ class AgentClient {
 
   /// 创建或获取 Agent
   Future<Map<String, dynamic>> getOrCreateAgent({
-    required String employeeUuid,
-    String? employeeId,
+    required String employeeId,
   }) async {
     final result = await _rpcCall(
       AgentRpcConfig.methodGetOrCreateAgent,
       {
-        'employeeUuid': employeeUuid,
-        if (employeeId != null) 'employeeId': employeeId,
+        'employeeId': employeeId,
       },
     );
 
-    _currentEmployeeUuid = employeeUuid;
-    _currentSessionUuid = result['employeeId'] as String?;
+    _currentEmployeeId = employeeId;
+    _currentSessionId = result['employeeId'] as String?;
 
     return result;
   }
@@ -71,22 +69,20 @@ class AgentClient {
   /// 发送消息
   Future<String> sendMessage({
     required String content,
-    String? employeeUuid,
     String? employeeId,
   }) async {
-    final empUuid = employeeUuid ?? _currentEmployeeUuid;
-    if (empUuid == null) {
-      throw Exception('employeeUuid is required');
+    final empId = employeeId ?? _currentEmployeeId;
+    if (empId == null) {
+      throw Exception('employeeId is required');
     }
 
     final result = await _rpcCall(
       AgentRpcConfig.methodSendMessage,
       {
-        'employeeUuid': empUuid,
-        if (employeeId != null) 'employeeId': employeeId,
+        'employeeId': empId,
         'messageData': {
           'content': content,
-          if (employeeId != null) 'employeeId': employeeId,
+          'employeeId': empId,
         },
       },
     );
@@ -95,86 +91,83 @@ class AgentClient {
   }
 
   /// 中断当前处理
-  Future<void> interrupt({String? employeeUuid}) async {
-    final empUuid = employeeUuid ?? _currentEmployeeUuid;
-    if (empUuid == null) {
-      throw Exception('employeeUuid is required');
+  Future<void> interrupt({String? employeeId}) async {
+    final empId = employeeId ?? _currentEmployeeId;
+    if (empId == null) {
+      throw Exception('employeeId is required');
     }
 
     await _rpcCall(AgentRpcConfig.methodInterrupt, {
-      'employeeUuid': empUuid,
+      'employeeId': empId,
     });
   }
 
   /// 获取会话列表
-  Future<List<Map<String, dynamic>>> getSessionList({String? employeeUuid}) async {
-    final empUuid = employeeUuid ?? _currentEmployeeUuid;
-    if (empUuid == null) {
-      throw Exception('employeeUuid is required');
+  Future<List<Map<String, dynamic>>> getSessionList({String? employeeId}) async {
+    final empId = employeeId ?? _currentEmployeeId;
+    if (empId == null) {
+      throw Exception('employeeId is required');
     }
 
     final result = await _rpcCall(AgentRpcConfig.methodGetSessionList, {
-      'employeeUuid': empUuid,
+      'employeeId': empId,
     });
 
     return (result['sessions'] as List).cast<Map<String, dynamic>>();
   }
 
   /// 创建新会话
-  Future<String> createSession({String? employeeUuid}) async {
-    final empUuid = employeeUuid ?? _currentEmployeeUuid;
-    if (empUuid == null) {
-      throw Exception('employeeUuid is required');
+  Future<String> createSession({String? employeeId}) async {
+    final empId = employeeId ?? _currentEmployeeId;
+    if (empId == null) {
+      throw Exception('employeeId is required');
     }
 
     final result = await _rpcCall(AgentRpcConfig.methodCreateSession, {
-      'employeeUuid': empUuid,
+      'employeeId': empId,
     });
 
-    _currentSessionUuid = result['employeeId'] as String;
-    return _currentSessionUuid!;
+    _currentSessionId = result['employeeId'] as String;
+    return _currentSessionId!;
   }
 
   /// 切换会话
   Future<void> switchSession({
     required String employeeId,
-    String? employeeUuid,
   }) async {
-    final empUuid = employeeUuid ?? _currentEmployeeUuid;
-    if (empUuid == null) {
-      throw Exception('employeeUuid is required');
+    final empId = _currentEmployeeId;
+    if (empId == null) {
+      throw Exception('employeeId is required');
     }
 
     await _rpcCall(AgentRpcConfig.methodSwitchSession, {
-      'employeeUuid': empUuid,
-      'employeeId': employeeId,
+      'employeeId': empId,
+      'sessionId': employeeId,
     });
 
-    _currentSessionUuid = employeeId;
+    _currentSessionId = employeeId;
   }
 
   /// 获取会话消息
   Future<List<Map<String, dynamic>>> getSessionMessages({
     required String employeeId,
-    String? employeeUuid,
   }) async {
     final result = await _rpcCall(AgentRpcConfig.methodGetSessionMessages, {
       'employeeId': employeeId,
-      if (employeeUuid != null) 'employeeUuid': employeeUuid,
     });
 
     return (result['messages'] as List).cast<Map<String, dynamic>>();
   }
 
   /// 获取 Agent 状态
-  Future<AgentStateSnapshot> getState({String? employeeUuid}) async {
-    final empUuid = employeeUuid ?? _currentEmployeeUuid;
-    if (empUuid == null) {
-      throw Exception('employeeUuid is required');
+  Future<AgentStateSnapshot> getState({String? employeeId}) async {
+    final empId = employeeId ?? _currentEmployeeId;
+    if (empId == null) {
+      throw Exception('employeeId is required');
     }
 
     final result = await _rpcCall(AgentRpcConfig.methodGetState, {
-      'employeeUuid': empUuid,
+      'employeeId': empId,
     });
 
     return AgentStateSnapshot.fromMap(result);
@@ -183,28 +176,28 @@ class AgentClient {
   /// 设置上下文
   Future<void> setContext({
     required Map<String, dynamic> contextData,
-    String? employeeUuid,
+    String? employeeId,
   }) async {
-    final empUuid = employeeUuid ?? _currentEmployeeUuid;
-    if (empUuid == null) {
-      throw Exception('employeeUuid is required');
+    final empId = employeeId ?? _currentEmployeeId;
+    if (empId == null) {
+      throw Exception('employeeId is required');
     }
 
     await _rpcCall(AgentRpcConfig.methodSetContext, {
-      'employeeUuid': empUuid,
+      'employeeId': empId,
       'contextData': contextData,
     });
   }
 
   /// 获取上下文
-  Future<Map<String, dynamic>?> getContext({String? employeeUuid}) async {
-    final empUuid = employeeUuid ?? _currentEmployeeUuid;
-    if (empUuid == null) {
-      throw Exception('employeeUuid is required');
+  Future<Map<String, dynamic>?> getContext({String? employeeId}) async {
+    final empId = employeeId ?? _currentEmployeeId;
+    if (empId == null) {
+      throw Exception('employeeId is required');
     }
 
     final result = await _rpcCall(AgentRpcConfig.methodGetContext, {
-      'employeeUuid': empUuid,
+      'employeeId': empId,
     });
 
     return result['context'] as Map<String, dynamic>?;

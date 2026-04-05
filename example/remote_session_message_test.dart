@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:io';
 
 import 'package:wenzagent/wenzagent.dart';
@@ -30,7 +30,7 @@ class RemoteSessionMessageTest {
 
   final String deviceAId = 'device-alpha';
   final String deviceBId = 'device-beta';
-  final String employeeAliceUuid = 'emp-alice-001';
+  final String employeeAliceId = 'emp-alice-001';
 
   /// 从环境变量获取 API 配置
   String? get _apiKey => Platform.environment['OPENAI_API_KEY'];
@@ -112,7 +112,7 @@ class RemoteSessionMessageTest {
 
     // 创建员工 Alice
     final alice = AiEmployeeEntity(
-      uuid: employeeAliceUuid,
+      uuid: employeeAliceId,
       name: 'Alice',
       role: 'assistant',
       status: 'active',
@@ -129,22 +129,22 @@ class RemoteSessionMessageTest {
     print('  ✓ 创建员工 Alice');
 
     // 建立会话
-    await deviceA.sessionManager.getOrCreateSession(employeeAliceUuid);
+    await deviceA.sessionManager.getOrCreateSession(employeeAliceId);
     await deviceA.employeeManager.updateCurrentDeviceId(
-      employeeAliceUuid,
+      employeeAliceId,
       deviceAId,
     );
     print('  ✓ 建立会话，currentDeviceId = $deviceAId');
 
     // 创建本地 Agent
-    await deviceA.getOrCreateAgentProxy(employeeUuid: employeeAliceUuid);
+    await deviceA.getOrCreateAgentProxy(employeeId: employeeAliceId);
     print('  ✓ 创建本地 Agent');
   }
 
   /// Device-A 发送消息
   Future<List<String>> _deviceASendMessages() async {
     final agentProxy = await deviceA.getOrCreateAgentProxy(
-      employeeUuid: employeeAliceUuid,
+      employeeId: employeeAliceId,
     );
     final messageIds = <String>[];
 
@@ -189,7 +189,7 @@ class RemoteSessionMessageTest {
 
     // 同步员工数据
     final alice = AiEmployeeEntity(
-      uuid: employeeAliceUuid,
+      uuid: employeeAliceId,
       name: 'Alice',
       role: 'assistant',
       status: 'active',
@@ -201,20 +201,20 @@ class RemoteSessionMessageTest {
     );
     await deviceB.employeeManager.createEmployee(alice);
     await deviceB.employeeManager.updateCurrentDeviceId(
-      employeeAliceUuid,
+      employeeAliceId,
       deviceAId,
     );
     print('  ✓ 同步员工数据');
 
     // 同步会话数据
-    final sessionA = await deviceA.sessionManager.getSession(employeeAliceUuid);
+    final sessionA = await deviceA.sessionManager.getSession(employeeAliceId);
     if (sessionA != null) {
       await deviceB.sessionManager.save(sessionA);
     }
     print('  ✓ 同步会话数据');
 
-    // 同步消息数据（使用 employeeUuid 作为 sessionUuid）
-    final messagesA = await deviceA.messageStore.getMessages(employeeAliceUuid);
+    // 同步消息数据（使用 employeeId 作为 sessionId）
+    final messagesA = await deviceA.messageStore.getMessages(employeeAliceId);
     if (messagesA.isNotEmpty) {
       await deviceB.messageStore.addMessages(messagesA);
       print('  ✓ 同步 ${messagesA.length} 条消息');
@@ -225,7 +225,7 @@ class RemoteSessionMessageTest {
   Future<void> _deviceBReadMessages() async {
     // 获取 AgentProxy（远程模式）
     final agentProxy = await deviceB.getOrCreateAgentProxy(
-      employeeUuid: employeeAliceUuid,
+      employeeId: employeeAliceId,
     );
     print('  AgentProxy 模式: ${agentProxy.isLocalMode ? "本地" : "远程"}');
     assert(!agentProxy.isLocalMode, '应该是远程模式');
@@ -255,7 +255,7 @@ class RemoteSessionMessageTest {
   /// Device-B 读取消息状态
   Future<void> _deviceBReadMessageStatus() async {
     final agentProxy = await deviceB.getOrCreateAgentProxy(
-      employeeUuid: employeeAliceUuid,
+      employeeId: employeeAliceId,
     );
 
     print('\n  [读取消息状态]');
@@ -296,7 +296,7 @@ class RemoteSessionMessageTest {
   /// Device-B 通过远程会话发送消息
   Future<void> _deviceBSendRemoteMessage() async {
     final agentProxy = await deviceB.getOrCreateAgentProxy(
-      employeeUuid: employeeAliceUuid,
+      employeeId: employeeAliceId,
     );
     assert(!agentProxy.isLocalMode, '应该是远程模式');
 

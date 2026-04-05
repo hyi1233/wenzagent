@@ -1,4 +1,4 @@
-import 'dart:io';
+﻿import 'dart:io';
 
 import 'package:wenzagent/wenzagent.dart';
 
@@ -34,7 +34,7 @@ void main() async {
 
   // 2. 初始化适配器
   final adapter = LangChainChatAdapter();
-  await adapter.initSession(employeeUuid: 'cli-user');
+  await adapter.initSession(employeeId: 'cli-user');
 
   try {
     await adapter.updateProvider(config);

@@ -1,4 +1,4 @@
-import 'dart:io';
+﻿import 'dart:io';
 
 import 'package:wenzagent/wenzagent.dart';
 import 'package:uuid/uuid.dart';
@@ -53,7 +53,7 @@ Future<void> main() async {
 
 class ToolCallPersistenceTest {
   late DeviceClientImpl device;
-  late String employeeUuid;
+  late String employeeId;
   late String tempDirPath;
 
   final String deviceId = 'test-device';
@@ -120,9 +120,9 @@ class ToolCallPersistenceTest {
     );
 
     // 创建员工
-    employeeUuid = 'emp-test-${const Uuid().v4().substring(0, 8)}';
+    employeeId = 'emp-test-${const Uuid().v4().substring(0, 8)}';
     final employee = AiEmployeeEntity(
-      uuid: employeeUuid,
+      uuid: employeeId,
       name: employeeName,
       role: 'assistant',
       status: 'active',
@@ -137,14 +137,14 @@ class ToolCallPersistenceTest {
     );
 
     await device.employeeManager.createEmployee(employee);
-    print('  ✓ 创建员工: $employeeUuid');
+    print('  ✓ 创建员工: $employeeId');
 
     // 创建会话
-    await device.sessionManager.getOrCreateSession(employeeUuid);
+    await device.sessionManager.getOrCreateSession(employeeId);
     print('  ✓ 创建会话');
 
     // 设置 currentDeviceId
-    await device.employeeManager.updateCurrentDeviceId(employeeUuid, deviceId);
+    await device.employeeManager.updateCurrentDeviceId(employeeId, deviceId);
     print('  ✓ 设置 currentDeviceId = $deviceId');
   }
 
@@ -157,7 +157,7 @@ class ToolCallPersistenceTest {
     }
 
     print('  获取 AgentProxy...');
-    final agentProxy = await device.getOrCreateAgentProxy(employeeUuid: employeeUuid);
+    final agentProxy = await device.getOrCreateAgentProxy(employeeId: employeeId);
 
     // 注册测试工具
     print('  注册测试工具...');
@@ -210,7 +210,7 @@ class ToolCallPersistenceTest {
 
     print('  Hive messageBox 消息总数: ${messageBox.length}');
 
-    final indexKey = hiveManager.buildSessionMessagesKey(deviceId, employeeUuid);
+    final indexKey = hiveManager.buildSessionMessagesKey(deviceId, employeeId);
     final messageUuids = indexBox.get(indexKey);
 
     print('  会话消息索引中的消息数量: ${messageUuids?.length ?? 0}');
@@ -243,11 +243,11 @@ class ToolCallPersistenceTest {
   /// 测试从持久化重新加载
   Future<void> _testReloadFromPersistence() async {
     print('  销毁当前 Agent...');
-    await device.destroyAgentProxy(employeeUuid);
+    await device.destroyAgentProxy(employeeId);
     await Future.delayed(const Duration(milliseconds: 200));
 
     print('  重新创建 Agent...');
-    final agentProxy = await device.getOrCreateAgentProxy(employeeUuid: employeeUuid);
+    final agentProxy = await device.getOrCreateAgentProxy(employeeId: employeeId);
 
     print('  等待消息加载...');
     await Future.delayed(const Duration(milliseconds: 500));
@@ -291,7 +291,7 @@ class ToolCallPersistenceTest {
     print('\n[清理] 释放资源...');
 
     try {
-      await device.destroyAgentProxy(employeeUuid);
+      await device.destroyAgentProxy(employeeId);
       print('  ✓ Agent 已销毁');
     } catch (_) {}
 

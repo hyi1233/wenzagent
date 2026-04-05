@@ -1,4 +1,4 @@
-import 'dart:io';
+﻿import 'dart:io';
 
 import 'package:uuid/uuid.dart';
 import 'package:wenzagent/wenzagent.dart';
@@ -17,7 +17,7 @@ Future<void> main() async {
 
 class MessagePersistenceFixTest {
   late DeviceClientImpl device;
-  late String employeeUuid;
+  late String employeeId;
   late String tempDirPath;
 
   final String deviceId = 'test-device';
@@ -73,10 +73,10 @@ class MessagePersistenceFixTest {
       port: 9090,
     );
 
-    employeeUuid = Uuid().v4();
+    employeeId = Uuid().v4();
 
     final employee = AiEmployeeEntity(
-      uuid: employeeUuid,
+      uuid: employeeId,
       name: employeeName,
       role: 'assistant',
       status: 'active',
@@ -104,7 +104,7 @@ class MessagePersistenceFixTest {
     final messages = [
       {
         'id': uuid.v4(),
-        'employeeId': employeeUuid,
+        'employeeId': employeeId,
         'role': 'user',
         'type': 'text',
         'content': 'Hello',
@@ -112,7 +112,7 @@ class MessagePersistenceFixTest {
       },
       {
         'id': uuid.v4(),
-        'employeeId': employeeUuid,
+        'employeeId': employeeId,
         'role': 'assistant',
         'type': 'text',
         'content': 'Hi there!',
@@ -120,7 +120,7 @@ class MessagePersistenceFixTest {
       },
       {
         'id': uuid.v4(),
-        'employeeId': employeeUuid,
+        'employeeId': employeeId,
         'role': 'user',
         'type': 'text',
         'content': 'How are you?',
@@ -152,7 +152,7 @@ class MessagePersistenceFixTest {
       deviceId: deviceId,
     );
 
-    final messages = await messageStore.getMessages(employeeUuid);
+    final messages = await messageStore.getMessages(employeeId);
 
     print('  数据库中的消息数量: ${messages.length}');
 

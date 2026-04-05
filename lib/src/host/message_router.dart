@@ -1,4 +1,4 @@
-import 'dart:convert';
+﻿import 'dart:convert';
 
 import '../entity/lan_message.dart';
 import '../lan/lan_host_service.dart';
@@ -54,21 +54,21 @@ class MessageRouter {
 
   /// 广播Agent事件
   ///
-  /// [employeeUuid] 员工UUID
+  /// [employeeId] 员工UUID
   /// [event] 事件数据
   /// [excludeClientId] 排除的客户端ID（发送方）
   void broadcastAgentEvent(
-    String employeeUuid,
+    String employeeId,
     Map<String, dynamic> event, {
     String? excludeClientId,
   }) {
     // 获取订阅该员工的所有客户端
-    final subscribers = _sessionManager.getClientsByEmployee(employeeUuid);
+    final subscribers = _sessionManager.getClientsByEmployee(employeeId);
 
     final msg = LanMessage(
       type: LanMessageType.agentStatusChanged,
       content: jsonEncode({
-        'employeeUuid': employeeUuid,
+        'employeeId': employeeId,
         ...event,
       }),
     );

@@ -1,4 +1,4 @@
-/// WenzAgent 示例集合
+﻿/// WenzAgent 示例集合
 ///
 /// 运行方式：
 /// - 文件上传下载: dart run example/file_transfer_example.dart

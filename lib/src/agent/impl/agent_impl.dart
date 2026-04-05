@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 
 import '../agent_state.dart';
 import '../i_agent.dart';
@@ -23,7 +23,7 @@ import '../tool/tool_registry.dart';
 /// - 引用计数管理生命周期
 class AgentImpl implements IAgent {
   @override
-  final String employeeUuid;
+  final String employeeId;
 
   // ===== 内部组件 =====
 
@@ -59,7 +59,7 @@ class AgentImpl implements IAgent {
   /// 异步操作锁
   Completer<void>? _lockCompleter;
 
-  AgentImpl({required this.employeeUuid, required IChatAdapter chatAdapter})
+  AgentImpl({required this.employeeId, required IChatAdapter chatAdapter})
     : _chatAdapter = chatAdapter;
 
   // ===== IAgent: 基础信息 =====
@@ -99,8 +99,7 @@ class AgentImpl implements IAgent {
   Future<void> initialize({String? employeeId}) async {
     // 初始化适配器
     await _chatAdapter.initSession(
-      employeeUuid: employeeUuid,
-      employeeId: employeeId,
+      employeeId: employeeId ?? this.employeeId,
     );
 
     // 注册内置工具
@@ -123,7 +122,7 @@ class AgentImpl implements IAgent {
       _eventController.add({
         'type': 'toolPermissionRequest',
         'data': request.toMap(),
-        'employeeUuid': employeeUuid,
+        'employeeId': employeeId,
       });
 
       try {
@@ -138,7 +137,7 @@ class AgentImpl implements IAgent {
 
     // 设置工具事件回调：通过事件流广播
     _chatAdapter.setToolEventCallback((event) {
-      _eventController.add({...event, 'employeeUuid': employeeUuid});
+      _eventController.add({...event, 'employeeId': employeeId});
     });
 
     // 初始化消息处理调度器
@@ -367,7 +366,7 @@ class AgentImpl implements IAgent {
       _eventController.add({
         'type': 'toolPermissionResponse',
         'data': {'requestId': requestId, 'decision': decision.name},
-        'employeeUuid': employeeUuid,
+        'employeeId': employeeId,
       });
     }
   }
@@ -424,7 +423,7 @@ class AgentImpl implements IAgent {
     _eventController.add({
       'type': 'agentStatusChanged',
       'data': snapshot.toMap(),
-      'employeeUuid': employeeUuid,
+      'employeeId': employeeId,
     });
   }
 
@@ -463,7 +462,7 @@ class AgentImpl implements IAgent {
         'status': status.name,
         if (error != null) 'error': error,
       },
-      'employeeUuid': employeeUuid,
+      'employeeId': employeeId,
     });
   }
 }

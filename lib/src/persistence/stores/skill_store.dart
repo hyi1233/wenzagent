@@ -1,4 +1,4 @@
-import '../hive_manager.dart';
+﻿import '../hive_manager.dart';
 import '../entities/skill_entity.dart';
 
 /// 技能数据存储
@@ -11,16 +11,16 @@ class SkillStore {
   /// 获取员工的技能列表
   Future<List<AiEmployeeSkillEntity>> findByEmployee(
     String? deviceId,
-    String employeeUuid,
+    String employeeId,
   ) async {
     final box = _hiveManager.skillBox;
     final prefix = deviceId != null ? ':$deviceId:' : '::';
 
     var skills = box.values.where((s) {
-      final key = _hiveManager.buildSkillKey(s.employeeUuid.split('-').first, s.uuid);
+      final key = _hiveManager.buildSkillKey(s.employeeId.split('-').first, s.uuid);
       if (!key.contains(prefix)) return false;
       if (s.deleted == 1) return false;
-      if (s.employeeUuid != employeeUuid) return false;
+      if (s.employeeId != employeeId) return false;
       return true;
     }).toList();
 
@@ -33,13 +33,13 @@ class SkillStore {
   /// 使用明确deviceId获取员工技能
   Future<List<AiEmployeeSkillEntity>> findByEmployeeWithDeviceId(
     String? deviceId,
-    String employeeUuid,
+    String employeeId,
   ) async {
     final box = _hiveManager.skillBox;
 
     var skills = box.values.where((s) {
       if (s.deleted == 1) return false;
-      if (s.employeeUuid != employeeUuid) return false;
+      if (s.employeeId != employeeId) return false;
       return true;
     }).toList();
 
@@ -59,7 +59,7 @@ class SkillStore {
   /// 保存技能
   Future<void> save(AiEmployeeSkillEntity entity) async {
     final box = _hiveManager.skillBox;
-    final key = _hiveManager.buildSkillKey(entity.employeeUuid.split('-').first, entity.uuid);
+    final key = _hiveManager.buildSkillKey(entity.employeeId.split('-').first, entity.uuid);
     await box.put(key, entity);
   }
 
@@ -88,16 +88,16 @@ class SkillStore {
   }
 
   /// 删除员工的所有技能
-  Future<void> deleteByEmployee(String? deviceId, String employeeUuid) async {
-    final skills = await findByEmployeeWithDeviceId(deviceId, employeeUuid);
+  Future<void> deleteByEmployee(String? deviceId, String employeeId) async {
+    final skills = await findByEmployeeWithDeviceId(deviceId, employeeId);
     for (final skill in skills) {
       await delete(deviceId, skill.uuid);
     }
   }
 
   /// 获取技能数量
-  Future<int> count(String? deviceId, String employeeUuid) async {
-    final skills = await findByEmployeeWithDeviceId(deviceId, employeeUuid);
+  Future<int> count(String? deviceId, String employeeId) async {
+    final skills = await findByEmployeeWithDeviceId(deviceId, employeeId);
     return skills.length;
   }
 }

@@ -1,4 +1,4 @@
-import 'dart:io';
+﻿import 'dart:io';
 
 import 'package:wenzagent/wenzagent.dart';
 import 'package:uuid/uuid.dart';
@@ -30,7 +30,7 @@ Future<void> main() async {
 
 class MessagePersistenceFullTest {
   late DeviceClientImpl device;
-  late String employeeUuid;
+  late String employeeId;
   late String tempDirPath;
 
   final String deviceId = 'test-device';
@@ -109,9 +109,9 @@ class MessagePersistenceFullTest {
     );
 
     // 创建员工
-    employeeUuid = 'emp-test-${const Uuid().v4().substring(0, 8)}';
+    employeeId = 'emp-test-${const Uuid().v4().substring(0, 8)}';
     final employee = AiEmployeeEntity(
-      uuid: employeeUuid,
+      uuid: employeeId,
       name: employeeName,
       role: 'assistant',
       status: 'active',
@@ -126,21 +126,21 @@ class MessagePersistenceFullTest {
     );
 
     await device.employeeManager.createEmployee(employee);
-    print('  ✓ 创建员工: $employeeUuid');
+    print('  ✓ 创建员工: $employeeId');
 
     // 创建会话
-    await device.sessionManager.getOrCreateSession(employeeUuid);
+    await device.sessionManager.getOrCreateSession(employeeId);
     print('  ✓ 创建会话');
 
     // 设置 currentDeviceId
-    await device.employeeManager.updateCurrentDeviceId(employeeUuid, deviceId);
+    await device.employeeManager.updateCurrentDeviceId(employeeId, deviceId);
     print('  ✓ 设置 currentDeviceId = $deviceId');
   }
 
   /// 测试用户消息持久化
   Future<void> _testUserMessagePersistence() async {
     print('  获取 AgentProxy...');
-    final agentProxy = await device.getOrCreateAgentProxy(employeeUuid: employeeUuid);
+    final agentProxy = await device.getOrCreateAgentProxy(employeeId: employeeId);
 
     // 发送 3 条用户消息
     final userMessages = [
@@ -190,7 +190,7 @@ class MessagePersistenceFullTest {
   /// 测试 AI 回复持久化
   Future<void> _testAIResponsePersistence() async {
     print('  获取 AgentProxy...');
-    final agentProxy = await device.getOrCreateAgentProxy(employeeUuid: employeeUuid);
+    final agentProxy = await device.getOrCreateAgentProxy(employeeId: employeeId);
 
     // 发送一条消息等待 AI 回复
     print('  发送消息并等待 AI 回复...');
@@ -233,7 +233,7 @@ class MessagePersistenceFullTest {
   /// 测试消息清空功能
   Future<void> _testClearMessages() async {
     print('  获取当前消息数量...');
-    final agentProxy = await device.getOrCreateAgentProxy(employeeUuid: employeeUuid);
+    final agentProxy = await device.getOrCreateAgentProxy(employeeId: employeeId);
     final messagesBefore = await agentProxy.getSessionMessages();
     print('  清空前消息数量: ${messagesBefore.length}');
 
@@ -259,7 +259,7 @@ class MessagePersistenceFullTest {
     // 验证 Hive 中的消息
     final hiveManager = HiveManager.instance;
     final indexBox = hiveManager.sessionMessagesBox;
-    final indexKey = hiveManager.buildSessionMessagesKey(deviceId, employeeUuid);
+    final indexKey = hiveManager.buildSessionMessagesKey(deviceId, employeeId);
     final messageUuids = indexBox.get(indexKey);
 
     print('  清空后 Hive 消息数量: ${messageUuids?.length ?? 0}');
@@ -276,7 +276,7 @@ class MessagePersistenceFullTest {
   /// 测试清空后重新发送
   Future<void> _testAfterClearResend() async {
     print('  发送新消息...');
-    final agentProxy = await device.getOrCreateAgentProxy(employeeUuid: employeeUuid);
+    final agentProxy = await device.getOrCreateAgentProxy(employeeId: employeeId);
 
     final newMessage = '清空后的第一条消息';
     final messageId = await agentProxy.sendMessage({
@@ -314,11 +314,11 @@ class MessagePersistenceFullTest {
   /// 测试跨实例消息一致性
   Future<void> _testCrossInstanceConsistency() async {
     print('  销毁当前 Agent 实例...');
-    await device.destroyAgentProxy(employeeUuid);
+    await device.destroyAgentProxy(employeeId);
     await Future.delayed(const Duration(milliseconds: 100));
 
     print('  重新创建 Agent 实例...');
-    final agentProxy = await device.getOrCreateAgentProxy(employeeUuid: employeeUuid);
+    final agentProxy = await device.getOrCreateAgentProxy(employeeId: employeeId);
 
     print('  获取消息...');
     final messages = await agentProxy.getSessionMessages();
@@ -348,7 +348,7 @@ class MessagePersistenceFullTest {
   Future<void> _verifyHiveMessages({required int expectedCount}) async {
     final hiveManager = HiveManager.instance;
     final indexBox = hiveManager.sessionMessagesBox;
-    final indexKey = hiveManager.buildSessionMessagesKey(deviceId, employeeUuid);
+    final indexKey = hiveManager.buildSessionMessagesKey(deviceId, employeeId);
     final messageUuids = indexBox.get(indexKey);
 
     final actualCount = messageUuids?.length ?? 0;
@@ -371,7 +371,7 @@ class MessagePersistenceFullTest {
     print('\n[清理] 释放资源...');
 
     try {
-      await device.destroyAgentProxy(employeeUuid);
+      await device.destroyAgentProxy(employeeId);
       print('  ✓ Agent 已销毁');
     } catch (_) {}
 

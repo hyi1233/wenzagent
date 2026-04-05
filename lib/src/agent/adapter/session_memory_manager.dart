@@ -1,4 +1,4 @@
-import 'package:langchain_core/chat_models.dart';
+﻿import 'package:langchain_core/chat_models.dart';
 import 'package:uuid/uuid.dart';
 
 /// 带有UUID的消息包装器
@@ -43,7 +43,7 @@ class MessageWrapper {
 
 /// 会话消息历史
 class SessionHistory {
-  final String employeeUuid;
+  final String employeeId;
   final String? title;
   final DateTime createdAt;
 
@@ -58,7 +58,7 @@ class SessionHistory {
   int summarizedUpToIndex;
 
   SessionHistory({
-    required this.employeeUuid,
+    required this.employeeId,
     this.title,
     DateTime? createdAt,
     Map<String, List<MessageWrapper>>? messagesMap,
@@ -115,7 +115,7 @@ class SessionHistory {
 
   /// 转换为 Map（用于持久化）
   Map<String, dynamic> toMap() => {
-    'employeeUuid': employeeUuid,
+    'employeeId': employeeId,
     'title': title,
     'createdAt': createdAt.toIso8601String(),
     'messagesMap': messagesMap.map(
@@ -142,7 +142,7 @@ class SessionHistory {
     }
 
     return SessionHistory(
-      employeeUuid: map['employeeUuid'] as String,
+      employeeId: map['employeeId'] as String,
       title: map['title'] as String?,
       createdAt: map['createdAt'] != null
           ? DateTime.parse(map['createdAt'] as String)
@@ -156,40 +156,40 @@ class SessionHistory {
 
 /// 会话记忆管理器
 class SessionMemoryManager {
-  /// 会话历史映射（key: employeeUuid）
+  /// 会话历史映射（key: employeeId）
   final Map<String, SessionHistory> _sessions = {};
 
   /// 获取或创建会话历史
   SessionHistory getOrCreateSession(
-    String employeeUuid, {
+    String employeeId, {
     String? title,
   }) {
     return _sessions.putIfAbsent(
-      employeeUuid,
+      employeeId,
       () => SessionHistory(
-        employeeUuid: employeeUuid,
+        employeeId: employeeId,
         title: title,
       ),
     );
   }
 
   /// 获取会话历史
-  SessionHistory? getSession(String employeeUuid) {
-    return _sessions[employeeUuid];
+  SessionHistory? getSession(String employeeId) {
+    return _sessions[employeeId];
   }
 
   /// 获取员工的所有会话
-  List<SessionHistory> getSessionsByEmployee(String employeeUuid) {
-    final session = _sessions[employeeUuid];
+  List<SessionHistory> getSessionsByEmployee(String employeeId) {
+    final session = _sessions[employeeId];
     return session != null ? [session] : [];
   }
 
   /// 获取会话在指定设备上的消息
   List<ChatMessage> getMessagesForDevice(
-    String employeeUuid,
+    String employeeId,
     String deviceId,
   ) {
-    final session = _sessions[employeeUuid];
+    final session = _sessions[employeeId];
     if (session == null) return [];
     // 从 MessageWrapper 列表中提取 ChatMessage
     return session.getMessagesForDevice(deviceId)
@@ -198,8 +198,8 @@ class SessionMemoryManager {
   }
 
   /// 清空会话在指定设备上的消息
-  void clearDeviceSession(String employeeUuid, String deviceId) {
-    final session = _sessions[employeeUuid];
+  void clearDeviceSession(String employeeId, String deviceId) {
+    final session = _sessions[employeeId];
     if (session != null) {
       session.clearDevice(deviceId);
     }
@@ -207,23 +207,23 @@ class SessionMemoryManager {
 
   /// 添加消息到会话
   ///
-  /// [employeeUuid] 员工UUID（作为会话ID）
+  /// [employeeId] 员工ID（作为会话ID）
   /// [deviceId] 设备ID，用于区分不同设备上的消息
-  void addMessage(String employeeUuid, String deviceId, ChatMessage message) {
-    final session = _sessions[employeeUuid];
+  void addMessage(String employeeId, String deviceId, ChatMessage message) {
+    final session = _sessions[employeeId];
     if (session != null) {
       session.addMessage(deviceId, message);
     }
   }
 
   /// 清空会话消息
-  void clearSession(String employeeUuid) {
-    _sessions[employeeUuid]?.clear();
+  void clearSession(String employeeId) {
+    _sessions[employeeId]?.clear();
   }
 
   /// 删除会话
-  void deleteSession(String employeeUuid) {
-    _sessions.remove(employeeUuid);
+  void deleteSession(String employeeId) {
+    _sessions.remove(employeeId);
   }
 
   /// 构建发送给 LLM 的消息列表
@@ -232,7 +232,7 @@ class SessionMemoryManager {
   /// 包含所有设备上的消息，按设备ID排序后合并。
   /// 调用方需要在调用此方法前将用户消息加入 session history。
   List<ChatMessage> buildMessages({
-    required String employeeUuid,
+    required String employeeId,
     String? systemPrompt,
   }) {
     final messages = <ChatMessage>[];
@@ -243,7 +243,7 @@ class SessionMemoryManager {
     }
 
     // 添加历史消息（已包含最新的用户消息）
-    final session = _sessions[employeeUuid];
+    final session = _sessions[employeeId];
     if (session != null) {
       // 从 MessageWrapper 列表中提取 ChatMessage
       messages.addAll(

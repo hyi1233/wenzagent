@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:convert';
 
 import '../persistence/persistence.dart';
@@ -17,12 +17,12 @@ enum EmployeeConfigChangeType {
 /// 员工配置变更事件
 class EmployeeConfigChangeEvent {
   final EmployeeConfigChangeType type;
-  final String employeeUuid;
+  final String employeeId;
   final dynamic data;
 
   EmployeeConfigChangeEvent({
     required this.type,
-    required this.employeeUuid,
+    required this.employeeId,
     this.data,
   });
 }
@@ -36,11 +36,11 @@ class EmployeeConfigChangeEvent {
 /// - MCP配置（支持多MCP服务）
 abstract class EmployeeConfigService {
   /// 获取员工完整配置（包含基础信息、技能、权限、MCP）
-  Future<EmployeeConfig> getEmployeeConfig(String employeeUuid);
+  Future<EmployeeConfig> getEmployeeConfig(String employeeId);
 
   /// 更新员工基础信息
   Future<void> updateEmployeeBasicInfo(
-    String employeeUuid, {
+    String employeeId, {
     String? name,
     String? avatar,
     String? description,
@@ -49,7 +49,7 @@ abstract class EmployeeConfigService {
 
   /// 更新员工Provider配置
   Future<void> updateEmployeeProvider(
-    String employeeUuid, {
+    String employeeId, {
     required String provider,
     String? model,
     String? apiKey,
@@ -59,30 +59,30 @@ abstract class EmployeeConfigService {
 
   /// 更新员工权限配置
   Future<void> updateEmployeePermission(
-    String employeeUuid,
+    String employeeId,
     Map<String, dynamic> permissionConfig,
   );
 
   /// 更新MCP配置列表
   Future<void> updateEmployeeMcpConfigs(
-    String employeeUuid,
+    String employeeId,
     List<McpServerConfig> configs,
   );
 
   /// 添加单个MCP服务器配置
-  Future<void> addMcpServerConfig(String employeeUuid, McpServerConfig config);
+  Future<void> addMcpServerConfig(String employeeId, McpServerConfig config);
 
   /// 移除MCP服务器配置
-  Future<void> removeMcpServerConfig(String employeeUuid, String serverName);
+  Future<void> removeMcpServerConfig(String employeeId, String serverName);
 
   /// 更新单个MCP服务器配置
   Future<void> updateMcpServerConfig(
-    String employeeUuid,
+    String employeeId,
     McpServerConfig config,
   );
 
   /// 设置MCP总开关
-  Future<void> setMcpEnabled(String employeeUuid, bool enabled);
+  Future<void> setMcpEnabled(String employeeId, bool enabled);
 
   /// 配置变更通知流
   Stream<EmployeeConfigChangeEvent> get onConfigChanged;
@@ -102,13 +102,13 @@ class EmployeeConfigServiceImpl implements EmployeeConfigService {
        _skillManager = skillManager;
 
   @override
-  Future<EmployeeConfig> getEmployeeConfig(String employeeUuid) async {
-    final employee = await _employeeManager.getEmployee(employeeUuid);
+  Future<EmployeeConfig> getEmployeeConfig(String employeeId) async {
+    final employee = await _employeeManager.getEmployee(employeeId);
     if (employee == null) {
-      throw StateError('Employee not found: $employeeUuid');
+      throw StateError('Employee not found: $employeeId');
     }
 
-    final skills = await _skillManager.getSkills(employeeUuid);
+    final skills = await _skillManager.getSkills(employeeId);
 
     Map<String, dynamic>? permissionConfig;
     if (employee.permissionConfig != null) {
@@ -131,15 +131,15 @@ class EmployeeConfigServiceImpl implements EmployeeConfigService {
 
   @override
   Future<void> updateEmployeeBasicInfo(
-    String employeeUuid, {
+    String employeeId, {
     String? name,
     String? avatar,
     String? description,
     String? systemPrompt,
   }) async {
-    final employee = await _employeeManager.getEmployee(employeeUuid);
+    final employee = await _employeeManager.getEmployee(employeeId);
     if (employee == null) {
-      throw StateError('Employee not found: $employeeUuid');
+      throw StateError('Employee not found: $employeeId');
     }
     final updated = employee.copyWith(
       name: name,
@@ -148,21 +148,21 @@ class EmployeeConfigServiceImpl implements EmployeeConfigService {
       systemPrompt: systemPrompt,
     );
     await _employeeManager.updateEmployee(updated);
-    _notifyChange(EmployeeConfigChangeType.basicInfo, employeeUuid);
+    _notifyChange(EmployeeConfigChangeType.basicInfo, employeeId);
   }
 
   @override
   Future<void> updateEmployeeProvider(
-    String employeeUuid, {
+    String employeeId, {
     required String provider,
     String? model,
     String? apiKey,
     String? apiBaseUrl,
     Map<String, dynamic>? modelConfig,
   }) async {
-    final employee = await _employeeManager.getEmployee(employeeUuid);
+    final employee = await _employeeManager.getEmployee(employeeId);
     if (employee == null) {
-      throw StateError('Employee not found: $employeeUuid');
+      throw StateError('Employee not found: $employeeId');
     }
     final updated = employee.copyWith(
       provider: provider,
@@ -172,45 +172,45 @@ class EmployeeConfigServiceImpl implements EmployeeConfigService {
       modelConfig: modelConfig != null ? jsonEncode(modelConfig) : null,
     );
     await _employeeManager.updateEmployee(updated);
-    _notifyChange(EmployeeConfigChangeType.provider, employeeUuid);
+    _notifyChange(EmployeeConfigChangeType.provider, employeeId);
   }
 
   @override
   Future<void> updateEmployeePermission(
-    String employeeUuid,
+    String employeeId,
     Map<String, dynamic> permissionConfig,
   ) async {
-    final employee = await _employeeManager.getEmployee(employeeUuid);
+    final employee = await _employeeManager.getEmployee(employeeId);
     if (employee == null) {
-      throw StateError('Employee not found: $employeeUuid');
+      throw StateError('Employee not found: $employeeId');
     }
     final updated = employee.copyWith(
       permissionConfig: jsonEncode(permissionConfig),
     );
     await _employeeManager.updateEmployee(updated);
-    _notifyChange(EmployeeConfigChangeType.permission, employeeUuid);
+    _notifyChange(EmployeeConfigChangeType.permission, employeeId);
   }
 
   @override
   Future<void> updateEmployeeMcpConfigs(
-    String employeeUuid,
+    String employeeId,
     List<McpServerConfig> configs,
   ) async {
-    final employee = await _employeeManager.getEmployee(employeeUuid);
+    final employee = await _employeeManager.getEmployee(employeeId);
     if (employee == null) {
-      throw StateError('Employee not found: $employeeUuid');
+      throw StateError('Employee not found: $employeeId');
     }
     final updated = employee.setMcpConfigs(configs);
     await _employeeManager.updateEmployee(updated);
-    _notifyChange(EmployeeConfigChangeType.mcp, employeeUuid, data: configs);
+    _notifyChange(EmployeeConfigChangeType.mcp, employeeId, data: configs);
   }
 
   @override
   Future<void> addMcpServerConfig(
-    String employeeUuid,
+    String employeeId,
     McpServerConfig config,
   ) async {
-    final employeeConfig = await getEmployeeConfig(employeeUuid);
+    final employeeConfig = await getEmployeeConfig(employeeId);
     final configs = List<McpServerConfig>.from(employeeConfig.mcpConfigs);
 
     // 检查是否已存在同名配置
@@ -222,26 +222,26 @@ class EmployeeConfigServiceImpl implements EmployeeConfigService {
     }
 
     configs.add(config);
-    await updateEmployeeMcpConfigs(employeeUuid, configs);
+    await updateEmployeeMcpConfigs(employeeId, configs);
   }
 
   @override
   Future<void> removeMcpServerConfig(
-    String employeeUuid,
+    String employeeId,
     String serverName,
   ) async {
-    final employeeConfig = await getEmployeeConfig(employeeUuid);
+    final employeeConfig = await getEmployeeConfig(employeeId);
     final configs = List<McpServerConfig>.from(employeeConfig.mcpConfigs);
     configs.removeWhere((c) => c.name == serverName);
-    await updateEmployeeMcpConfigs(employeeUuid, configs);
+    await updateEmployeeMcpConfigs(employeeId, configs);
   }
 
   @override
   Future<void> updateMcpServerConfig(
-    String employeeUuid,
+    String employeeId,
     McpServerConfig config,
   ) async {
-    final employeeConfig = await getEmployeeConfig(employeeUuid);
+    final employeeConfig = await getEmployeeConfig(employeeId);
     final configs = List<McpServerConfig>.from(employeeConfig.mcpConfigs);
     final index = configs.indexWhere((c) => c.name == config.name);
     if (index < 0) {
@@ -250,20 +250,20 @@ class EmployeeConfigServiceImpl implements EmployeeConfigService {
       );
     }
     configs[index] = config;
-    await updateEmployeeMcpConfigs(employeeUuid, configs);
+    await updateEmployeeMcpConfigs(employeeId, configs);
   }
 
   @override
-  Future<void> setMcpEnabled(String employeeUuid, bool enabled) async {
-    final employee = await _employeeManager.getEmployee(employeeUuid);
+  Future<void> setMcpEnabled(String employeeId, bool enabled) async {
+    final employee = await _employeeManager.getEmployee(employeeId);
     if (employee == null) {
-      throw StateError('Employee not found: $employeeUuid');
+      throw StateError('Employee not found: $employeeId');
     }
     final updated = employee.copyWith(enableMcp: enabled ? 1 : 0);
     await _employeeManager.updateEmployee(updated);
     _notifyChange(
       EmployeeConfigChangeType.mcpEnabled,
-      employeeUuid,
+      employeeId,
       data: enabled,
     );
   }
@@ -274,13 +274,13 @@ class EmployeeConfigServiceImpl implements EmployeeConfigService {
 
   void _notifyChange(
     EmployeeConfigChangeType type,
-    String employeeUuid, {
+    String employeeId, {
     dynamic data,
   }) {
     _changeController.add(
       EmployeeConfigChangeEvent(
         type: type,
-        employeeUuid: employeeUuid,
+        employeeId: employeeId,
         data: data,
       ),
     );

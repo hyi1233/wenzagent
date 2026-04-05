@@ -1,4 +1,4 @@
-import 'dart:io';
+﻿import 'dart:io';
 import 'dart:convert';
 
 import 'package:wenzagent/wenzagent.dart';
@@ -24,7 +24,7 @@ Future<void> main() async {
 
 class MessagePersistenceTest {
   late DeviceClientImpl device;
-  late String employeeUuid;
+  late String employeeId;
   late String tempDirPath;
 
   final String deviceId = 'test-device';
@@ -90,9 +90,9 @@ class MessagePersistenceTest {
     );
 
     // 创建员工
-    employeeUuid = 'emp-test-${const Uuid().v4().substring(0, 8)}';
+    employeeId = 'emp-test-${const Uuid().v4().substring(0, 8)}';
     final employee = AiEmployeeEntity(
-      uuid: employeeUuid,
+      uuid: employeeId,
       name: employeeName,
       role: 'assistant',
       status: 'active',
@@ -107,21 +107,21 @@ class MessagePersistenceTest {
     );
 
     await device.employeeManager.createEmployee(employee);
-    print('  ✓ 创建员工: $employeeUuid');
+    print('  ✓ 创建员工: $employeeId');
 
     // 创建会话
-    await device.sessionManager.getOrCreateSession(employeeUuid);
+    await device.sessionManager.getOrCreateSession(employeeId);
     print('  ✓ 创建会话');
 
     // 设置 currentDeviceId
-    await device.employeeManager.updateCurrentDeviceId(employeeUuid, deviceId);
+    await device.employeeManager.updateCurrentDeviceId(employeeId, deviceId);
     print('  ✓ 设置 currentDeviceId = $deviceId');
   }
 
   /// 发送测试消息
   Future<void> _sendTestMessage() async {
     print('  获取 AgentProxy...');
-    final agentProxy = await device.getOrCreateAgentProxy(employeeUuid: employeeUuid);
+    final agentProxy = await device.getOrCreateAgentProxy(employeeId: employeeId);
 
     // 发送测试消息
     final testMessage = 'Hello, this is a test message for persistence.';
@@ -156,7 +156,7 @@ class MessagePersistenceTest {
 
     // 获取会话消息索引（使用 deviceId 作为 spaceId）
     final indexBox = hiveManager.sessionMessagesBox;
-    final indexKey = hiveManager.buildSessionMessagesKey(deviceId, employeeUuid);
+    final indexKey = hiveManager.buildSessionMessagesKey(deviceId, employeeId);
     final messageUuids = indexBox.get(indexKey);
 
     print('  索引 key: $indexKey');
@@ -194,7 +194,7 @@ class MessagePersistenceTest {
 
     final hiveManager = HiveManager.instance;
     final indexBox = hiveManager.sessionMessagesBox;
-    final indexKey = hiveManager.buildSessionMessagesKey(deviceId, employeeUuid);
+    final indexKey = hiveManager.buildSessionMessagesKey(deviceId, employeeId);
     final messageUuids = indexBox.get(indexKey) ?? [];
 
     if (messageUuids.isEmpty) {

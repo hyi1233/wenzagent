@@ -1,4 +1,4 @@
-import 'package:hive/hive.dart';
+﻿import 'package:hive/hive.dart';
 
 import '../entities/skill_entity.dart';
 
@@ -15,7 +15,7 @@ class AiEmployeeSkillAdapter extends TypeAdapter<AiEmployeeSkillEntity> {
     };
     return AiEmployeeSkillEntity(
       uuid: fields[0] as String,
-      employeeUuid: fields[1] as String,
+      employeeId: fields[1] as String,
       name: fields[2] as String,
       description: fields[3] as String?,
       skillType: fields[4] as String? ?? 'mcp',
@@ -39,7 +39,7 @@ class AiEmployeeSkillAdapter extends TypeAdapter<AiEmployeeSkillEntity> {
       ..writeByte(0)
       ..write(obj.uuid)
       ..writeByte(1)
-      ..write(obj.employeeUuid)
+      ..write(obj.employeeId)
       ..writeByte(2)
       ..write(obj.name)
       ..writeByte(3)

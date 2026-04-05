@@ -1,4 +1,4 @@
-import '../persistence/persistence.dart';
+﻿import '../persistence/persistence.dart';
 import '../rpc/remote_call_server.dart';
 import '../service/service.dart';
 import 'client_session_manager.dart';
@@ -100,27 +100,27 @@ void registerHostRpcMethods({
 
   // 获取单个会话
   rpcServer.register(HostRpcConfig.methodGetSession, (params) async {
-    final employeeUuid = params['employeeUuid'] as String;
-    final session = await sessionManager.getSession(employeeUuid);
+    final employeeId = params['employeeId'] as String;
+    final session = await sessionManager.getSession(employeeId);
     if (session == null) {
-      throw Exception('Session not found: $employeeUuid');
+      throw Exception('Session not found: $employeeId');
     }
     return {'session': session.toMap()};
   });
 
   // 获取或创建会话
   rpcServer.register(HostRpcConfig.methodGetOrCreateSession, (params) async {
-    final employeeUuid = params['employeeUuid'] as String;
-    final session = await sessionManager.getOrCreateSession(employeeUuid);
+    final employeeId = params['employeeId'] as String;
+    final session = await sessionManager.getOrCreateSession(employeeId);
     return {'session': session.toMap()};
   });
 
   // 更新设备配置
   rpcServer.register(HostRpcConfig.methodUpdateDeviceConfig, (params) async {
-    final employeeUuid = params['employeeUuid'] as String;
+    final employeeId = params['employeeId'] as String;
     final deviceId = params['deviceId'] as String;
     await sessionManager.updateDeviceConfig(
-      employeeUuid,
+      employeeId,
       deviceId,
       projectUuid: params['projectUuid'] as String?,
       providerConfig: params['providerConfig'] as String?,
@@ -131,8 +131,8 @@ void registerHostRpcMethods({
 
   // 删除会话
   rpcServer.register(HostRpcConfig.methodDeleteSession, (params) async {
-    final employeeUuid = params['employeeUuid'] as String;
-    await sessionManager.deleteSession(employeeUuid);
+    final employeeId = params['employeeId'] as String;
+    await sessionManager.deleteSession(employeeId);
     return {'success': true};
   });
 
@@ -140,8 +140,8 @@ void registerHostRpcMethods({
 
   // 获取员工技能列表
   rpcServer.register(HostRpcConfig.methodGetSkills, (params) async {
-    final employeeUuid = params['employeeUuid'] as String;
-    final skills = await skillManager.getSkills(employeeUuid);
+    final employeeId = params['employeeId'] as String;
+    final skills = await skillManager.getSkills(employeeId);
     return {'skills': skills.map((s) => s.toMap()).toList()};
   });
 
@@ -196,7 +196,7 @@ void registerHostRpcMethods({
         .toList();
 
     for (final session in sessions) {
-      final existing = await sessionManager.getSession(session.employeeUuid);
+      final existing = await sessionManager.getSession(session.employeeId);
       if (existing == null || session.updateTime.isAfter(existing.updateTime)) {
         await sessionManager.save(session);
       }

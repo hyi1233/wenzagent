@@ -1,4 +1,4 @@
-import 'dart:io';
+﻿import 'dart:io';
 
 import 'package:wenzagent/wenzagent.dart';
 
@@ -61,7 +61,7 @@ Future<void> main() async {
 
     // 3. 初始化会话
     print('【步骤3】初始化会话...');
-    await adapter.initSession(employeeUuid: 'employee-test');
+    await adapter.initSession(employeeId: 'employee-test');
     print('  ✓ 会话已初始化: ${adapter.currentSessionUuid}\n');
 
     // 4. 设置系统提示词（可选）
@@ -127,11 +127,13 @@ Future<void> main() async {
 
     // 8. 获取会话列表
     print('【步骤8】获取会话列表...');
-    final sessions = await adapter.getSessionsByEmployee('employee-test');
-    print('  会话数: ${sessions.length}');
-    for (final session in sessions) {
-      print('    - ${session['uuid']} (${session['messageCount']} 条消息)');
-    }
+    // TODO: getSessionsByEmployee 方法已移除
+    // final sessions = await adapter.getSessionsByEmployee('employee-test');
+    // print('  会话数: ${sessions.length}');
+    // for (final session in sessions) {
+    //   print('    - ${session['uuid']} (${session['messageCount']} 条消息)');
+    // }
+    print('  (方法已移除，跳过)');
     print('');
 
     // 9. 清理

@@ -1,4 +1,4 @@
-import 'dart:io';
+﻿import 'dart:io';
 
 import 'package:wenzagent/wenzagent.dart';
 import 'package:uuid/uuid.dart';
@@ -25,7 +25,7 @@ Future<void> main() async {
 
 class AgentPersistenceLoadTest {
   late DeviceClientImpl device;
-  late String employeeUuid;
+  late String employeeId;
   late String tempDirPath;
 
   final String deviceId = 'test-device';
@@ -99,9 +99,9 @@ class AgentPersistenceLoadTest {
     );
 
     // 创建员工
-    employeeUuid = 'emp-test-${const Uuid().v4().substring(0, 8)}';
+    employeeId = 'emp-test-${const Uuid().v4().substring(0, 8)}';
     final employee = AiEmployeeEntity(
-      uuid: employeeUuid,
+      uuid: employeeId,
       name: employeeName,
       role: 'assistant',
       status: 'active',
@@ -116,21 +116,21 @@ class AgentPersistenceLoadTest {
     );
 
     await device.employeeManager.createEmployee(employee);
-    print('  ✓ 创建员工: $employeeUuid');
+    print('  ✓ 创建员工: $employeeId');
 
     // 创建会话
-    await device.sessionManager.getOrCreateSession(employeeUuid);
+    await device.sessionManager.getOrCreateSession(employeeId);
     print('  ✓ 创建会话');
 
     // 设置 currentDeviceId
-    await device.employeeManager.updateCurrentDeviceId(employeeUuid, deviceId);
+    await device.employeeManager.updateCurrentDeviceId(employeeId, deviceId);
     print('  ✓ 设置 currentDeviceId = $deviceId');
   }
 
   /// 第一次创建 Agent 并发送消息
   Future<void> _firstAgentSendMessages() async {
     print('  获取 AgentProxy...');
-    final agentProxy = await device.getOrCreateAgentProxy(employeeUuid: employeeUuid);
+    final agentProxy = await device.getOrCreateAgentProxy(employeeId: employeeId);
 
     // 发送多条测试消息
     final testMessages = [
@@ -169,7 +169,7 @@ class AgentPersistenceLoadTest {
     print('  Hive messageBox 中的消息总数: ${messageBox.length}');
 
     // 获取会话消息索引
-    final indexKey = hiveManager.buildSessionMessagesKey(deviceId, employeeUuid);
+    final indexKey = hiveManager.buildSessionMessagesKey(deviceId, employeeId);
     final messageUuids = indexBox.get(indexKey);
 
     print('  会话消息索引中的消息数量: ${messageUuids?.length ?? 0}');
@@ -184,7 +184,7 @@ class AgentPersistenceLoadTest {
 
   /// 销毁 Agent
   Future<void> _destroyAgent() async {
-    await device.destroyAgentProxy(employeeUuid);
+    await device.destroyAgentProxy(employeeId);
     print('  ✓ Agent 已销毁');
 
     // 等待清理完成
@@ -194,7 +194,7 @@ class AgentPersistenceLoadTest {
   /// 重新创建 Agent 并验证消息加载
   Future<void> _recreateAndVerifyLoad() async {
     print('  重新获取 AgentProxy...');
-    final agentProxy = await device.getOrCreateAgentProxy(employeeUuid: employeeUuid);
+    final agentProxy = await device.getOrCreateAgentProxy(employeeId: employeeId);
 
     // 获取内存中的消息
     final messages = await agentProxy.getSessionMessages();
@@ -224,7 +224,7 @@ class AgentPersistenceLoadTest {
     final messageBox = hiveManager.messageBox;
     final indexBox = hiveManager.sessionMessagesBox;
 
-    final indexKey = hiveManager.buildSessionMessagesKey(deviceId, employeeUuid);
+    final indexKey = hiveManager.buildSessionMessagesKey(deviceId, employeeId);
     final messageUuids = indexBox.get(indexKey);
 
     if (messageUuids == null || messageUuids.isEmpty) {
@@ -243,7 +243,7 @@ class AgentPersistenceLoadTest {
     }
 
     // 从 Agent 读取消息
-    final agentProxy = await device.getOrCreateAgentProxy(employeeUuid: employeeUuid);
+    final agentProxy = await device.getOrCreateAgentProxy(employeeId: employeeId);
     final agentMessages = await agentProxy.getSessionMessages();
 
     print('  Hive 消息数量: ${hiveMessages.length}');
@@ -284,7 +284,7 @@ class AgentPersistenceLoadTest {
     print('\n[清理] 释放资源...');
 
     try {
-      await device.destroyAgentProxy(employeeUuid);
+      await device.destroyAgentProxy(employeeId);
       print('  ✓ Agent 已销毁');
     } catch (_) {}
 

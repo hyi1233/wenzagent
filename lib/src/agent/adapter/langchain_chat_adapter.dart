@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 
 import 'package:langchain_core/chat_models.dart';
 import 'package:langchain_core/prompts.dart';
@@ -86,11 +86,10 @@ class LangChainChatAdapter implements IChatAdapter {
 
   @override
   Future<void> initSession({
-    required String employeeUuid,
-    String? employeeId,
+    required String employeeId,
   }) async {
-    currentEmployeeUuid = employeeUuid;
-    memoryManager.getOrCreateSession(employeeUuid);
+    currentEmployeeUuid = employeeId;
+    memoryManager.getOrCreateSession(employeeId);
   }
 
   @override
@@ -183,7 +182,7 @@ class LangChainChatAdapter implements IChatAdapter {
           );
         } else {
           messages = memoryManager.buildMessages(
-            employeeUuid: currentEmployeeUuid!,
+            employeeId: currentEmployeeUuid!,
             systemPrompt: systemPrompt,
           );
         }
@@ -400,7 +399,7 @@ class LangChainChatAdapter implements IChatAdapter {
   Future<List<Map<String, dynamic>>> getSessionMessages(
     String employeeId,
   ) async {
-    // employeeId 实际上就是 employeeUuid
+    // employeeId 实际上就是 employeeId
     final session = memoryManager.getSession(employeeId);
     if (session == null) return [];
 

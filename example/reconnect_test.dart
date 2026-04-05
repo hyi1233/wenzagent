@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:io';
 
 import 'package:wenzagent/wenzagent.dart';
@@ -30,7 +30,7 @@ class ReconnectTest {
 
   final String deviceAId = 'device-alpha';
   final String deviceBId = 'device-beta';
-  final String employeeAliceUuid = 'emp-alice-001';
+  final String employeeAliceId = 'emp-alice-001';
 
   /// 从环境变量获取 API 配置
   String? get _apiKey => Platform.environment['OPENAI_API_KEY'];
@@ -128,7 +128,7 @@ class ReconnectTest {
 
     // Device-A 创建员工 Alice
     final alice = AiEmployeeEntity(
-      uuid: employeeAliceUuid,
+      uuid: employeeAliceId,
       name: 'Alice',
       role: 'assistant',
       status: 'active',
@@ -145,17 +145,17 @@ class ReconnectTest {
     print('  ✓ Device-A 创建员工 Alice');
 
     // Device-A 建立会话
-    await deviceA.sessionManager.getOrCreateSession(employeeAliceUuid);
-    await deviceA.employeeManager.updateCurrentDeviceId(employeeAliceUuid, deviceAId);
+    await deviceA.sessionManager.getOrCreateSession(employeeAliceId);
+    await deviceA.employeeManager.updateCurrentDeviceId(employeeAliceId, deviceAId);
     print('  ✓ Device-A 建立会话，currentDeviceId = $deviceAId');
 
     // Device-A 创建本地 Agent
-    await deviceA.getOrCreateAgentProxy(employeeUuid: employeeAliceUuid);
+    await deviceA.getOrCreateAgentProxy(employeeId: employeeAliceId);
     print('  ✓ Device-A 创建本地 Agent');
 
     // Device-B 同步员工数据
     final aliceB = AiEmployeeEntity(
-      uuid: employeeAliceUuid,
+      uuid: employeeAliceId,
       name: 'Alice',
       role: 'assistant',
       status: 'active',
@@ -166,11 +166,11 @@ class ReconnectTest {
       updateTime: DateTime.now(),
     );
     await deviceB.employeeManager.createEmployee(aliceB);
-    await deviceB.employeeManager.updateCurrentDeviceId(employeeAliceUuid, deviceAId);
+    await deviceB.employeeManager.updateCurrentDeviceId(employeeAliceId, deviceAId);
     print('  ✓ Device-B 同步员工数据');
 
     // Device-B 同步会话数据
-    final sessionA = await deviceA.sessionManager.getSession(employeeAliceUuid);
+    final sessionA = await deviceA.sessionManager.getSession(employeeAliceId);
     if (sessionA != null) {
       await deviceB.sessionManager.save(sessionA);
     }
@@ -180,7 +180,7 @@ class ReconnectTest {
   /// Device-A 发送初始消息
   Future<void> _deviceASendInitialMessage() async {
     print('\n  [Device-A 发送初始消息]');
-    final agentProxy = await deviceA.getOrCreateAgentProxy(employeeUuid: employeeAliceUuid);
+    final agentProxy = await deviceA.getOrCreateAgentProxy(employeeId: employeeAliceId);
 
     final messageId = await agentProxy.sendMessage({
       'content': '你好 Alice，这是初始消息',
@@ -204,7 +204,7 @@ class ReconnectTest {
   /// Device-A 在 Device-B 断线期间发送消息
   Future<String> _deviceASendMessageWhileDeviceBOffline() async {
     print('\n  [Device-A 在 Device-B 断线期间发送消息]');
-    final agentProxy = await deviceA.getOrCreateAgentProxy(employeeUuid: employeeAliceUuid);
+    final agentProxy = await deviceA.getOrCreateAgentProxy(employeeId: employeeAliceId);
 
     final messageId = await agentProxy.sendMessage({
       'content': '这是在 Device-B 断线期间发送的消息',
@@ -233,7 +233,7 @@ class ReconnectTest {
 
     // 同步员工数据
     final alice = AiEmployeeEntity(
-      uuid: employeeAliceUuid,
+      uuid: employeeAliceId,
       name: 'Alice',
       role: 'assistant',
       status: 'active',
@@ -244,23 +244,23 @@ class ReconnectTest {
       updateTime: DateTime.now(),
     );
     await deviceB.employeeManager.updateEmployee(alice);
-    await deviceB.employeeManager.updateCurrentDeviceId(employeeAliceUuid, deviceAId);
+    await deviceB.employeeManager.updateCurrentDeviceId(employeeAliceId, deviceAId);
     print('  ✓ 同步员工数据');
 
     // 同步会话数据
-    final sessionA = await deviceA.sessionManager.getSession(employeeAliceUuid);
+    final sessionA = await deviceA.sessionManager.getSession(employeeAliceId);
     if (sessionA != null) {
       await deviceB.sessionManager.save(sessionA);
     }
     print('  ✓ 同步会话数据');
 
     // 同步消息数据（关键：获取 Device-A 的所有消息）
-    final messagesA = await deviceA.messageStore.getMessages(employeeAliceUuid);
+    final messagesA = await deviceA.messageStore.getMessages(employeeAliceId);
     print('  Device-A 消息数量: ${messagesA.length}');
 
     if (messagesA.isNotEmpty) {
       // 获取 Device-B 当前已有的消息
-      final messagesB = await deviceB.messageStore.getMessages(employeeAliceUuid);
+      final messagesB = await deviceB.messageStore.getMessages(employeeAliceId);
       print('  Device-B 消息数量（同步前）: ${messagesB.length}');
 
       // 只添加 Device-B 没有的消息
@@ -274,14 +274,14 @@ class ReconnectTest {
     }
 
     // 创建远程 AgentProxy
-    await deviceB.getOrCreateAgentProxy(employeeUuid: employeeAliceUuid);
+    await deviceB.getOrCreateAgentProxy(employeeId: employeeAliceId);
     print('  ✓ 创建远程 AgentProxy');
   }
 
   /// Device-B 查询断线期间的消息
   Future<void> _deviceBQueryOfflineMessages(String offlineMessageId) async {
     print('\n  [Device-B 查询断线期间的消息]');
-    final agentProxy = await deviceB.getOrCreateAgentProxy(employeeUuid: employeeAliceUuid);
+    final agentProxy = await deviceB.getOrCreateAgentProxy(employeeId: employeeAliceId);
 
     // 读取消息列表（使用 Agent 当前会话）
     final messages = await agentProxy.getSessionMessages();
@@ -314,7 +314,7 @@ class ReconnectTest {
   /// Device-B 重连后发送消息
   Future<void> _deviceBSendMessageAfterReconnect() async {
     print('\n  [Device-B 重连后发送消息]');
-    final agentProxy = await deviceB.getOrCreateAgentProxy(employeeUuid: employeeAliceUuid);
+    final agentProxy = await deviceB.getOrCreateAgentProxy(employeeId: employeeAliceId);
 
     assert(!agentProxy.isLocalMode, '应该是远程模式');
     print('  AgentProxy 模式: 远程 ✓');
@@ -334,10 +334,10 @@ class ReconnectTest {
     print('\n  [验证最终消息同步]');
 
     // 通过 AgentProxy 获取消息（使用 Agent 当前会话）
-    final agentProxyA = await deviceA.getOrCreateAgentProxy(employeeUuid: employeeAliceUuid);
+    final agentProxyA = await deviceA.getOrCreateAgentProxy(employeeId: employeeAliceId);
     final messagesA = await agentProxyA.getSessionMessages();
 
-    final agentProxyB = await deviceB.getOrCreateAgentProxy(employeeUuid: employeeAliceUuid);
+    final agentProxyB = await deviceB.getOrCreateAgentProxy(employeeId: employeeAliceId);
     final messagesB = await agentProxyB.getSessionMessages();
 
     print('  Device-A 消息数量: ${messagesA.length}');

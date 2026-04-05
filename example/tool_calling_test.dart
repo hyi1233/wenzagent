@@ -1,4 +1,4 @@
-/// Tool Calling 示例
+﻿/// Tool Calling 示例
 ///
 /// 演示如何使用 Agent 的 Tool Calling 功能，
 /// 包括工具注册、权限确认和 LLM 自主调用工具。
@@ -24,7 +24,7 @@ void main() async {
   // 1. 创建 Agent
   final adapter = LangChainChatAdapter();
   final agent = AgentImpl(
-    employeeUuid: 'test-employee-001',
+    employeeId: 'test-employee-001',
     chatAdapter: adapter,
   );
 

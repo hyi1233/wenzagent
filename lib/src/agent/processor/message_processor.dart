@@ -1,4 +1,4 @@
-import '../agent_state.dart';
+﻿import '../agent_state.dart';
 import '../tool/permission_manager.dart';
 import '../tool/tool_registry.dart';
 import 'cancellation_token.dart';
@@ -110,7 +110,7 @@ abstract class IChatAdapter {
   bool get isStreaming;
 
   /// 初始化会话
-  Future<void> initSession({required String employeeUuid, String? employeeId});
+  Future<void> initSession({required String employeeId});
 
   /// 流式发送消息
   Stream<StreamResponse> streamMessage(

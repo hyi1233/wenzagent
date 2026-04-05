@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:io';
 
 import 'package:wenzagent/wenzagent.dart';
@@ -30,7 +30,7 @@ class MultiDeviceConcurrentTest {
   final String deviceAId = 'device-alpha';
   final String deviceBId = 'device-beta';
   final String deviceCId = 'device-charlie';
-  final String employeeAliceUuid = 'emp-alice-001';
+  final String employeeAliceId = 'emp-alice-001';
 
   /// 从环境变量获取 API 配置
   String? get _apiKey => Platform.environment['OPENAI_API_KEY'];
@@ -108,7 +108,7 @@ class MultiDeviceConcurrentTest {
 
     // 创建员工 Alice
     final alice = AiEmployeeEntity(
-      uuid: employeeAliceUuid,
+      uuid: employeeAliceId,
       name: 'Alice',
       role: 'assistant',
       status: 'active',
@@ -125,15 +125,15 @@ class MultiDeviceConcurrentTest {
     print('  ✓ 设备C 创建员工 Alice');
 
     // 建立会话，currentDeviceId 设置为 deviceC
-    await deviceC.sessionManager.getOrCreateSession(employeeAliceUuid);
+    await deviceC.sessionManager.getOrCreateSession(employeeAliceId);
     await deviceC.employeeManager.updateCurrentDeviceId(
-      employeeAliceUuid,
+      employeeAliceId,
       deviceCId,
     );
     print('  ✓ 建立会话，currentDeviceId = $deviceCId');
 
     // 创建本地 Agent（这是唯一的Agent实例）
-    await deviceC.getOrCreateAgentProxy(employeeUuid: employeeAliceUuid);
+    await deviceC.getOrCreateAgentProxy(employeeId: employeeAliceId);
     print('  ✓ 设备C 创建本地 Agent（唯一实例）');
   }
 
@@ -161,7 +161,7 @@ class MultiDeviceConcurrentTest {
 
     // 同步员工数据到A和B
     final alice = AiEmployeeEntity(
-      uuid: employeeAliceUuid,
+      uuid: employeeAliceId,
       name: 'Alice',
       role: 'assistant',
       status: 'active',
@@ -175,7 +175,7 @@ class MultiDeviceConcurrentTest {
     // 设备A同步
     await deviceA.employeeManager.createEmployee(alice);
     await deviceA.employeeManager.updateCurrentDeviceId(
-      employeeAliceUuid,
+      employeeAliceId,
       deviceCId,
     );
     print('  ✓ 设备A 同步员工数据（currentDeviceId = $deviceCId）');
@@ -183,13 +183,13 @@ class MultiDeviceConcurrentTest {
     // 设备B同步
     await deviceB.employeeManager.createEmployee(alice);
     await deviceB.employeeManager.updateCurrentDeviceId(
-      employeeAliceUuid,
+      employeeAliceId,
       deviceCId,
     );
     print('  ✓ 设备B 同步员工数据（currentDeviceId = $deviceCId）');
 
     // 同步会话数据
-    final sessionC = await deviceC.sessionManager.getSession(employeeAliceUuid);
+    final sessionC = await deviceC.sessionManager.getSession(employeeAliceId);
     if (sessionC != null) {
       await deviceA.sessionManager.save(sessionC);
       await deviceB.sessionManager.save(sessionC);
@@ -197,8 +197,8 @@ class MultiDeviceConcurrentTest {
     print('  ✓ 同步会话数据到A和B');
 
     // 创建远程 AgentProxy（指向设备C上的Agent）
-    await deviceA.getOrCreateAgentProxy(employeeUuid: employeeAliceUuid);
-    await deviceB.getOrCreateAgentProxy(employeeUuid: employeeAliceUuid);
+    await deviceA.getOrCreateAgentProxy(employeeId: employeeAliceId);
+    await deviceB.getOrCreateAgentProxy(employeeId: employeeAliceId);
     print('  ✓ 设备A和B 创建远程 AgentProxy');
   }
 
@@ -238,7 +238,7 @@ class MultiDeviceConcurrentTest {
   Future<String> _deviceASendMessage() async {
     print('\n  [设备A] 发送消息...');
     final agentProxy = await deviceA.getOrCreateAgentProxy(
-      employeeUuid: employeeAliceUuid,
+      employeeId: employeeAliceId,
     );
 
     assert(!agentProxy.isLocalMode, '设备A应该是远程模式');
@@ -257,7 +257,7 @@ class MultiDeviceConcurrentTest {
   Future<String> _deviceBSendMessage() async {
     print('\n  [设备B] 发送消息...');
     final agentProxy = await deviceB.getOrCreateAgentProxy(
-      employeeUuid: employeeAliceUuid,
+      employeeId: employeeAliceId,
     );
 
     assert(!agentProxy.isLocalMode, '设备B应该是远程模式');
@@ -277,9 +277,9 @@ class MultiDeviceConcurrentTest {
     print('\n  [验证Agent唯一性]');
 
     // 获取员工信息
-    final aliceA = await deviceA.employeeManager.getEmployee(employeeAliceUuid);
-    final aliceB = await deviceB.employeeManager.getEmployee(employeeAliceUuid);
-    final aliceC = await deviceC.employeeManager.getEmployee(employeeAliceUuid);
+    final aliceA = await deviceA.employeeManager.getEmployee(employeeAliceId);
+    final aliceB = await deviceB.employeeManager.getEmployee(employeeAliceId);
+    final aliceC = await deviceC.employeeManager.getEmployee(employeeAliceId);
 
     print('  设备A上的 Alice.currentDeviceId: ${aliceA?.currentDeviceId}');
     print('  设备B上的 Alice.currentDeviceId: ${aliceB?.currentDeviceId}');
@@ -293,13 +293,13 @@ class MultiDeviceConcurrentTest {
 
     // 验证AgentProxy模式
     final proxyA = await deviceA.getOrCreateAgentProxy(
-      employeeUuid: employeeAliceUuid,
+      employeeId: employeeAliceId,
     );
     final proxyB = await deviceB.getOrCreateAgentProxy(
-      employeeUuid: employeeAliceUuid,
+      employeeId: employeeAliceId,
     );
     final proxyC = await deviceC.getOrCreateAgentProxy(
-      employeeUuid: employeeAliceUuid,
+      employeeId: employeeAliceId,
     );
 
     assert(!proxyA.isLocalMode, '设备A应该是远程模式');
@@ -316,19 +316,19 @@ class MultiDeviceConcurrentTest {
 
     // 获取设备A的会话数据
     final proxyA = await deviceA.getOrCreateAgentProxy(
-      employeeUuid: employeeAliceUuid,
+      employeeId: employeeAliceId,
     );
     final messagesA = await proxyA.getSessionMessages();
 
     // 获取设备B的会话数据
     final proxyB = await deviceB.getOrCreateAgentProxy(
-      employeeUuid: employeeAliceUuid,
+      employeeId: employeeAliceId,
     );
     final messagesB = await proxyB.getSessionMessages();
 
     // 获取设备C的会话数据
     final proxyC = await deviceC.getOrCreateAgentProxy(
-      employeeUuid: employeeAliceUuid,
+      employeeId: employeeAliceId,
     );
     final messagesC = await proxyC.getSessionMessages();
 

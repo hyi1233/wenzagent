@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 
 import 'agent_state.dart';
 import 'tool/agent_tool.dart';
@@ -17,7 +17,7 @@ abstract class IAgent {
   // ===== 基础信息 =====
 
   /// 员工UUID
-  String get employeeUuid;
+  String get employeeId;
 
   /// 当前状态
   AgentStatus get status;

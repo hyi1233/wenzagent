@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:convert';
 
 import 'package:langchain_core/chat_models.dart';
@@ -47,13 +47,12 @@ class PersistentChatAdapter extends LangChainChatAdapter {
 
   @override
   Future<void> initSession({
-    required String employeeUuid,
-    String? employeeId,
+    required String employeeId,
   }) async {
-    await super.initSession(employeeUuid: employeeUuid);
+    await super.initSession(employeeId: employeeId);
 
     // 如果提供了会话UUID且存在加载回调，尝试从数据库加载
-    if (employeeId != null && loadSession != null) {
+    if (loadSession != null) {
       final sessionData = await loadSession!(employeeId);
       if (sessionData != null) {
         // 恢复会话配置（如 provider_config 等）

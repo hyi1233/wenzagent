@@ -3,34 +3,34 @@ import '../entities/session_entity.dart';
 
 /// 会话数据存储
 ///
-/// 使用employeeUuid作为主键：一个员工只有一个会话
+/// 使用employeeId作为主键：一个员工只有一个会话
 class SessionStore {
   final HiveManager _hiveManager;
 
   SessionStore({HiveManager? hiveManager})
     : _hiveManager = hiveManager ?? HiveManager.instance;
 
-  /// 构建Session key（使用employeeUuid作为主键）
-  String _buildKey(String employeeUuid) {
-    return 'sess:$employeeUuid';
+  /// 构建Session key（使用employeeId作为主键）
+  String _buildKey(String employeeId) {
+    return 'sess:$employeeId';
   }
 
   /// 获取Session（主键查找）
-  Future<AiEmployeeSessionEntity?> find(String employeeUuid) async {
+  Future<AiEmployeeSessionEntity?> find(String employeeId) async {
     final box = _hiveManager.sessionBox;
-    final key = _buildKey(employeeUuid);
+    final key = _buildKey(employeeId);
     return box.get(key);
   }
 
   /// 获取或创建Session
-  /// 只需要employeeUuid
-  Future<AiEmployeeSessionEntity> getOrCreate(String employeeUuid) async {
-    var session = await find(employeeUuid);
+  /// 只需要employeeId
+  Future<AiEmployeeSessionEntity> getOrCreate(String employeeId) async {
+    var session = await find(employeeId);
     if (session != null) return session;
 
     final now = DateTime.now();
     session = AiEmployeeSessionEntity(
-      employeeUuid: employeeUuid,
+      employeeId: employeeId,
       createTime: now,
       updateTime: now,
     );
@@ -42,7 +42,7 @@ class SessionStore {
   /// 保存Session
   Future<void> save(AiEmployeeSessionEntity session) async {
     final box = _hiveManager.sessionBox;
-    final key = _buildKey(session.employeeUuid);
+    final key = _buildKey(session.employeeId);
     await box.put(key, session);
   }
 
@@ -70,17 +70,17 @@ class SessionStore {
   }
 
   /// 删除Session（软删除）
-  Future<void> delete(String employeeUuid) async {
-    final session = await find(employeeUuid);
+  Future<void> delete(String employeeId) async {
+    final session = await find(employeeId);
     if (session != null) {
       await save(session.copyWith(deleted: 1, updateTime: DateTime.now()));
     }
   }
 
   /// 硬删除Session
-  Future<void> hardDelete(String employeeUuid) async {
+  Future<void> hardDelete(String employeeId) async {
     final box = _hiveManager.sessionBox;
-    final key = _buildKey(employeeUuid);
+    final key = _buildKey(employeeId);
     await box.delete(key);
   }
 

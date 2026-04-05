@@ -1,10 +1,10 @@
-/// AI员工技能实体（Hive版本）
+﻿/// AI员工技能实体（Hive版本）
 class AiEmployeeSkillEntity {
   /// 技能UUID
   final String uuid;
 
   /// 员工UUID
-  String employeeUuid;
+  String employeeId;
 
   /// 技能名称
   String name;
@@ -35,7 +35,7 @@ class AiEmployeeSkillEntity {
 
   AiEmployeeSkillEntity({
     required this.uuid,
-    required this.employeeUuid,
+    required this.employeeId,
     required this.name,
     this.description,
     this.skillType = 'mcp',
@@ -51,7 +51,7 @@ class AiEmployeeSkillEntity {
   factory AiEmployeeSkillEntity.fromMap(Map<String, dynamic> map) {
     return AiEmployeeSkillEntity(
       uuid: map['uuid'] as String,
-      employeeUuid: map['employeeUuid'] as String,
+      employeeId: map['employeeId'] as String,
       name: map['name'] as String,
       description: map['description'] as String?,
       skillType: map['skillType'] as String? ?? 'mcp',
@@ -72,7 +72,7 @@ class AiEmployeeSkillEntity {
   Map<String, dynamic> toMap() {
     return {
       'uuid': uuid,
-      'employeeUuid': employeeUuid,
+      'employeeId': employeeId,
       'name': name,
       'description': description,
       'skillType': skillType,
@@ -88,7 +88,7 @@ class AiEmployeeSkillEntity {
   /// 复制并修改
   AiEmployeeSkillEntity copyWith({
     String? uuid,
-    String? employeeUuid,
+    String? employeeId,
     String? name,
     String? description,
     String? skillType,
@@ -101,7 +101,7 @@ class AiEmployeeSkillEntity {
   }) {
     return AiEmployeeSkillEntity(
       uuid: uuid ?? this.uuid,
-      employeeUuid: employeeUuid ?? this.employeeUuid,
+      employeeId: employeeId ?? this.employeeId,
       name: name ?? this.name,
       description: description ?? this.description,
       skillType: skillType ?? this.skillType,

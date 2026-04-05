@@ -1,4 +1,4 @@
-/// Agent 工作状态
+﻿/// Agent 工作状态
 enum AgentStatus {
   /// 空闲
   idle,
@@ -204,16 +204,14 @@ enum PermissionDecision {
 
 /// Agent 运行时摘要
 class AgentRuntimeSummary {
-  final String employeeUuid;
-  final String? employeeId;
+  final String employeeId;
   final AgentStatus status;
   final DateTime lastActiveTime;
   final int queueLength;
   final int refCount;
 
   AgentRuntimeSummary({
-    required this.employeeUuid,
-    this.employeeId,
+    required this.employeeId,
     required this.status,
     required this.lastActiveTime,
     required this.queueLength,
@@ -222,7 +220,6 @@ class AgentRuntimeSummary {
 
   Map<String, dynamic> toMap() {
     return {
-      'employeeUuid': employeeUuid,
       'employeeId': employeeId,
       'status': status.name,
       'lastActiveTime': lastActiveTime.toIso8601String(),
@@ -233,8 +230,7 @@ class AgentRuntimeSummary {
 
   factory AgentRuntimeSummary.fromMap(Map<String, dynamic> map) {
     return AgentRuntimeSummary(
-      employeeUuid: map['employeeUuid'] as String,
-      employeeId: map['employeeId'] as String?,
+      employeeId: map['employeeId'] as String,
       status: AgentStatus.fromString(map['status'] as String? ?? 'idle'),
       lastActiveTime: map['lastActiveTime'] != null
           ? DateTime.parse(map['lastActiveTime'] as String)

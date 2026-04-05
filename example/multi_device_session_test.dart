@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:io';
 
 import 'package:wenzagent/wenzagent.dart';
@@ -28,8 +28,8 @@ class MultiDeviceSessionTest {
   
   final String deviceAId = 'device-alpha';
   final String deviceBId = 'device-beta';
-  final String employeeAliceUuid = 'emp-alice-001';
-  final String employeeBobUuid = 'emp-bob-001';
+  final String employeeAliceId = 'emp-alice-001';
+  final String employeeBobId = 'emp-bob-001';
 
   Future<void> run() async {
     try {
@@ -113,7 +113,7 @@ class MultiDeviceSessionTest {
   Future<void> _createEmployees() async {
     // 在 Device-A 上创建员工 Alice
     final alice = AiEmployeeEntity(
-      uuid: employeeAliceUuid,
+      uuid: employeeAliceId,
       name: 'Alice',
       role: 'assistant',
       status: 'active',
@@ -130,7 +130,7 @@ class MultiDeviceSessionTest {
 
     // 创建员工 Bob（不建立会话，用于测试会话列表过滤）
     final bob = AiEmployeeEntity(
-      uuid: employeeBobUuid,
+      uuid: employeeBobId,
       name: 'Bob',
       role: 'assistant',
       status: 'active',
@@ -146,7 +146,7 @@ class MultiDeviceSessionTest {
   /// Device-A 首次打开 Alice 的会话
   Future<void> _deviceAOpensSessionFirstTime() async {
     // 获取 Alice 的员工信息
-    var alice = await deviceA.employeeManager.getEmployee(employeeAliceUuid);
+    var alice = await deviceA.employeeManager.getEmployee(employeeAliceId);
     if (alice == null) {
       throw StateError('员工 Alice 不存在');
     }
@@ -156,19 +156,19 @@ class MultiDeviceSessionTest {
     assert(alice.currentDeviceId == null, 'currentDeviceId 应该初始为空');
 
     // 获取 Session（首次会自动创建）
-    final session = await deviceA.sessionManager.getOrCreateSession(employeeAliceUuid);
-    print('  ✓ Session 创建/获取: employeeUuid=${session.employeeUuid}');
+    final session = await deviceA.sessionManager.getOrCreateSession(employeeAliceId);
+    print('  ✓ Session 创建/获取: employeeId=${session.employeeId}');
     print('  Session.config devices: ${session.config.keys.toList()}');
 
     // 验证 Session 存在
-    final sessionExists = await deviceA.sessionManager.getSession(employeeAliceUuid);
+    final sessionExists = await deviceA.sessionManager.getSession(employeeAliceId);
     assert(sessionExists != null, 'Session 应该存在');
 
     // 设置 currentDeviceId（模拟 openSession 行为）
-    await deviceA.employeeManager.updateCurrentDeviceId(employeeAliceUuid, deviceAId);
+    await deviceA.employeeManager.updateCurrentDeviceId(employeeAliceId, deviceAId);
     
     // 重新获取员工验证
-    alice = await deviceA.employeeManager.getEmployee(employeeAliceUuid);
+    alice = await deviceA.employeeManager.getEmployee(employeeAliceId);
     print('  Alice.currentDeviceId (设置后): ${alice?.currentDeviceId}');
     assert(alice?.currentDeviceId == deviceAId, 'currentDeviceId 应该等于 deviceAId');
     
@@ -179,7 +179,7 @@ class MultiDeviceSessionTest {
   Future<void> _deviceBGetsSessionList() async {
     // Device-B 也创建相同的员工（模拟同步）
     final alice = AiEmployeeEntity(
-      uuid: employeeAliceUuid,
+      uuid: employeeAliceId,
       name: 'Alice',
       role: 'assistant',
       status: 'active',
@@ -192,10 +192,10 @@ class MultiDeviceSessionTest {
     await deviceB.employeeManager.createEmployee(alice);
     
     // 同步 currentDeviceId（模拟 LAN 同步）
-    await deviceB.employeeManager.updateCurrentDeviceId(employeeAliceUuid, deviceAId);
+    await deviceB.employeeManager.updateCurrentDeviceId(employeeAliceId, deviceAId);
     
     // 同步 Session（模拟 LAN 同步）
-    final sessionA = await deviceA.sessionManager.getSession(employeeAliceUuid);
+    final sessionA = await deviceA.sessionManager.getSession(employeeAliceId);
     if (sessionA != null) {
       await deviceB.sessionManager.save(sessionA);
     }
@@ -205,16 +205,16 @@ class MultiDeviceSessionTest {
     print('  Device-B 会话列表数量: ${sessions.length}');
     
     for (final session in sessions) {
-      final employee = await deviceB.employeeManager.getEmployee(session.employeeUuid);
-      print('    - Session: ${session.employeeUuid}');
+      final employee = await deviceB.employeeManager.getEmployee(session.employeeId);
+      print('    - Session: ${session.employeeId}');
       print('      员工: ${employee?.name ?? "未知"}');
       print('      currentDeviceId: ${employee?.currentDeviceId ?? "null"}');
     }
 
     // 验证：会话列表只包含有 Session 的员工（Alice）
-    assert(sessions.any((s) => s.employeeUuid == employeeAliceUuid), 
+    assert(sessions.any((s) => s.employeeId == employeeAliceId), 
            'Alice 应该在会话列表中');
-    assert(!sessions.any((s) => s.employeeUuid == employeeBobUuid), 
+    assert(!sessions.any((s) => s.employeeId == employeeBobId), 
            'Bob 不应该在会话列表中（没有 Session）');
     
     print('  ✓ 会话列表正确：只显示有 Session 的员工');
@@ -222,7 +222,7 @@ class MultiDeviceSessionTest {
 
   /// Device-B 打开 Alice 的会话（远程会话判定）
   Future<void> _deviceBOpensRemoteSession() async {
-    final alice = await deviceB.employeeManager.getEmployee(employeeAliceUuid);
+    final alice = await deviceB.employeeManager.getEmployee(employeeAliceId);
     
     print('  Alice.currentDeviceId: ${alice?.currentDeviceId}');
     print('  Device-B.deviceId: $deviceBId');
@@ -237,8 +237,8 @@ class MultiDeviceSessionTest {
     assert(isRemote, '应该是远程会话（currentDeviceId = deviceAId != deviceBId）');
     
     // 获取或创建 Session（确保存在）
-    final session = await deviceB.sessionManager.getOrCreateSession(employeeAliceUuid);
-    print('  ✓ Session 获取成功: ${session.employeeUuid}');
+    final session = await deviceB.sessionManager.getOrCreateSession(employeeAliceId);
+    print('  ✓ Session 获取成功: ${session.employeeId}');
     
     print('  ✓ 远程会话判定正确：Device-B 需要通过 LAN RPC 与 Device-A 上的 Agent 交互');
   }
@@ -247,7 +247,7 @@ class MultiDeviceSessionTest {
   Future<void> _setDeviceSpecificConfigs() async {
     // Device-A 设置自己的配置
     await deviceA.sessionManager.updateDeviceConfig(
-      employeeAliceUuid,
+      employeeAliceId,
       deviceAId,
       projectUuid: 'project-alpha',
       providerConfig: '{"provider":"openai","model":"gpt-4"}',
@@ -256,7 +256,7 @@ class MultiDeviceSessionTest {
 
     // Device-B 设置自己的配置（独立于 Device-A）
     await deviceB.sessionManager.updateDeviceConfig(
-      employeeAliceUuid,
+      employeeAliceId,
       deviceBId,
       projectUuid: 'project-beta',
       providerConfig: '{"provider":"anthropic","model":"claude-3"}',
@@ -267,7 +267,7 @@ class MultiDeviceSessionTest {
   /// 验证配置隔离
   Future<void> _verifyConfigIsolation() async {
     // 从 Device-A 获取 Session
-    final sessionA = await deviceA.sessionManager.getSession(employeeAliceUuid);
+    final sessionA = await deviceA.sessionManager.getSession(employeeAliceId);
     assert(sessionA != null, 'Device-A Session 应该存在');
     
     // 获取各设备的配置

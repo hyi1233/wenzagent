@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 
 import 'package:uuid/uuid.dart';
 
@@ -15,13 +15,13 @@ enum SkillChangeType {
 class SkillChangeEvent {
   final SkillChangeType type;
   final String skillUuid;
-  final String employeeUuid;
+  final String employeeId;
   final AiEmployeeSkillEntity? skill;
 
   SkillChangeEvent({
     required this.type,
     required this.skillUuid,
-    required this.employeeUuid,
+    required this.employeeId,
     this.skill,
   });
 }
@@ -29,7 +29,7 @@ class SkillChangeEvent {
 /// 技能管理器接口
 abstract class SkillManager {
   /// 获取员工的技能列表
-  Future<List<AiEmployeeSkillEntity>> getSkills(String employeeUuid);
+  Future<List<AiEmployeeSkillEntity>> getSkills(String employeeId);
 
   /// 获取单个技能
   Future<AiEmployeeSkillEntity?> getSkill(String uuid);
@@ -63,8 +63,8 @@ class SkillManagerImpl implements SkillManager {
         _deviceId = deviceId;
 
   @override
-  Future<List<AiEmployeeSkillEntity>> getSkills(String employeeUuid) async {
-    return _store.findByEmployeeWithDeviceId(_deviceId, employeeUuid);
+  Future<List<AiEmployeeSkillEntity>> getSkills(String employeeId) async {
+    return _store.findByEmployeeWithDeviceId(_deviceId, employeeId);
   }
 
   @override
@@ -122,14 +122,14 @@ class SkillManagerImpl implements SkillManager {
     _changeController.add(SkillChangeEvent(
       type: type,
       skillUuid: skill.uuid,
-      employeeUuid: skill.employeeUuid,
+      employeeId: skill.employeeId,
       skill: skill,
     ));
   }
 
   /// 创建新技能实体
   AiEmployeeSkillEntity createSkillEntity({
-    required String employeeUuid,
+    required String employeeId,
     required String name,
     String? description,
     String skillType = 'mcp',
@@ -139,7 +139,7 @@ class SkillManagerImpl implements SkillManager {
     final now = DateTime.now();
     return AiEmployeeSkillEntity(
       uuid: uuid,
-      employeeUuid: employeeUuid,
+      employeeId: employeeId,
       name: name,
       description: description,
       skillType: skillType,

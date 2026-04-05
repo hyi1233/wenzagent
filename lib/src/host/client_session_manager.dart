@@ -1,4 +1,4 @@
-/// 客户端会话信息
+﻿/// 客户端会话信息
 class ClientSession {
   /// 客户端ID
   final String clientId;
@@ -99,7 +99,7 @@ class ClientSessionManager {
   /// 主题到客户端的映射 (topic -> Set<clientId>)
   final Map<String, Set<String>> _topicClients = {};
 
-  /// 员工订阅映射 (employeeUuid -> Set<clientId>)
+  /// 员工订阅映射 (employeeId -> Set<clientId>)
   final Map<String, Set<String>> _employeeSubscribers = {};
 
   /// 注册客户端
@@ -137,10 +137,10 @@ class ClientSessionManager {
     }
 
     // 更新员工订阅索引
-    for (final employeeUuid in session.subscribedEmployees) {
-      _employeeSubscribers[employeeUuid]?.remove(clientId);
-      if (_employeeSubscribers[employeeUuid]?.isEmpty ?? false) {
-        _employeeSubscribers.remove(employeeUuid);
+    for (final employeeId in session.subscribedEmployees) {
+      _employeeSubscribers[employeeId]?.remove(clientId);
+      if (_employeeSubscribers[employeeId]?.isEmpty ?? false) {
+        _employeeSubscribers.remove(employeeId);
       }
     }
 
@@ -175,34 +175,34 @@ class ClientSessionManager {
   }
 
   /// 订阅员工
-  void subscribeEmployee(String clientId, String employeeUuid) {
+  void subscribeEmployee(String clientId, String employeeId) {
     final session = _clients[clientId];
     if (session == null) return;
 
-    session.subscribedEmployees.add(employeeUuid);
+    session.subscribedEmployees.add(employeeId);
 
     // 更新员工订阅索引
-    _employeeSubscribers.putIfAbsent(employeeUuid, () => {});
-    _employeeSubscribers[employeeUuid]!.add(clientId);
+    _employeeSubscribers.putIfAbsent(employeeId, () => {});
+    _employeeSubscribers[employeeId]!.add(clientId);
   }
 
   /// 取消订阅员工
-  void unsubscribeEmployee(String clientId, String employeeUuid) {
+  void unsubscribeEmployee(String clientId, String employeeId) {
     final session = _clients[clientId];
     if (session == null) return;
 
-    session.subscribedEmployees.remove(employeeUuid);
+    session.subscribedEmployees.remove(employeeId);
 
     // 更新员工订阅索引
-    _employeeSubscribers[employeeUuid]?.remove(clientId);
-    if (_employeeSubscribers[employeeUuid]?.isEmpty ?? false) {
-      _employeeSubscribers.remove(employeeUuid);
+    _employeeSubscribers[employeeId]?.remove(clientId);
+    if (_employeeSubscribers[employeeId]?.isEmpty ?? false) {
+      _employeeSubscribers.remove(employeeId);
     }
   }
 
   /// 获取订阅指定员工的所有客户端
-  List<ClientSession> getClientsByEmployee(String employeeUuid) {
-    final clientIds = _employeeSubscribers[employeeUuid];
+  List<ClientSession> getClientsByEmployee(String employeeId) {
+    final clientIds = _employeeSubscribers[employeeId];
     if (clientIds == null || clientIds.isEmpty) return [];
 
     return clientIds

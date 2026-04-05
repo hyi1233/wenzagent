@@ -96,8 +96,8 @@ class DeviceSessionConfig {
 class AiEmployeeSessionEntity {
   // ===== 主键 =====
 
-  /// 员工UUID（主键）
-  final String employeeUuid;
+  /// 员工ID（主键）
+  final String employeeId;
 
   // ===== 各设备的配置 =====
 
@@ -137,7 +137,7 @@ class AiEmployeeSessionEntity {
   }
 
   AiEmployeeSessionEntity({
-    required this.employeeUuid,
+    required this.employeeId,
     Map<String, DeviceSessionConfig>? config,
     this.title = '新对话',
     this.isArchived = 0,
@@ -162,7 +162,7 @@ class AiEmployeeSessionEntity {
     }
 
     return AiEmployeeSessionEntity(
-      employeeUuid: map['employeeUuid'] as String,
+      employeeId: map['employeeId'] as String,
       config: config,
       title: map['title'] as String? ?? '新对话',
       isArchived: map['isArchived'] as int? ?? 0,
@@ -179,9 +179,9 @@ class AiEmployeeSessionEntity {
 
   /// 从旧格式Map创建（向后兼容）
   factory AiEmployeeSessionEntity.fromLegacyMap(Map<String, dynamic> map) {
-    // 旧格式：uuid, employeeUuid, providerConfig, projectUuid等在顶层
-    final employeeUuid =
-        map['employeeUuid'] as String? ?? map['uuid'] as String;
+    // 旧格式：uuid, employeeId, providerConfig, projectUuid等在顶层
+    final employeeId =
+        map['employeeId'] as String? ?? map['uuid'] as String;
 
     // 创建默认设备配置（从旧字段迁移）
     Map<String, DeviceSessionConfig> config = {};
@@ -203,7 +203,7 @@ class AiEmployeeSessionEntity {
     }
 
     return AiEmployeeSessionEntity(
-      employeeUuid: employeeUuid,
+      employeeId: employeeId,
       config: config,
       title: map['title'] as String? ?? '新对话',
       isArchived: map['isArchived'] as int? ?? 0,
@@ -223,7 +223,7 @@ class AiEmployeeSessionEntity {
     final configMap = config.map((key, value) => MapEntry(key, value.toMap()));
 
     return {
-      'employeeUuid': employeeUuid,
+      'employeeId': employeeId,
       'config': configMap,
       'title': title,
       'isArchived': isArchived,
@@ -236,7 +236,7 @@ class AiEmployeeSessionEntity {
 
   /// 复制并修改
   AiEmployeeSessionEntity copyWith({
-    String? employeeUuid,
+    String? employeeId,
     Map<String, DeviceSessionConfig>? config,
     String? title,
     int? isArchived,
@@ -246,7 +246,7 @@ class AiEmployeeSessionEntity {
     DateTime? updateTime,
   }) {
     return AiEmployeeSessionEntity(
-      employeeUuid: employeeUuid ?? this.employeeUuid,
+      employeeId: employeeId ?? this.employeeId,
       config: config ?? this.config,
       title: title ?? this.title,
       isArchived: isArchived ?? this.isArchived,
@@ -259,6 +259,6 @@ class AiEmployeeSessionEntity {
 
   @override
   String toString() {
-    return 'AiEmployeeSessionEntity(employeeUuid: $employeeUuid, title: $title, configDevices: ${config.keys.toList()})';
+    return 'AiEmployeeSessionEntity(employeeId: $employeeId, title: $title, configDevices: ${config.keys.toList()})';
   }
 }

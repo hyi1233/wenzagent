@@ -125,8 +125,8 @@ class HiveManager {
   }
 
   /// 构建员工会话索引key
-  String buildEmployeeSessionsKey(String? deviceId, String employeeUuid) {
-    return 'empsess:$deviceId:$employeeUuid';
+  String buildEmployeeSessionsKey(String? deviceId, String employeeId) {
+    return 'empsess:$deviceId:$employeeId';
   }
 
   /// 清空指定设备的数据

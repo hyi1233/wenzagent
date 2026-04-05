@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 
 import '../agent_state.dart';
 import '../i_agent.dart';
@@ -21,7 +21,7 @@ typedef RpcCall =
 /// - 远程模式：通过 RPC 回调调用远程 Agent
 class AgentProxy {
   /// 员工UUID
-  final String employeeUuid;
+  final String employeeId;
 
   /// 是否为本地模式
   final bool isLocalMode;
@@ -43,14 +43,14 @@ class AgentProxy {
   StreamSubscription<Map<String, dynamic>>? _remoteEventSubscription;
 
   /// 创建本地模式 Proxy
-  AgentProxy.local({required this.employeeUuid, required IAgent localAgent})
+  AgentProxy.local({required this.employeeId, required IAgent localAgent})
     : isLocalMode = true,
       _localAgent = localAgent,
       _rpcCall = null;
 
   /// 创建远程模式 Proxy
   AgentProxy.remote({
-    required this.employeeUuid,
+    required this.employeeId,
     required RpcCall rpcCall,
     Stream<Map<String, dynamic>>? remoteEventStream,
   }) : isLocalMode = false,
@@ -96,7 +96,7 @@ class AgentProxy {
     }
     print('[AgentProxy] calling RPC sendMessage');
     final result = await _rpc(AgentRpcConfig.methodSendMessage, {
-      'employeeUuid': employeeUuid,
+      'employeeId': employeeId,
       'messageData': messageData,
     });
     return result['messageId'] as String? ?? '';
@@ -107,7 +107,7 @@ class AgentProxy {
     if (isLocalMode && _localAgent != null) {
       return _localAgent.interrupt();
     }
-    await _rpc(AgentRpcConfig.methodInterrupt, {'employeeUuid': employeeUuid});
+    await _rpc(AgentRpcConfig.methodInterrupt, {'employeeId': employeeId});
   }
 
   /// 撤回消息
@@ -116,7 +116,7 @@ class AgentProxy {
       return _localAgent.revokeMessage(messageId);
     }
     await _rpc(AgentRpcConfig.methodRevokeMessage, {
-      'employeeUuid': employeeUuid,
+      'employeeId': employeeId,
       'messageId': messageId,
     });
   }
@@ -135,7 +135,7 @@ class AgentProxy {
       return _localAgent.getPendingPermissionRequest();
     }
     final result = await _rpc(AgentRpcConfig.methodGetPendingPermission, {
-      'employeeUuid': employeeUuid,
+      'employeeId': employeeId,
     });
     final requestData = result['request'] as Map<String, dynamic>?;
     if (requestData == null) return null;
@@ -149,11 +149,11 @@ class AgentProxy {
   /// [employeeId] 可选，不提供时使用 Agent 当前活跃会话
   Future<List<Map<String, dynamic>>> getSessionMessages() async {
     if (isLocalMode && _localAgent != null) {
-      final uuid = _localAgent.employeeUuid;
+      final uuid = _localAgent.employeeId;
       return _localAgent.getSessionMessages(uuid);
     }
     final result = await _rpc(AgentRpcConfig.methodGetSessionMessages, {
-      'employeeUuid': employeeUuid,
+      'employeeId': employeeId,
     });
     return (result['messages'] as List?)?.cast<Map<String, dynamic>>() ?? [];
   }
@@ -163,7 +163,7 @@ class AgentProxy {
     if (isLocalMode && _localAgent != null) {
       return _localAgent.clearCurrentSession();
     }
-    await _rpc(AgentRpcConfig.methodClearSession, {'employeeUuid': employeeUuid});
+    await _rpc(AgentRpcConfig.methodClearSession, {'employeeId': employeeId});
   }
 
   // ===== 上下文管理 =====
@@ -173,7 +173,7 @@ class AgentProxy {
       return _localAgent.setContext(contextData);
     }
     await _rpc(AgentRpcConfig.methodSetContext, {
-      'employeeUuid': employeeUuid,
+      'employeeId': employeeId,
       'contextData': contextData,
     });
   }
@@ -192,7 +192,7 @@ class AgentProxy {
       return _localAgent.setProvider(providerConfig);
     }
     await _rpc(AgentRpcConfig.methodSetProvider, {
-      'employeeUuid': employeeUuid,
+      'employeeId': employeeId,
       'providerConfig': providerConfig,
     });
   }
@@ -211,7 +211,7 @@ class AgentProxy {
       return _localAgent.setProject(projectData);
     }
     await _rpc(AgentRpcConfig.methodSetProject, {
-      'employeeUuid': employeeUuid,
+      'employeeId': employeeId,
       'projectData': projectData,
     });
   }
@@ -260,7 +260,7 @@ class AgentProxy {
       return _localAgent.respondToPermission(requestId, decision);
     }
     await _rpc(AgentRpcConfig.methodRespondPermission, {
-      'employeeUuid': employeeUuid,
+      'employeeId': employeeId,
       'requestId': requestId,
       'decision': decision.name,
     });
@@ -328,10 +328,10 @@ class AgentProxy {
   void _onRemoteEvent(Map<String, dynamic> eventData) {
     final type = eventData['type'] as String?;
     final data = eventData['data'] as Map<String, dynamic>? ?? {};
-    final eventEmployeeUuid = eventData['employeeUuid'] as String?;
+    final eventEmployeeUuid = eventData['employeeId'] as String?;
 
     // 只处理与当前 Agent 相关的事件
-    if (eventEmployeeUuid != null && eventEmployeeUuid != employeeUuid) {
+    if (eventEmployeeUuid != null && eventEmployeeUuid != employeeId) {
       return;
     }
 
