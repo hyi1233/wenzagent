@@ -67,7 +67,9 @@ class TopicFilterTest {
 
   /// 初始化存储
   Future<void> _initializeStorage() async {
-    final tempDir = await Directory.systemTemp.createTemp('wenzagent_topic_filter_');
+    final tempDir = await Directory.systemTemp.createTemp(
+      'wenzagent_topic_filter_',
+    );
     print('  临时目录: ${tempDir.path}');
     await HiveManager.instance.initialize(storagePath: tempDir.path);
     print('  ✓ Hive 初始化完成');

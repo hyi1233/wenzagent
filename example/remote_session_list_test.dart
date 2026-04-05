@@ -75,7 +75,9 @@ class RemoteSessionListTest {
 
   /// 初始化存储
   Future<void> _initializeStorage() async {
-    final tempDir = await Directory.systemTemp.createTemp('wenzagent_remote_session_');
+    final tempDir = await Directory.systemTemp.createTemp(
+      'wenzagent_remote_session_',
+    );
     print('  临时目录: ${tempDir.path}');
     await HiveManager.instance.initialize(storagePath: tempDir.path);
     print('  ✓ Hive 初始化完成');
@@ -138,12 +140,18 @@ class RemoteSessionListTest {
 
     // 为 Alice 创建会话
     await deviceA.sessionManager.getOrCreateSession(employeeAliceUuid);
-    await deviceA.employeeManager.updateCurrentDeviceId(employeeAliceUuid, deviceAId);
+    await deviceA.employeeManager.updateCurrentDeviceId(
+      employeeAliceUuid,
+      deviceAId,
+    );
     print('  ✓ 为 Alice 创建会话，currentDeviceId = $deviceAId（本地）');
 
     // 为 Bob 创建会话
     await deviceA.sessionManager.getOrCreateSession(employeeBobUuid);
-    await deviceA.employeeManager.updateCurrentDeviceId(employeeBobUuid, deviceAId);
+    await deviceA.employeeManager.updateCurrentDeviceId(
+      employeeBobUuid,
+      deviceAId,
+    );
     print('  ✓ 为 Bob 创建会话，currentDeviceId = $deviceAId（本地）');
 
     // 创建本地 Agent
@@ -211,7 +219,10 @@ class RemoteSessionListTest {
 
     // 为 Charlie 创建会话
     await deviceB.sessionManager.getOrCreateSession(employeeCharlieUuid);
-    await deviceB.employeeManager.updateCurrentDeviceId(employeeCharlieUuid, deviceBId);
+    await deviceB.employeeManager.updateCurrentDeviceId(
+      employeeCharlieUuid,
+      deviceBId,
+    );
     print('  ✓ 为 Charlie 创建会话，currentDeviceId = $deviceBId（本地）');
 
     // 创建本地 Agent
@@ -222,18 +233,24 @@ class RemoteSessionListTest {
   /// 同步数据
   Future<void> _syncData() async {
     // Device-A 同步 Alice 和 Bob 的会话数据到 Device-B
-    final sessionAliceA = await deviceA.sessionManager.getSession(employeeAliceUuid);
+    final sessionAliceA = await deviceA.sessionManager.getSession(
+      employeeAliceUuid,
+    );
     if (sessionAliceA != null) {
       await deviceB.sessionManager.save(sessionAliceA);
     }
-    final sessionBobA = await deviceA.sessionManager.getSession(employeeBobUuid);
+    final sessionBobA = await deviceA.sessionManager.getSession(
+      employeeBobUuid,
+    );
     if (sessionBobA != null) {
       await deviceB.sessionManager.save(sessionBobA);
     }
     print('  ✓ Device-A → Device-B 同步会话数据');
 
     // Device-B 同步 Charlie 的会话数据到 Device-A
-    final sessionCharlieB = await deviceB.sessionManager.getSession(employeeCharlieUuid);
+    final sessionCharlieB = await deviceB.sessionManager.getSession(
+      employeeCharlieUuid,
+    );
     if (sessionCharlieB != null) {
       await deviceA.sessionManager.save(sessionCharlieB);
     }
@@ -242,17 +259,28 @@ class RemoteSessionListTest {
     // 同步员工的 currentDeviceId
     final aliceA = await deviceA.employeeManager.getEmployee(employeeAliceUuid);
     if (aliceA != null && aliceA.currentDeviceId != null) {
-      await deviceB.employeeManager.updateCurrentDeviceId(employeeAliceUuid, aliceA.currentDeviceId!);
+      await deviceB.employeeManager.updateCurrentDeviceId(
+        employeeAliceUuid,
+        aliceA.currentDeviceId!,
+      );
     }
 
     final bobA = await deviceA.employeeManager.getEmployee(employeeBobUuid);
     if (bobA != null && bobA.currentDeviceId != null) {
-      await deviceB.employeeManager.updateCurrentDeviceId(employeeBobUuid, bobA.currentDeviceId!);
+      await deviceB.employeeManager.updateCurrentDeviceId(
+        employeeBobUuid,
+        bobA.currentDeviceId!,
+      );
     }
 
-    final charlieB = await deviceB.employeeManager.getEmployee(employeeCharlieUuid);
+    final charlieB = await deviceB.employeeManager.getEmployee(
+      employeeCharlieUuid,
+    );
     if (charlieB != null && charlieB.currentDeviceId != null) {
-      await deviceA.employeeManager.updateCurrentDeviceId(employeeCharlieUuid, charlieB.currentDeviceId!);
+      await deviceA.employeeManager.updateCurrentDeviceId(
+        employeeCharlieUuid,
+        charlieB.currentDeviceId!,
+      );
     }
     print('  ✓ 同步员工 currentDeviceId');
 
@@ -265,7 +293,9 @@ class RemoteSessionListTest {
     if (bob != null) {
       await deviceB.employeeManager.updateEmployee(bob);
     }
-    final charlie = await deviceB.employeeManager.getEmployee(employeeCharlieUuid);
+    final charlie = await deviceB.employeeManager.getEmployee(
+      employeeCharlieUuid,
+    );
     if (charlie != null) {
       await deviceA.employeeManager.updateEmployee(charlie);
     }
@@ -279,7 +309,9 @@ class RemoteSessionListTest {
     print('\n  [验证] Device-A 会话列表:');
     print('    数量: ${sessionsA.length}');
     for (final session in sessionsA) {
-      final employee = await deviceA.employeeManager.getEmployee(session.employeeUuid);
+      final employee = await deviceA.employeeManager.getEmployee(
+        session.employeeUuid,
+      );
       final currentDeviceId = employee?.currentDeviceId;
       final isLocal = currentDeviceId == deviceAId;
       final isRemote = currentDeviceId != deviceAId;
@@ -294,7 +326,9 @@ class RemoteSessionListTest {
     print('\n  [验证] Device-B 会话列表:');
     print('    数量: ${sessionsB.length}');
     for (final session in sessionsB) {
-      final employee = await deviceB.employeeManager.getEmployee(session.employeeUuid);
+      final employee = await deviceB.employeeManager.getEmployee(
+        session.employeeUuid,
+      );
       final currentDeviceId = employee?.currentDeviceId;
       final isLocal = currentDeviceId == deviceBId;
       final isRemote = currentDeviceId != deviceBId;
@@ -314,12 +348,15 @@ class RemoteSessionListTest {
     print('    相同员工: ${employeeUuidsA.intersection(employeeUuidsB).length} 个');
 
     // 验证两个设备看到的会话列表完全一致
-    assert(sessionsA.length == sessionsB.length,
-           '两个设备的会话数量应该相同');
-    assert(employeeUuidsA.containsAll(employeeUuidsB),
-           'Device-A 应该包含 Device-B 的所有会话');
-    assert(employeeUuidsB.containsAll(employeeUuidsA),
-           'Device-B 应该包含 Device-A 的所有会话');
+    assert(sessionsA.length == sessionsB.length, '两个设备的会话数量应该相同');
+    assert(
+      employeeUuidsA.containsAll(employeeUuidsB),
+      'Device-A 应该包含 Device-B 的所有会话',
+    );
+    assert(
+      employeeUuidsB.containsAll(employeeUuidsA),
+      'Device-B 应该包含 Device-A 的所有会话',
+    );
     print('  ✓ 两个设备的会话列表完全一致');
 
     // 验证具体的会话
@@ -340,11 +377,15 @@ class RemoteSessionListTest {
     assert(aliceB?.currentDeviceId == deviceAId, 'Alice 在 Device-B 上应该是远程');
     print('  ✓ Alice 在 Device-B 上是远程会话');
 
-    final charlieA = await deviceA.employeeManager.getEmployee(employeeCharlieUuid);
+    final charlieA = await deviceA.employeeManager.getEmployee(
+      employeeCharlieUuid,
+    );
     assert(charlieA?.currentDeviceId == deviceBId, 'Charlie 在 Device-A 上应该是远程');
     print('  ✓ Charlie 在 Device-A 上是远程会话');
 
-    final charlieB = await deviceB.employeeManager.getEmployee(employeeCharlieUuid);
+    final charlieB = await deviceB.employeeManager.getEmployee(
+      employeeCharlieUuid,
+    );
     assert(charlieB?.currentDeviceId == deviceBId, 'Charlie 在 Device-B 上应该是本地');
     print('  ✓ Charlie 在 Device-B 上是本地会话');
 

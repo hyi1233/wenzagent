@@ -65,8 +65,10 @@ class LanHostServiceImpl implements LanHostService {
     await _cacheService.ensureInitialized(storageDir: storageDir);
     _cacheService.cleanup();
 
-    final handler =
-        shelf.Cascade().add(_webSocketHandler()).add(_httpHandler()).handler;
+    final handler = shelf.Cascade()
+        .add(_webSocketHandler())
+        .add(_httpHandler())
+        .handler;
 
     _server = await shelf_io.serve(handler, InternetAddress.anyIPv4, port);
     _port = _server?.port ?? port; // 使用实际分配的端口
@@ -173,23 +175,21 @@ class LanHostServiceImpl implements LanHostService {
   shelf.Handler _webSocketHandler() {
     return webSocketHandler((WebSocketChannel channel, String? subprotocol) {
       final clientId = _uuid.v4();
-      final client = LanClient(
-        id: clientId,
-        connectedAt: DateTime.now(),
-      );
+      final client = LanClient(id: clientId, connectedAt: DateTime.now());
 
       _clients.add(client);
       _clientChannels.add(channel);
 
       _sendToChannel(
-          channel,
-          LanMessage(
-            id: _uuid.v4(),
-            type: LanMessageType.clientInfo,
-            fromId: _myId,
-            fromName: 'Host',
-            content: 'request_info',
-          ));
+        channel,
+        LanMessage(
+          id: _uuid.v4(),
+          type: LanMessageType.clientInfo,
+          fromId: _myId,
+          fromName: 'Host',
+          content: 'request_info',
+        ),
+      );
 
       channel.stream.listen(
         (data) {
@@ -200,8 +200,10 @@ class LanHostServiceImpl implements LanHostService {
         },
         onDone: () {
           final clientName = _clients
-              .firstWhere((c) => c.id == clientId,
-                  orElse: () => LanClient(id: clientId))
+              .firstWhere(
+                (c) => c.id == clientId,
+                orElse: () => LanClient(id: clientId),
+              )
               .name;
           _clients.removeWhere((c) => c.id == clientId);
           _clientChannels.remove(channel);
@@ -247,10 +249,7 @@ class LanHostServiceImpl implements LanHostService {
         contentLength,
       );
 
-      return shelf.Response.ok(jsonEncode({
-        'status': 'ok',
-        'fileId': fileId,
-      }));
+      return shelf.Response.ok(jsonEncode({'status': 'ok', 'fileId': fileId}));
     } catch (e) {
       return shelf.Response.internalServerError(
         body: jsonEncode({'status': 'error', 'message': '$e'}),
@@ -293,7 +292,9 @@ class LanHostServiceImpl implements LanHostService {
       // 根据 topic 过滤设备
       var filteredClients = _clients;
       if (topicFilter != null && topicFilter.isNotEmpty) {
-        filteredClients = _clients.where((client) => client.topic == topicFilter).toList();
+        filteredClients = _clients
+            .where((client) => client.topic == topicFilter)
+            .toList();
       }
 
       final devices = filteredClients.map((client) {
@@ -334,7 +335,10 @@ class LanHostServiceImpl implements LanHostService {
 
         // 断线重连时清理同一 deviceId 的旧连接
         if (newDeviceId != null && newDeviceId.isNotEmpty) {
-          _removeStaleClientsWithDeviceId(newDeviceId, excludeClientId: clientId);
+          _removeStaleClientsWithDeviceId(
+            newDeviceId,
+            excludeClientId: clientId,
+          );
         }
 
         _clients[idx] = _clients[idx].copyWith(
@@ -384,7 +388,11 @@ class LanHostServiceImpl implements LanHostService {
 
   /// 定向转发消息
   void _forwardMessage(
-      String fromClientId, LanMessage msg, String? topic, String data) {
+    String fromClientId,
+    LanMessage msg,
+    String? topic,
+    String data,
+  ) {
     // 优先检查消息顶层的 toDeviceId
     String? toDeviceId = msg.toDeviceId;
 
@@ -426,11 +434,14 @@ class LanHostServiceImpl implements LanHostService {
     } catch (_) {}
   }
 
-  void _removeStaleClientsWithDeviceId(String deviceId,
-      {required String excludeClientId}) {
+  void _removeStaleClientsWithDeviceId(
+    String deviceId, {
+    required String excludeClientId,
+  }) {
     final staleIndices = <int>[];
     for (int i = 0; i < _clients.length; i++) {
-      if (_clients[i].deviceId == deviceId && _clients[i].id != excludeClientId) {
+      if (_clients[i].deviceId == deviceId &&
+          _clients[i].id != excludeClientId) {
         staleIndices.add(i);
       }
     }
@@ -441,12 +452,15 @@ class LanHostServiceImpl implements LanHostService {
       final staleChannel = _clientChannels[idx];
       // 先发送被踢下线消息
       try {
-        _sendToChannel(staleChannel, LanMessage(
-          id: _uuid.v4(),
-          type: LanMessageType.system,
-          content: 'kicked:duplicate_login',
-          timestamp: DateTime.now(),
-        ));
+        _sendToChannel(
+          staleChannel,
+          LanMessage(
+            id: _uuid.v4(),
+            type: LanMessageType.system,
+            content: 'kicked:duplicate_login',
+            timestamp: DateTime.now(),
+          ),
+        );
       } catch (_) {}
       _clients.removeAt(idx);
       _clientChannels.removeAt(idx);
@@ -460,12 +474,14 @@ class LanHostServiceImpl implements LanHostService {
   }
 
   void _addSystemMessage(String text) {
-    _messageController.add(LanMessage(
-      id: _uuid.v4(),
-      type: LanMessageType.system,
-      content: text,
-      timestamp: DateTime.now(),
-    ));
+    _messageController.add(
+      LanMessage(
+        id: _uuid.v4(),
+        type: LanMessageType.system,
+        content: text,
+        timestamp: DateTime.now(),
+      ),
+    );
   }
 
   Future<String?> _getLocalIp() async {
