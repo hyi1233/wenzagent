@@ -40,6 +40,14 @@ class MessageStore {
       }
     }
 
+    // 按 createTime 排序，时间相同时按 uuid 排序保证稳定性
+    // 这与 wenzflow 中的排序逻辑保持一致
+    messages.sort((a, b) {
+      final timeCompare = a.createTime.compareTo(b.createTime);
+      if (timeCompare != 0) return timeCompare;
+      return a.uuid.compareTo(b.uuid);
+    });
+
     return messages;
   }
 

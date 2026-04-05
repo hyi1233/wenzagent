@@ -84,9 +84,20 @@ class PersistentChatAdapter extends LangChainChatAdapter {
                 // ✅ 创建 MessageWrapper，使用数据库中的稳定 UUID
                 // 注意：数据库中使用 'uuid' 字段，而不是 'id'
                 final msgId = (msgData['uuid'] ?? msgData['id']) as String?;
-                final msgCreatedAt = msgData['createdAt'] is String
-                    ? DateTime.parse(msgData['createdAt'] as String)
-                    : DateTime.now();
+                
+                // 兼容 createTime 和 createdAt 两种字段名
+                // 数据库实体 toMap() 使用 createTime，内存消息使用 createdAt
+                dynamic msgCreateTimeValue = msgData['createTime'] ?? msgData['createdAt'];
+                DateTime msgCreatedAt;
+                if (msgCreateTimeValue is String) {
+                  msgCreatedAt = DateTime.parse(msgCreateTimeValue);
+                } else if (msgCreateTimeValue is int) {
+                  msgCreatedAt = DateTime.fromMillisecondsSinceEpoch(msgCreateTimeValue);
+                } else if (msgCreateTimeValue is DateTime) {
+                  msgCreatedAt = msgCreateTimeValue;
+                } else {
+                  msgCreatedAt = DateTime.now();
+                }
 
                 if (msgId != null) {
                   // 使用 MessageWrapper 创建方法，传入稳定的 UUID
