@@ -158,6 +158,14 @@ class AgentProxy {
     return (result['messages'] as List?)?.cast<Map<String, dynamic>>() ?? [];
   }
 
+  /// 清空当前会话
+  Future<void> clearCurrentSession() async {
+    if (isLocalMode && _localAgent != null) {
+      return _localAgent.clearCurrentSession();
+    }
+    await _rpc(AgentRpcConfig.methodClearSession, {'employeeUuid': employeeUuid});
+  }
+
   // ===== 上下文管理 =====
 
   Future<void> setContext(Map<String, dynamic> contextData) async {

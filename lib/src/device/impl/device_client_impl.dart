@@ -636,6 +636,10 @@ class DeviceClientImpl implements DeviceClient {
         error: error,
       );
     };
+
+    adapter.deleteMessagesCallback = (employeeId) async {
+      await _messageStoreService.deleteMessages(employeeId);
+    };
   }
 
   AiEmployeeMessageEntity _mapToMessageEntity(Map<String, dynamic> message) {

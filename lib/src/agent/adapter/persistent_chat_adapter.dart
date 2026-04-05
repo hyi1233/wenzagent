@@ -14,6 +14,7 @@ typedef PersistSessionFunc = Future<void> Function(Map<String, dynamic> session)
 typedef LoadSessionFunc = Future<Map<String, dynamic>?> Function(String employeeId);
 typedef LoadMessagesFunc = Future<List<Map<String, dynamic>>> Function(String employeeId);
 typedef UpdateMessageStatusFunc = Future<void> Function(String messageId, AgentMessageStatus status, {String? error});
+typedef DeleteMessagesFunc = Future<void> Function(String employeeId);
 
 /// 持久化聊天适配器
 ///
@@ -34,6 +35,9 @@ class PersistentChatAdapter extends LangChainChatAdapter {
 
   /// 更新消息状态回调
   UpdateMessageStatusFunc? updateMessageStatusCallback;
+
+  /// 删除消息回调
+  DeleteMessagesFunc? deleteMessagesCallback;
 
   /// 已持久化的消息 ID 集合（避免重复持久化）
   final Set<String> _persistedMessageIds = {};
@@ -99,6 +103,20 @@ class PersistentChatAdapter extends LangChainChatAdapter {
   @override
   Future<void> clearCurrentSession() async {
     await super.clearCurrentSession();
+
+    // 删除 Hive 中的消息
+    if (deleteMessagesCallback != null && currentSessionUuid != null) {
+      try {
+        await deleteMessagesCallback!(currentSessionUuid!);
+        print('[PersistentChatAdapter] clearCurrentSession: 已删除 Hive 中的消息');
+      } catch (e) {
+        print('[PersistentChatAdapter] clearCurrentSession: 删除 Hive 消息失败: $e');
+      }
+    }
+
+    // 清空已持久化消息 ID 集合
+    _persistedMessageIds.clear();
+
     await _notifyPersistSession();
   }
 
@@ -154,12 +172,23 @@ class PersistentChatAdapter extends LangChainChatAdapter {
         print('[PersistentChatAdapter] response: ${response.isDone ? "DONE" : response.error != null ? "ERROR: ${response.error}" : "CHUNK: ${response.content?.substring(0, (response.content?.length ?? 0).clamp(0, 30))}"}');
         yield response;
 
-        // 流完成后持久化新消息
-        if (response.isDone) {
-          print('[PersistentChatAdapter] persisting new messages, before: $messagesBefore, after: ${currentMessages.length}');
+        // 立即持久化新增的消息（包括用户消息）
+        final messagesNow = currentMessages.length;
+        if (messagesNow > messagesBefore) {
+          print('[PersistentChatAdapter] persisting new messages immediately, before: $messagesBefore, now: $messagesNow');
           await _persistNewMessages(messagesBefore);
         }
       }
+
+      // 流完成后再次检查是否有新消息
+      final messagesAfter = currentMessages.length;
+      if (messagesAfter > messagesBefore) {
+        print('[PersistentChatAdapter] stream completed, persisting any remaining messages');
+        await _persistNewMessages(messagesBefore);
+      }
+    } catch (e) {
+      print('[PersistentChatAdapter] error in streamMessage: $e');
+      rethrow;
     } finally {
       // 确保无论流如何结束，都持久化新增的消息
       // 这处理了父类在异常情况下提前 return 的情况
@@ -263,15 +292,39 @@ class PersistentChatAdapter extends LangChainChatAdapter {
 
     // 解析 toolCalls
     List<AIChatMessageToolCall>? parsedToolCalls;
-    final toolCalls = map['toolCalls'] as List?;
-    if (toolCalls != null && toolCalls.isNotEmpty) {
-      parsedToolCalls = toolCalls.map((tc) {
+    final toolCalls = map['toolCalls'];
+    List<dynamic>? toolCallsList;
+
+    // toolCalls 可能是 List（来自内存）或 String（来自 Hive JSON 字符串）
+    if (toolCalls is List && toolCalls.isNotEmpty) {
+      toolCallsList = toolCalls;
+    } else if (toolCalls is String && toolCalls.isNotEmpty) {
+      try {
+        toolCallsList = jsonDecode(toolCalls) as List<dynamic>;
+      } catch (e) {
+        print('[PersistentChatAdapter] _mapToChatMessage: 解析 toolCalls 失败: $e');
+      }
+    }
+
+    if (toolCallsList != null && toolCallsList.isNotEmpty) {
+      parsedToolCalls = toolCallsList.map((tc) {
         final tcMap = tc as Map<String, dynamic>;
-        final argsStr = tcMap['arguments'] as String? ?? '{}';
+
+        // arguments 可能是 String（JSON字符串）或 Map（已解析）
+        String argsStr = '{}';
         Map<String, dynamic> argsMap = {};
-        try {
-          argsMap = jsonDecode(argsStr) as Map<String, dynamic>? ?? {};
-        } catch (_) {}
+
+        final args = tcMap['arguments'];
+        if (args is String && args.isNotEmpty) {
+          argsStr = args;
+          try {
+            argsMap = jsonDecode(args) as Map<String, dynamic>? ?? {};
+          } catch (_) {}
+        } else if (args is Map) {
+          argsMap = args as Map<String, dynamic>;
+          argsStr = jsonEncode(args);
+        }
+
         return AIChatMessageToolCall(
           id: tcMap['id'] as String? ?? '',
           name: tcMap['name'] as String? ?? '',

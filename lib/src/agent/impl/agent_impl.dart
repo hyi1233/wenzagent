@@ -448,6 +448,7 @@ class AgentImpl implements IAgent {
     required AgentMessageStatus status,
     String? error,
   }) {
+    if (_status == AgentStatus.disposed) return;
     _eventController.add({
       'type': 'messageStatusChanged',
       'data': {
