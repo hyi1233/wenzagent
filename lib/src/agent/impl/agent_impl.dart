@@ -2,6 +2,7 @@ import 'dart:async';
 
 import '../agent_state.dart';
 import '../i_agent.dart';
+import '../processor/interrupt_judge.dart';
 import '../processor/message_processor.dart';
 import '../tool/agent_tool.dart';
 import '../tool/builtin/builtin_tools.dart';
@@ -141,6 +142,11 @@ class AgentImpl implements IAgent {
     });
 
     // 初始化消息处理调度器
+    // 创建打断判断器
+    final interruptJudge = InterruptJudge((prompt) async {
+      return await _chatAdapter.invokeOnce(prompt);
+    });
+
     _processor = MessageProcessor(
       streamMessage: (messageId, messageData, {cancellationToken}) {
         return _chatAdapter
@@ -156,6 +162,7 @@ class AgentImpl implements IAgent {
             );
       },
       stopStreaming: () => _chatAdapter.stopStreaming(),
+      interruptJudge: interruptJudge,
     );
 
     // 监听处理器状态变更

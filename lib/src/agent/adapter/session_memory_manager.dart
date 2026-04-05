@@ -1,4 +1,45 @@
 import 'package:langchain_core/chat_models.dart';
+import 'package:uuid/uuid.dart';
+
+/// 带有UUID的消息包装器
+class MessageWrapper {
+  final String uuid;
+  final ChatMessage message;
+  final DateTime createdAt;
+
+  MessageWrapper({
+    required this.uuid,
+    required this.message,
+    required this.createdAt,
+  });
+
+  /// 创建新的MessageWrapper（自动生成UUID）
+  factory MessageWrapper.create(ChatMessage message) {
+    return MessageWrapper(
+      uuid: const Uuid().v4(),
+      message: message,
+      createdAt: DateTime.now(),
+    );
+  }
+
+  /// 从Map创建
+  factory MessageWrapper.fromMap(Map<String, dynamic> map) {
+    return MessageWrapper(
+      uuid: map['uuid'] as String,
+      message: ChatMessage.fromMap(map['message'] as Map<String, dynamic>),
+      createdAt: map['createdAt'] != null
+          ? DateTime.parse(map['createdAt'] as String)
+          : DateTime.now(),
+    );
+  }
+
+  /// 转换为Map
+  Map<String, dynamic> toMap() => {
+    'uuid': uuid,
+    'message': message.toMap(),
+    'createdAt': createdAt.toIso8601String(),
+  };
+}
 
 /// 会话消息历史
 class SessionHistory {
@@ -7,8 +48,8 @@ class SessionHistory {
   final DateTime createdAt;
 
   /// 消息映射：按设备ID区分不同设备的消息记录
-  /// key: deviceId, value: 该设备上的消息列表
-  final Map<String, List<ChatMessage>> messagesMap;
+  /// key: deviceId, value: 该设备上的消息列表（使用MessageWrapper保持稳定ID）
+  final Map<String, List<MessageWrapper>> messagesMap;
 
   /// 缓存的 LLM 生成的对话摘要
   String? conversationSummary;
@@ -20,15 +61,15 @@ class SessionHistory {
     required this.employeeUuid,
     this.title,
     DateTime? createdAt,
-    Map<String, List<ChatMessage>>? messagesMap,
+    Map<String, List<MessageWrapper>>? messagesMap,
     this.conversationSummary,
     this.summarizedUpToIndex = 0,
   }) : createdAt = createdAt ?? DateTime.now(),
        messagesMap = messagesMap ?? {};
 
   /// 获取所有设备的所有消息（合并）
-  List<ChatMessage> get allMessages {
-    final all = <ChatMessage>[];
+  List<MessageWrapper> get allMessages {
+    final all = <MessageWrapper>[];
     // 按设备ID排序，保持一致性
     final sortedDeviceIds = messagesMap.keys.toList()..sort();
     for (final deviceId in sortedDeviceIds) {
@@ -38,13 +79,20 @@ class SessionHistory {
   }
 
   /// 获取指定设备的消息列表
-  List<ChatMessage> getMessagesForDevice(String deviceId) {
+  List<MessageWrapper> getMessagesForDevice(String deviceId) {
     return messagesMap[deviceId] ?? [];
   }
 
   /// 添加消息到指定设备
   void addMessage(String deviceId, ChatMessage message) {
-    messagesMap.putIfAbsent(deviceId, () => []).add(message);
+    messagesMap.putIfAbsent(deviceId, () => []).add(
+      MessageWrapper.create(message),
+    );
+  }
+
+  /// 添加MessageWrapper到指定设备（用于从数据库恢复）
+  void addMessageWrapper(String deviceId, MessageWrapper wrapper) {
+    messagesMap.putIfAbsent(deviceId, () => []).add(wrapper);
   }
 
   /// 清空所有设备的消息
@@ -83,13 +131,13 @@ class SessionHistory {
   /// 从 Map 创建
   static SessionHistory fromMap(Map<String, dynamic> map) {
     final messagesMapData = map['messagesMap'] as Map? ?? {};
-    final messagesMap = <String, List<ChatMessage>>{};
+    final messagesMap = <String, List<MessageWrapper>>{};
 
     for (final entry in messagesMapData.entries) {
       final deviceId = entry.key as String;
       final messagesList = entry.value as List? ?? [];
       messagesMap[deviceId] = messagesList
-          .map((m) => ChatMessage.fromMap(m as Map<String, dynamic>))
+          .map((m) => MessageWrapper.fromMap(m as Map<String, dynamic>))
           .toList();
     }
 
@@ -143,7 +191,10 @@ class SessionMemoryManager {
   ) {
     final session = _sessions[employeeUuid];
     if (session == null) return [];
-    return session.getMessagesForDevice(deviceId);
+    // 从 MessageWrapper 列表中提取 ChatMessage
+    return session.getMessagesForDevice(deviceId)
+        .map((wrapper) => wrapper.message)
+        .toList();
   }
 
   /// 清空会话在指定设备上的消息
@@ -194,7 +245,10 @@ class SessionMemoryManager {
     // 添加历史消息（已包含最新的用户消息）
     final session = _sessions[employeeUuid];
     if (session != null) {
-      messages.addAll(session.allMessages);
+      // 从 MessageWrapper 列表中提取 ChatMessage
+      messages.addAll(
+        session.allMessages.map((wrapper) => wrapper.message).toList(),
+      );
     }
 
     return messages;

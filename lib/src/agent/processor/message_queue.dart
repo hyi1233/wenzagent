@@ -67,4 +67,7 @@ class MessageQueue {
 
   /// 获取所有消息ID
   List<String> get messageIds => _queue.map((item) => item.messageId).toList();
+
+  /// 获取队列中所有项的只读副本
+  List<MessageQueueItem> get items => List.unmodifiable(_queue);
 }

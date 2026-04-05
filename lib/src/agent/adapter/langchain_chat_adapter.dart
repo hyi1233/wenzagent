@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:langchain_core/chat_models.dart';
 import 'package:langchain_core/prompts.dart';
 import 'package:meta/meta.dart';
-import 'package:uuid/uuid.dart';
 
 import '../agent_state.dart';
 import '../processor/cancellation_token.dart';
@@ -25,8 +24,6 @@ const int _maxToolCallIterations = 25;
 /// 支持 OpenAI 等多种 LLM 提供商。
 /// 支持 LLM Function Calling (Tool Use)。
 class LangChainChatAdapter implements IChatAdapter {
-  final Uuid _uuid = const Uuid();
-
   /// ChatModel 实例
   BaseChatModel? _chatModel;
 
@@ -76,7 +73,7 @@ class LangChainChatAdapter implements IChatAdapter {
     final session = memoryManager.getSession(currentEmployeeUuid!);
     if (session == null) return [];
 
-    return session.allMessages.map(_chatMessageToMap).toList();
+    return session.allMessages.map(_messageWrapperToMap).toList();
   }
 
   @override
@@ -150,9 +147,13 @@ class LangChainChatAdapter implements IChatAdapter {
       if (_compressor != null) {
         final session = memoryManager.getSession(currentEmployeeUuid!);
         if (session != null) {
+          // 从 MessageWrapper 列表中提取 ChatMessage
+          final chatMessages = session.allMessages
+              .map((wrapper) => wrapper.message)
+              .toList();
           await _compressor!.prepareCompression(
             employeeId: currentEmployeeUuid!,
-            allMessages: session.allMessages,
+            allMessages: chatMessages,
             session: session,
             systemPrompt: systemPrompt,
           );
@@ -171,9 +172,13 @@ class LangChainChatAdapter implements IChatAdapter {
         final List<ChatMessage> messages;
         if (_compressor != null) {
           final session = memoryManager.getSession(currentEmployeeUuid!);
+          // ✅ 从 MessageWrapper 列表中提取 ChatMessage
+          final chatMessages = session?.allMessages
+              .map((wrapper) => wrapper.message)
+              .toList() ?? [];
           messages = _compressor!.buildCompressedMessages(
             employeeId: currentEmployeeUuid!,
-            allMessages: session?.allMessages ?? [],
+            allMessages: chatMessages,
             systemPrompt: systemPrompt,
           );
         } else {
@@ -399,7 +404,8 @@ class LangChainChatAdapter implements IChatAdapter {
     final session = memoryManager.getSession(employeeId);
     if (session == null) return [];
 
-    return session.allMessages.map(_chatMessageToMap).toList();
+    // ✅ 使用 _messageWrapperToMap 而不是 _chatMessageToMap
+    return session.allMessages.map(_messageWrapperToMap).toList();
   }
 
   @override
@@ -490,6 +496,17 @@ class LangChainChatAdapter implements IChatAdapter {
   }
 
   @override
+  Future<String> invokeOnce(String prompt) async {
+    if (_chatModel == null) {
+      throw Exception('未配置 LLM Provider');
+    }
+    final result = await _chatModel!.invoke(
+      PromptValue.chat([ChatMessage.humanText(prompt)]),
+    );
+    return result.output.content;
+  }
+
+  @override
   Future<void> dispose() async {
     await stopStreaming();
     memoryManager.dispose();
@@ -530,8 +547,10 @@ class LangChainChatAdapter implements IChatAdapter {
     return parts.isEmpty ? null : parts.join('\n\n');
   }
 
-  /// ChatMessage 转换为 Map
-  Map<String, dynamic> _chatMessageToMap(ChatMessage message) {
+  /// 将 MessageWrapper 转换为 Map（用于持久化）
+  Map<String, dynamic> _messageWrapperToMap(MessageWrapper wrapper) {
+    final message = wrapper.message;
+
     // 获取消息类型
     final type = switch (message) {
       SystemChatMessage() => 'system',
@@ -544,15 +563,16 @@ class LangChainChatAdapter implements IChatAdapter {
     // 获取内容
     final content = message.contentAsString;
 
+    // ✅ 使用 MessageWrapper 的稳定 UUID，而不是每次生成新 ID
     final map = <String, dynamic>{
-      'id': 'msg-${_uuid.v4().substring(0, 8)}',
+      'id': wrapper.uuid,
       'role': type == 'human'
           ? 'user'
           : type == 'ai'
           ? 'assistant'
           : type,
       'content': content,
-      'createdAt': DateTime.now().toIso8601String(),
+      'createdAt': wrapper.createdAt.toIso8601String(),
     };
 
     // AI 消息附加 toolCalls 信息

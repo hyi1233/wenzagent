@@ -1,9 +1,10 @@
 import '../agent_state.dart';
-import '../tool/agent_tool.dart';
 import '../tool/permission_manager.dart';
 import '../tool/tool_registry.dart';
 import 'cancellation_token.dart';
+import 'interrupt_judge.dart';
 import 'message_queue.dart';
+import 'message_tracker.dart';
 
 /// 流式响应
 ///
@@ -159,6 +160,9 @@ abstract class IChatAdapter {
     String? error,
   });
 
+  /// 一次性 LLM 调用（不保留对话历史，不影响流式状态）
+  Future<String> invokeOnce(String prompt);
+
   /// 释放资源
   Future<void> dispose();
 }
@@ -189,6 +193,15 @@ class MessageProcessor {
 
   AgentStatus _status = AgentStatus.idle;
 
+  /// 打断判断器（可选）
+  final InterruptJudge? _interruptJudge;
+
+  /// 消息追踪器
+  final MessageTracker _tracker = MessageTracker();
+
+  /// 是否正在进行打断判断（防止并发）
+  bool _isJudging = false;
+
   /// 状态变更回调
   void Function(AgentStatus status)? onStateChanged;
 
@@ -198,8 +211,10 @@ class MessageProcessor {
   MessageProcessor({
     required StreamMessageFunc streamMessage,
     required Future<void> Function() stopStreaming,
+    InterruptJudge? interruptJudge,
   }) : _streamMessage = streamMessage,
-       _stopStreaming = stopStreaming;
+       _stopStreaming = stopStreaming,
+       _interruptJudge = interruptJudge;
 
   /// 当前处理中的消息ID
   String? get currentProcessingMessageId => _currentProcessingMessageId;
@@ -212,6 +227,9 @@ class MessageProcessor {
 
   /// 当前状态
   AgentStatus get status => _status;
+
+  /// 获取所有追踪的消息（只读）
+  List<TrackedMessage> get allTrackedMessages => _tracker.allMessages;
 
   /// 提交消息到队列
   Future<void> submitMessage(
@@ -227,15 +245,50 @@ class MessageProcessor {
       messageData: messageData,
     );
 
+    // 1. 追踪消息
+    _tracker.track(messageId, messageData);
+
+    // 2. 入队
     _queue.enqueue(item);
     onMessageStatusChanged?.call(messageId, AgentMessageStatus.queued);
     print('[MessageProcessor] message queued, queue length: ${_queue.length}');
     print('[MessageProcessor] current status: $_status');
 
-    // 如果当前没有在处理，开始处理
+    // 3. 如果空闲，直接处理（无需打断判断）
     if (_status == AgentStatus.idle) {
       print('[MessageProcessor] status is idle, calling _processNext');
       _processNext();
+      return;
+    }
+
+    // 4. 当前有消息在处理 → 尝试打断判断
+    if (_interruptJudge != null && !_isJudging) {
+      _isJudging = true;
+      try {
+        final processing = _tracker.getProcessingMessage();
+        final queued = _tracker.getQueuedMessages();
+        if (processing != null && queued.isNotEmpty) {
+          print('[MessageProcessor] running interrupt judgment...');
+          final result = await _interruptJudge.shouldInterrupt(
+            currentProcessing: processing,
+            queuedMessages: queued,
+          );
+          print('[MessageProcessor] interrupt judgment result: $result');
+
+          if (result.decision == InterruptDecision.interrupt && result.targetMessageId != null) {
+            // 验证 targetMessageId 仍然是当前处理的消息
+            // 防止判断期间消息已经完成或状态变化导致打断错误的消息
+            if (_currentProcessingMessageId == result.targetMessageId) {
+              print('[MessageProcessor] interrupting message: $_currentProcessingMessageId');
+              await interruptCurrentTask();
+            } else {
+              print('[MessageProcessor] targetMessageId mismatch, skipping interrupt');
+            }
+          }
+        }
+      } finally {
+        _isJudging = false;
+      }
     }
   }
 
@@ -251,6 +304,7 @@ class MessageProcessor {
         _currentProcessingMessageId!,
         AgentMessageStatus.interrupted,
       );
+      _tracker.updateStatus(_currentProcessingMessageId!, AgentMessageStatus.interrupted);
     }
 
     _currentProcessingMessageId = null;
@@ -266,6 +320,7 @@ class MessageProcessor {
     if (_queue.contains(messageId)) {
       _queue.revoke(messageId);
       onMessageStatusChanged?.call(messageId, AgentMessageStatus.revoked);
+      _tracker.updateStatus(messageId, AgentMessageStatus.revoked);
     }
   }
 
@@ -305,6 +360,7 @@ class MessageProcessor {
     _currentCancellationToken = CancellationToken();
     _setStatus(AgentStatus.processing);
     onMessageStatusChanged?.call(item.messageId, AgentMessageStatus.processing);
+    _tracker.updateStatus(item.messageId, AgentMessageStatus.processing); // 同步追踪器状态
 
     _processMessage(item.messageId, item.messageData);
   }
@@ -337,6 +393,7 @@ class MessageProcessor {
             AgentMessageStatus.failed,
             error: response.error,
           );
+          _tracker.updateStatus(messageId, AgentMessageStatus.failed);
           _finishProcessing();
           return;
         }
@@ -351,6 +408,7 @@ class MessageProcessor {
         if (response.isDone) {
           print('[MessageProcessor] message completed: $messageId');
           onMessageStatusChanged?.call(messageId, AgentMessageStatus.completed);
+          _tracker.updateStatus(messageId, AgentMessageStatus.completed);
           _finishProcessing();
           return;
         }
@@ -359,6 +417,7 @@ class MessageProcessor {
       // 流正常结束
       if (!_disposed && _currentProcessingMessageId == messageId) {
         onMessageStatusChanged?.call(messageId, AgentMessageStatus.completed);
+        _tracker.updateStatus(messageId, AgentMessageStatus.completed);
         _finishProcessing();
       }
     } catch (e) {
@@ -369,6 +428,7 @@ class MessageProcessor {
           AgentMessageStatus.failed,
           error: e.toString(),
         );
+        _tracker.updateStatus(messageId, AgentMessageStatus.failed);
         _finishProcessing();
       }
     }
