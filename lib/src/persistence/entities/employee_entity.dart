@@ -57,6 +57,11 @@ class AiEmployeeEntity {
   /// 当前所在设备ID（员工上线时绑定）
   String? deviceId;
 
+  /// 当前会话所在设备ID（会话漫游）
+  /// 用于判断会话是本地还是远程
+  /// 与Session.config的设备配置配合使用
+  String? currentDeviceId;
+
   /// 是否自动批准
   int autoApprove;
 
@@ -94,6 +99,7 @@ class AiEmployeeEntity {
     this.mcpConfig,
     this.permissionConfig,
     this.deviceId,
+    this.currentDeviceId,
     this.autoApprove = 0,
     this.sortOrder = 0,
     this.isPinned = 0,
@@ -123,6 +129,7 @@ class AiEmployeeEntity {
       mcpConfig: map['mcpConfig'] as String?,
       permissionConfig: map['permissionConfig'] as String?,
       deviceId: map['deviceId'] as String?,
+      currentDeviceId: map['currentDeviceId'] as String?,
       autoApprove: map['autoApprove'] as int? ?? 0,
       sortOrder: map['sortOrder'] as int? ?? 0,
       isPinned: map['isPinned'] as int? ?? 0,
@@ -157,6 +164,7 @@ class AiEmployeeEntity {
       'mcpConfig': mcpConfig,
       'permissionConfig': permissionConfig,
       'deviceId': deviceId,
+      'currentDeviceId': currentDeviceId,
       'autoApprove': autoApprove,
       'sortOrder': sortOrder,
       'isPinned': isPinned,
@@ -186,6 +194,7 @@ class AiEmployeeEntity {
     String? mcpConfig,
     String? permissionConfig,
     String? deviceId,
+    String? currentDeviceId,
     int? autoApprove,
     int? sortOrder,
     int? isPinned,
@@ -212,6 +221,7 @@ class AiEmployeeEntity {
       mcpConfig: mcpConfig ?? this.mcpConfig,
       permissionConfig: permissionConfig ?? this.permissionConfig,
       deviceId: deviceId ?? this.deviceId,
+      currentDeviceId: currentDeviceId ?? this.currentDeviceId,
       autoApprove: autoApprove ?? this.autoApprove,
       sortOrder: sortOrder ?? this.sortOrder,
       isPinned: isPinned ?? this.isPinned,

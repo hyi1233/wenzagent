@@ -339,11 +339,13 @@ class McpServerConfig {
 
       if (value is Map<String, dynamic>) {
         // 从旧格式转换
-        result.add(McpServerConfig.fromMap({
-          'name': serverName,
-          'transportType': 'stdio',
-          ...value,
-        }));
+        result.add(
+          McpServerConfig.fromMap({
+            'name': serverName,
+            'transportType': 'stdio',
+            ...value,
+          }),
+        );
       }
     }
 

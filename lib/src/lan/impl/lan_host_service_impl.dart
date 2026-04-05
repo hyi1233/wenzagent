@@ -69,7 +69,7 @@ class LanHostServiceImpl implements LanHostService {
         shelf.Cascade().add(_webSocketHandler()).add(_httpHandler()).handler;
 
     _server = await shelf_io.serve(handler, InternetAddress.anyIPv4, port);
-    _port = port; // 更新为实际分配的端口
+    _port = _server?.port ?? port; // 使用实际分配的端口
 
     _addSystemMessage('服务端已启动，IP: $_localIp:$_port');
   }
@@ -217,10 +217,14 @@ class LanHostServiceImpl implements LanHostService {
 
   shelf.Handler _httpHandler() {
     return (shelf.Request request) async {
-      if (request.method == 'POST' && request.url.path == 'upload') {
+      final path = request.url.path;
+
+      if (request.method == 'POST' && path == 'upload') {
         return await _handleFileUpload(request);
-      } else if (request.method == 'GET' && request.url.path == 'download') {
+      } else if (request.method == 'GET' && path == 'download') {
         return await _handleFileDownload(request);
+      } else if (request.method == 'GET' && path == 'api/devices/online') {
+        return await _handleGetOnlineDevices(request);
       }
       return shelf.Response.notFound('Not found');
     };
@@ -278,6 +282,41 @@ class LanHostServiceImpl implements LanHostService {
         'content-length': '${metadata.fileSize}',
       },
     );
+  }
+
+  /// 处理获取在线设备列表的 HTTP 请求
+  Future<shelf.Response> _handleGetOnlineDevices(shelf.Request request) async {
+    try {
+      // 获取 topic 查询参数（可选）
+      final topicFilter = request.url.queryParameters['topic'];
+
+      // 根据 topic 过滤设备
+      var filteredClients = _clients;
+      if (topicFilter != null && topicFilter.isNotEmpty) {
+        filteredClients = _clients.where((client) => client.topic == topicFilter).toList();
+      }
+
+      final devices = filteredClients.map((client) {
+        return {
+          'id': client.deviceId,
+          'name': client.name,
+          'ip': client.ip,
+          'topic': client.topic,
+          'connectedAt': client.connectedAt?.toIso8601String(),
+          'isHost': false,
+        };
+      }).toList();
+
+      return shelf.Response.ok(
+        jsonEncode({'devices': devices}),
+        headers: {'Content-Type': 'application/json'},
+      );
+    } catch (e) {
+      return shelf.Response.internalServerError(
+        body: jsonEncode({'error': '$e'}),
+        headers: {'Content-Type': 'application/json'},
+      );
+    }
   }
 
   void _handleClientMessage(String clientId, LanMessage msg) {

@@ -15,8 +15,8 @@ class HostRpcConfig {
   // ===== 会话管理 =====
   static const String methodGetSessions = 'hostGetSessions';
   static const String methodGetSession = 'hostGetSession';
-  static const String methodCreateSession = 'hostCreateSession';
-  static const String methodUpdateSession = 'hostUpdateSession';
+  static const String methodGetOrCreateSession = 'hostGetOrCreateSession';
+  static const String methodUpdateDeviceConfig = 'hostUpdateDeviceConfig';
   static const String methodDeleteSession = 'hostDeleteSession';
 
   // ===== 技能管理 =====
@@ -93,7 +93,6 @@ void registerHostRpcMethods({
   // 获取会话列表
   rpcServer.register(HostRpcConfig.methodGetSessions, (params) async {
     final sessions = await sessionManager.getAllSessions(
-      employeeUuid: params['employeeUuid'] as String?,
       includeArchived: params['includeArchived'] as bool? ?? false,
     );
     return {'sessions': sessions.map((s) => s.toMap()).toList()};
@@ -101,37 +100,39 @@ void registerHostRpcMethods({
 
   // 获取单个会话
   rpcServer.register(HostRpcConfig.methodGetSession, (params) async {
-    final uuid = params['uuid'] as String;
-    final session = await sessionManager.getSession(uuid);
+    final employeeUuid = params['employeeUuid'] as String;
+    final session = await sessionManager.getSession(employeeUuid);
     if (session == null) {
-      throw Exception('Session not found: $uuid');
+      throw Exception('Session not found: $employeeUuid');
     }
     return {'session': session.toMap()};
   });
 
-  // 创建会话
-  rpcServer.register(HostRpcConfig.methodCreateSession, (params) async {
-    final session = await sessionManager.createSession(
-      employeeUuid: params['employeeUuid'] as String,
-      title: params['title'] as String?,
-      projectUuid: params['projectUuid'] as String?,
-      providerConfig: params['providerConfig'] as Map<String, dynamic>?,
-    );
+  // 获取或创建会话
+  rpcServer.register(HostRpcConfig.methodGetOrCreateSession, (params) async {
+    final employeeUuid = params['employeeUuid'] as String;
+    final session = await sessionManager.getOrCreateSession(employeeUuid);
     return {'session': session.toMap()};
   });
 
-  // 更新会话
-  rpcServer.register(HostRpcConfig.methodUpdateSession, (params) async {
-    final sessionData = params['session'] as Map<String, dynamic>;
-    final session = AiEmployeeSessionEntity.fromMap(sessionData);
-    await sessionManager.updateSession(session);
+  // 更新设备配置
+  rpcServer.register(HostRpcConfig.methodUpdateDeviceConfig, (params) async {
+    final employeeUuid = params['employeeUuid'] as String;
+    final deviceId = params['deviceId'] as String;
+    await sessionManager.updateDeviceConfig(
+      employeeUuid,
+      deviceId,
+      projectUuid: params['projectUuid'] as String?,
+      providerConfig: params['providerConfig'] as String?,
+      systemPromptOverride: params['systemPromptOverride'] as String?,
+    );
     return {'success': true};
   });
 
   // 删除会话
   rpcServer.register(HostRpcConfig.methodDeleteSession, (params) async {
-    final uuid = params['uuid'] as String;
-    await sessionManager.deleteSession(uuid);
+    final employeeUuid = params['employeeUuid'] as String;
+    await sessionManager.deleteSession(employeeUuid);
     return {'success': true};
   });
 
@@ -195,16 +196,9 @@ void registerHostRpcMethods({
         .toList();
 
     for (final session in sessions) {
-      final existing = await sessionManager.getSession(session.uuid);
-      if (existing == null) {
-        // 创建新会话需要employeeUuid
-        await sessionManager.createSession(
-          employeeUuid: session.employeeUuid,
-          title: session.title,
-          projectUuid: session.projectUuid,
-        );
-      } else {
-        await sessionManager.updateSession(session);
+      final existing = await sessionManager.getSession(session.employeeUuid);
+      if (existing == null || session.updateTime.isAfter(existing.updateTime)) {
+        await sessionManager.save(session);
       }
     }
     return {'count': sessions.length};

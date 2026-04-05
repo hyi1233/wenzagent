@@ -152,14 +152,6 @@ abstract class DeviceClient {
   /// 通过LAN RPC查询其他设备的会话数据并合并
   Future<void> syncSessionsFromDevices();
 
-  /// 从其他设备同步消息数据
-  ///
-  /// 通过LAN RPC查询其他设备的消息数据并合并
-  Future<void> syncMessagesFromDevices();
-
-  /// 全量同步
-  Future<void> syncAllFromDevices();
-
   // ===== LAN消息扩展 =====
 
   /// 设置LAN消息接收处理器
@@ -192,20 +184,6 @@ abstract class DeviceClient {
     String savePath, {
     void Function(double)? onProgress,
   });
-
-  // ===== RPC 扩展 =====
-
-  /// 注册自定义 RPC 方法
-  void registerRpcMethod(
-    String method,
-    Future<Map<String, dynamic>> Function(Map<String, dynamic> params) handler,
-  );
-
-  /// 注销自定义 RPC 方法
-  void unregisterRpcMethod(String method);
-
-  /// 检查 RPC 方法是否已注册
-  bool hasRpcMethod(String method);
 }
 
 /// 设备与员工信息
@@ -225,12 +203,12 @@ class DeviceWithEmployeesInfo {
   });
 
   Map<String, dynamic> toMap() => {
-        'deviceId': deviceId,
-        'deviceName': deviceName,
-        'ip': ip,
-        'connectedAt': connectedAt?.millisecondsSinceEpoch,
-        'employees': employees.map((e) => e.toMap()).toList(),
-      };
+    'deviceId': deviceId,
+    'deviceName': deviceName,
+    'ip': ip,
+    'connectedAt': connectedAt?.millisecondsSinceEpoch,
+    'employees': employees.map((e) => e.toMap()).toList(),
+  };
 }
 
 /// 员工简要信息
@@ -248,9 +226,9 @@ class EmployeeBriefInfo {
   });
 
   Map<String, dynamic> toMap() => {
-        'uuid': uuid,
-        'name': name,
-        'status': status,
-        'deviceId': deviceId,
-      };
+    'uuid': uuid,
+    'name': name,
+    'status': status,
+    'deviceId': deviceId,
+  };
 }

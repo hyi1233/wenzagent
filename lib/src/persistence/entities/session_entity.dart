@@ -1,81 +1,211 @@
-/// AI员工会话实体（Hive版本）
-class AiEmployeeSessionEntity {
-  /// 会话UUID
-  final String uuid;
+/// 设备会话配置
+///
+/// 存储某个设备上的Agent配置
+class DeviceSessionConfig {
+  /// 项目UUID
+  String? projectUuid;
 
-  /// 空间ID
-  String? spaceId;
-
-  /// 员工UUID
-  String employeeUuid;
-
-  /// 会话标题
-  String title;
-
-  /// Provider配置 (JSON)
+  /// AI模型配置 (JSON)
+  /// 格式: {provider, model, apiKey, baseUrl, modelConfig}
   String? providerConfig;
 
-  /// 绑定项目UUID
-  String? projectUuid;
+  /// 系统提示词覆盖（可选）
+  String? systemPromptOverride;
 
   /// 上下文数据 (JSON)
   String? contextData;
 
-  /// 输入token数
-  int inputTokens;
-
-  /// 输出token数
-  int outputTokens;
-
-  /// 消息数量
-  int messageCount;
-
-  /// 是否归档
-  int isArchived;
-
-  /// 是否置顶
-  int isPinned;
-
-  /// 是否已删除
-  int deleted;
-
-  /// 创建时间
-  DateTime createTime;
+  /// 统计信息
+  int totalInputTokens;
+  int totalOutputTokens;
+  int totalMessageCount;
 
   /// 更新时间
   DateTime updateTime;
 
-  AiEmployeeSessionEntity({
-    required this.uuid,
-    this.spaceId,
-    required this.employeeUuid,
-    this.title = '新对话',
-    this.providerConfig,
+  DeviceSessionConfig({
     this.projectUuid,
+    this.providerConfig,
+    this.systemPromptOverride,
     this.contextData,
-    this.inputTokens = 0,
-    this.outputTokens = 0,
-    this.messageCount = 0,
+    this.totalInputTokens = 0,
+    this.totalOutputTokens = 0,
+    this.totalMessageCount = 0,
+    required this.updateTime,
+  });
+
+  /// 从Map创建
+  factory DeviceSessionConfig.fromMap(Map<String, dynamic> map) {
+    return DeviceSessionConfig(
+      projectUuid: map['projectUuid'] as String?,
+      providerConfig: map['providerConfig'] as String?,
+      systemPromptOverride: map['systemPromptOverride'] as String?,
+      contextData: map['contextData'] as String?,
+      totalInputTokens: map['totalInputTokens'] as int? ?? 0,
+      totalOutputTokens: map['totalOutputTokens'] as int? ?? 0,
+      totalMessageCount: map['totalMessageCount'] as int? ?? 0,
+      updateTime: map['updateTime'] is DateTime
+          ? map['updateTime'] as DateTime
+          : DateTime.fromMillisecondsSinceEpoch(map['updateTime'] as int? ?? 0),
+    );
+  }
+
+  /// 转换为Map
+  Map<String, dynamic> toMap() {
+    return {
+      'projectUuid': projectUuid,
+      'providerConfig': providerConfig,
+      'systemPromptOverride': systemPromptOverride,
+      'contextData': contextData,
+      'totalInputTokens': totalInputTokens,
+      'totalOutputTokens': totalOutputTokens,
+      'totalMessageCount': totalMessageCount,
+      'updateTime': updateTime.millisecondsSinceEpoch,
+    };
+  }
+
+  /// 复制并修改
+  DeviceSessionConfig copyWith({
+    String? projectUuid,
+    String? providerConfig,
+    String? systemPromptOverride,
+    String? contextData,
+    int? totalInputTokens,
+    int? totalOutputTokens,
+    int? totalMessageCount,
+    DateTime? updateTime,
+  }) {
+    return DeviceSessionConfig(
+      projectUuid: projectUuid ?? this.projectUuid,
+      providerConfig: providerConfig ?? this.providerConfig,
+      systemPromptOverride: systemPromptOverride ?? this.systemPromptOverride,
+      contextData: contextData ?? this.contextData,
+      totalInputTokens: totalInputTokens ?? this.totalInputTokens,
+      totalOutputTokens: totalOutputTokens ?? this.totalOutputTokens,
+      totalMessageCount: totalMessageCount ?? this.totalMessageCount,
+      updateTime: updateTime ?? this.updateTime,
+    );
+  }
+}
+
+/// AI员工Session实体
+///
+/// 主键：employeeId（一个员工只有一个会话）
+/// 不存储deviceId（由Employee.currentDeviceId管理）
+/// config存储各设备的配置：config[deviceId].projectUuid
+class AiEmployeeSessionEntity {
+  // ===== 主键 =====
+
+  /// 员工UUID（主键）
+  final String employeeUuid;
+
+  // ===== 各设备的配置 =====
+
+  /// 设备配置映射
+  /// Key: deviceId
+  /// Value: 该设备的配置（projectUuid, providerConfig等）
+  ///
+  /// 访问方式：
+  /// - session.config[deviceId].projectUuid
+  /// - session.config[deviceId].providerConfig
+  Map<String, DeviceSessionConfig> config;
+
+  // ===== 会话数据 =====
+
+  /// 会话标题
+  String title;
+
+  // ===== 状态 =====
+
+  int isArchived;
+  int isPinned;
+  int deleted;
+  DateTime createTime;
+  DateTime updateTime;
+
+  // ===== 便捷访问器 =====
+
+  /// 获取指定设备的配置
+  DeviceSessionConfig? getConfig(String deviceId) => config[deviceId];
+
+  /// 获取或创建设备配置
+  DeviceSessionConfig getOrCreateConfig(String deviceId) {
+    return config.putIfAbsent(
+      deviceId,
+      () => DeviceSessionConfig(updateTime: DateTime.now()),
+    );
+  }
+
+  AiEmployeeSessionEntity({
+    required this.employeeUuid,
+    Map<String, DeviceSessionConfig>? config,
+    this.title = '新对话',
     this.isArchived = 0,
     this.isPinned = 0,
     this.deleted = 0,
     required this.createTime,
     required this.updateTime,
-  });
+  }) : config = config ?? {};
 
   /// 从Map创建
   factory AiEmployeeSessionEntity.fromMap(Map<String, dynamic> map) {
+    // 解析config字段
+    Map<String, DeviceSessionConfig> config = {};
+    if (map['config'] != null) {
+      final configMap = map['config'] as Map<String, dynamic>;
+      config = configMap.map((key, value) {
+        return MapEntry(
+          key,
+          DeviceSessionConfig.fromMap(value as Map<String, dynamic>),
+        );
+      });
+    }
+
     return AiEmployeeSessionEntity(
-      uuid: map['uuid'] as String,
-      spaceId: map['spaceId'] as String?,
       employeeUuid: map['employeeUuid'] as String,
+      config: config,
       title: map['title'] as String? ?? '新对话',
-      providerConfig: map['providerConfig'] as String?,
-      projectUuid: map['projectUuid'] as String?,
-      contextData: map['contextData'] as String?,
-      inputTokens: map['inputTokens'] as int? ?? 0,
-      outputTokens: map['outputTokens'] as int? ?? 0,
-      messageCount: map['messageCount'] as int? ?? 0,
+      isArchived: map['isArchived'] as int? ?? 0,
+      isPinned: map['isPinned'] as int? ?? 0,
+      deleted: map['deleted'] as int? ?? 0,
+      createTime: map['createTime'] is DateTime
+          ? map['createTime'] as DateTime
+          : DateTime.fromMillisecondsSinceEpoch(map['createTime'] as int? ?? 0),
+      updateTime: map['updateTime'] is DateTime
+          ? map['updateTime'] as DateTime
+          : DateTime.fromMillisecondsSinceEpoch(map['updateTime'] as int? ?? 0),
+    );
+  }
+
+  /// 从旧格式Map创建（向后兼容）
+  factory AiEmployeeSessionEntity.fromLegacyMap(Map<String, dynamic> map) {
+    // 旧格式：uuid, employeeUuid, providerConfig, projectUuid等在顶层
+    final employeeUuid =
+        map['employeeUuid'] as String? ?? map['uuid'] as String;
+
+    // 创建默认设备配置（从旧字段迁移）
+    Map<String, DeviceSessionConfig> config = {};
+    if (map['providerConfig'] != null || map['projectUuid'] != null) {
+      // 使用空字符串作为默认设备ID，后续需要用户指定
+      config[''] = DeviceSessionConfig(
+        projectUuid: map['projectUuid'] as String?,
+        providerConfig: map['providerConfig'] as String?,
+        contextData: map['contextData'] as String?,
+        totalInputTokens: map['inputTokens'] as int? ?? 0,
+        totalOutputTokens: map['outputTokens'] as int? ?? 0,
+        totalMessageCount: map['messageCount'] as int? ?? 0,
+        updateTime: map['updateTime'] is DateTime
+            ? map['updateTime'] as DateTime
+            : DateTime.fromMillisecondsSinceEpoch(
+                map['updateTime'] as int? ?? 0,
+              ),
+      );
+    }
+
+    return AiEmployeeSessionEntity(
+      employeeUuid: employeeUuid,
+      config: config,
+      title: map['title'] as String? ?? '新对话',
       isArchived: map['isArchived'] as int? ?? 0,
       isPinned: map['isPinned'] as int? ?? 0,
       deleted: map['deleted'] as int? ?? 0,
@@ -90,17 +220,12 @@ class AiEmployeeSessionEntity {
 
   /// 转换为Map
   Map<String, dynamic> toMap() {
+    final configMap = config.map((key, value) => MapEntry(key, value.toMap()));
+
     return {
-      'uuid': uuid,
-      'spaceId': spaceId,
       'employeeUuid': employeeUuid,
+      'config': configMap,
       'title': title,
-      'providerConfig': providerConfig,
-      'projectUuid': projectUuid,
-      'contextData': contextData,
-      'inputTokens': inputTokens,
-      'outputTokens': outputTokens,
-      'messageCount': messageCount,
       'isArchived': isArchived,
       'isPinned': isPinned,
       'deleted': deleted,
@@ -111,16 +236,9 @@ class AiEmployeeSessionEntity {
 
   /// 复制并修改
   AiEmployeeSessionEntity copyWith({
-    String? uuid,
-    String? spaceId,
     String? employeeUuid,
+    Map<String, DeviceSessionConfig>? config,
     String? title,
-    String? providerConfig,
-    String? projectUuid,
-    String? contextData,
-    int? inputTokens,
-    int? outputTokens,
-    int? messageCount,
     int? isArchived,
     int? isPinned,
     int? deleted,
@@ -128,16 +246,9 @@ class AiEmployeeSessionEntity {
     DateTime? updateTime,
   }) {
     return AiEmployeeSessionEntity(
-      uuid: uuid ?? this.uuid,
-      spaceId: spaceId ?? this.spaceId,
       employeeUuid: employeeUuid ?? this.employeeUuid,
+      config: config ?? this.config,
       title: title ?? this.title,
-      providerConfig: providerConfig ?? this.providerConfig,
-      projectUuid: projectUuid ?? this.projectUuid,
-      contextData: contextData ?? this.contextData,
-      inputTokens: inputTokens ?? this.inputTokens,
-      outputTokens: outputTokens ?? this.outputTokens,
-      messageCount: messageCount ?? this.messageCount,
       isArchived: isArchived ?? this.isArchived,
       isPinned: isPinned ?? this.isPinned,
       deleted: deleted ?? this.deleted,
@@ -148,6 +259,6 @@ class AiEmployeeSessionEntity {
 
   @override
   String toString() {
-    return 'AiEmployeeSessionEntity(uuid: $uuid, employeeUuid: $employeeUuid, title: $title)';
+    return 'AiEmployeeSessionEntity(employeeUuid: $employeeUuid, title: $title, configDevices: ${config.keys.toList()})';
   }
 }

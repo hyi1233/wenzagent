@@ -3,11 +3,7 @@ import 'dart:async';
 import '../persistence/persistence.dart';
 
 /// 员工变更类型
-enum EmployeeChangeType {
-  created,
-  updated,
-  deleted,
-}
+enum EmployeeChangeType { created, updated, deleted }
 
 /// 员工变更事件
 class EmployeeChangeEvent {
@@ -58,6 +54,9 @@ abstract class EmployeeManager {
   /// 更新员工
   Future<void> updateEmployee(AiEmployeeEntity employee);
 
+  /// 更新员工当前设备ID（会话漫游）
+  Future<void> updateCurrentDeviceId(String uuid, String deviceId);
+
   /// 删除员工（软删除）
   Future<void> deleteEmployee(String uuid);
 
@@ -75,7 +74,7 @@ class EmployeeManagerImpl implements EmployeeManager {
   final _changeController = StreamController<EmployeeChangeEvent>.broadcast();
 
   EmployeeManagerImpl({EmployeeStore? store})
-      : _store = store ?? EmployeeStore();
+    : _store = store ?? EmployeeStore();
 
   @override
   String? get currentSpaceId => _currentSpaceId;
@@ -113,7 +112,18 @@ class EmployeeManagerImpl implements EmployeeManager {
 
   @override
   Future<void> updateEmployee(AiEmployeeEntity employee) async {
+    final updated = employee.copyWith(updateTime: DateTime.now());
+    await _store.save(updated);
+    _notifyChange(EmployeeChangeType.updated, updated);
+  }
+
+  @override
+  Future<void> updateCurrentDeviceId(String uuid, String deviceId) async {
+    final employee = await getEmployee(uuid);
+    if (employee == null) return;
+
     final updated = employee.copyWith(
+      currentDeviceId: deviceId,
       updateTime: DateTime.now(),
     );
     await _store.save(updated);
@@ -139,21 +149,21 @@ class EmployeeManagerImpl implements EmployeeManager {
   }
 
   @override
-  Stream<EmployeeChangeEvent> get onEmployeeChanged =>
-      _changeController.stream;
+  Stream<EmployeeChangeEvent> get onEmployeeChanged => _changeController.stream;
 
   void _notifyChange(EmployeeChangeType type, dynamic employeeOrUuid) {
     if (employeeOrUuid is AiEmployeeEntity) {
-      _changeController.add(EmployeeChangeEvent(
-        type: type,
-        employeeUuid: employeeOrUuid.uuid,
-        employee: employeeOrUuid,
-      ));
+      _changeController.add(
+        EmployeeChangeEvent(
+          type: type,
+          employeeUuid: employeeOrUuid.uuid,
+          employee: employeeOrUuid,
+        ),
+      );
     } else if (employeeOrUuid is String) {
-      _changeController.add(EmployeeChangeEvent(
-        type: type,
-        employeeUuid: employeeOrUuid,
-      ));
+      _changeController.add(
+        EmployeeChangeEvent(type: type, employeeUuid: employeeOrUuid),
+      );
     }
   }
 

@@ -12,10 +12,7 @@ import 'message_store_service.dart';
 import 'skill_manager.dart';
 
 /// Agent生命周期类型
-enum AgentLifecycleType {
-  created,
-  destroyed,
-}
+enum AgentLifecycleType { created, destroyed }
 
 /// Agent生命周期事件
 class AgentLifecycleEvent {
@@ -77,11 +74,11 @@ class AgentFactoryImpl implements AgentFactory {
     required MessageStoreService messageStore,
     required SkillManager skillManager,
     String? spaceId,
-  })  : _employeeManager = employeeManager,
-        _sessionManager = sessionManager,
-        _messageStore = messageStore,
-        _skillManager = skillManager,
-        _spaceId = spaceId;
+  }) : _employeeManager = employeeManager,
+       _sessionManager = sessionManager,
+       _messageStore = messageStore,
+       _skillManager = skillManager,
+       _spaceId = spaceId;
 
   @override
   void setSpaceId(String? spaceId) {
@@ -118,19 +115,14 @@ class AgentFactoryImpl implements AgentFactory {
     _setupPersistCallbacks(chatAdapter, employeeUuid);
 
     // 创建Agent
-    agent = AgentImpl(
-      employeeUuid: employeeUuid,
-      chatAdapter: chatAdapter,
-    );
+    agent = AgentImpl(employeeUuid: employeeUuid, chatAdapter: chatAdapter);
 
     // 初始化Agent
     await agent.initialize(sessionUuid: sessionUuid);
 
     // 设置Provider配置
     if (employee.provider != null && employee.provider!.isNotEmpty) {
-      final providerConfig = <String, dynamic>{
-        'type': employee.provider,
-      };
+      final providerConfig = <String, dynamic>{'type': employee.provider};
       if (employee.model != null) {
         providerConfig['model'] = employee.model;
       }
@@ -142,8 +134,7 @@ class AgentFactoryImpl implements AgentFactory {
       }
       if (employee.modelConfig != null) {
         try {
-          providerConfig['modelConfig'] =
-              jsonDecode(employee.modelConfig!);
+          providerConfig['modelConfig'] = jsonDecode(employee.modelConfig!);
         } catch (_) {}
       }
       await agent.setProvider(providerConfig);
@@ -151,9 +142,7 @@ class AgentFactoryImpl implements AgentFactory {
 
     // 设置System Prompt
     if (employee.systemPrompt != null && employee.systemPrompt!.isNotEmpty) {
-      await agent.setContext({
-        'systemPrompt': employee.systemPrompt,
-      });
+      await agent.setContext({'systemPrompt': employee.systemPrompt});
     }
 
     _agents[employeeUuid] = agent;
@@ -168,38 +157,24 @@ class AgentFactoryImpl implements AgentFactory {
   ) {
     // 持久化会话回调
     adapter.persistSession = (session) async {
-      final sessionUuid = session['uuid'] as String?;
-      if (sessionUuid == null) return;
-
-      var existingSession = await _sessionManager.getSession(sessionUuid);
-      if (existingSession != null) {
-        // 更新现有会话
-        final title = session['title'] as String?;
-        final providerConfig = session['providerConfig'];
-        final projectUuid = session['projectUuid'];
-        final contextData = session['contextData'];
-
-        existingSession = existingSession.copyWith(
-          title: title ?? existingSession.title,
-          providerConfig: providerConfig != null
-              ? jsonEncode(providerConfig)
-              : existingSession.providerConfig,
-          projectUuid: projectUuid ?? existingSession.projectUuid,
-          contextData: contextData != null
-              ? jsonEncode(contextData)
-              : existingSession.contextData,
-          updateTime: DateTime.now(),
-        );
-        await _sessionManager.updateSession(existingSession);
-      } else {
-        // 创建新会话
-        await _sessionManager.createSession(
-          employeeUuid: employeeUuid,
-          title: session['title'] as String? ?? '新对话',
-          projectUuid: session['projectUuid'] as String?,
-          providerConfig: session['providerConfig'] as Map<String, dynamic>?,
+      var existingSession = await _sessionManager.getSession(employeeUuid);
+      if (existingSession == null) {
+        // Session应该已由getOrCreateSession创建
+        existingSession = await _sessionManager.getOrCreateSession(
+          employeeUuid,
         );
       }
+
+      // 更新标题
+      final title = session['title'] as String?;
+      if (title != null && title != existingSession.title) {
+        existingSession = existingSession.copyWith(
+          title: title,
+          updateTime: DateTime.now(),
+        );
+        await _sessionManager.save(existingSession);
+      }
+      // 注意：设备配置更新由DeviceClient负责，这里只更新标题
     };
 
     // 持久化消息回调
@@ -210,19 +185,15 @@ class AgentFactoryImpl implements AgentFactory {
 
     // 加载会话回调
     adapter.loadSession = (sessionUuid) async {
-      final session = await _sessionManager.getSession(sessionUuid);
+      final session = await _sessionManager.getSession(employeeUuid);
       if (session == null) return null;
+
+      // 返回基本会话数据（不包含设备特定配置）
       return {
-        'uuid': session.uuid,
+        'uuid': employeeUuid, // 兼容旧格式
         'employeeUuid': session.employeeUuid,
         'title': session.title,
-        'providerConfig': session.providerConfig != null
-            ? jsonDecode(session.providerConfig!)
-            : null,
-        'projectUuid': session.projectUuid,
-        'contextData': session.contextData != null
-            ? jsonDecode(session.contextData!)
-            : null,
+        // 设备配置由DeviceClient负责
       };
     };
 
@@ -233,8 +204,7 @@ class AgentFactoryImpl implements AgentFactory {
     };
 
     // 更新消息状态回调
-    adapter.updateMessageStatusCallback =
-        (messageId, status, {error}) async {
+    adapter.updateMessageStatusCallback = (messageId, status, {error}) async {
       await _messageStore.updateMessageStatus(
         messageId,
         status.name,
@@ -290,11 +260,13 @@ class AgentFactoryImpl implements AgentFactory {
       _lifecycleController.stream;
 
   void _notifyLifecycle(AgentLifecycleType type, IAgent agent) {
-    _lifecycleController.add(AgentLifecycleEvent(
-      type: type,
-      employeeUuid: agent.employeeUuid,
-      agent: agent,
-    ));
+    _lifecycleController.add(
+      AgentLifecycleEvent(
+        type: type,
+        employeeUuid: agent.employeeUuid,
+        agent: agent,
+      ),
+    );
   }
 
   /// 销毁所有Agent

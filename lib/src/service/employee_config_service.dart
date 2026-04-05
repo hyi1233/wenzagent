@@ -70,16 +70,10 @@ abstract class EmployeeConfigService {
   );
 
   /// 添加单个MCP服务器配置
-  Future<void> addMcpServerConfig(
-    String employeeUuid,
-    McpServerConfig config,
-  );
+  Future<void> addMcpServerConfig(String employeeUuid, McpServerConfig config);
 
   /// 移除MCP服务器配置
-  Future<void> removeMcpServerConfig(
-    String employeeUuid,
-    String serverName,
-  );
+  Future<void> removeMcpServerConfig(String employeeUuid, String serverName);
 
   /// 更新单个MCP服务器配置
   Future<void> updateMcpServerConfig(
@@ -104,8 +98,8 @@ class EmployeeConfigServiceImpl implements EmployeeConfigService {
   EmployeeConfigServiceImpl({
     required EmployeeManager employeeManager,
     required SkillManager skillManager,
-  })  : _employeeManager = employeeManager,
-        _skillManager = skillManager;
+  }) : _employeeManager = employeeManager,
+       _skillManager = skillManager;
 
   @override
   Future<EmployeeConfig> getEmployeeConfig(String employeeUuid) async {
@@ -222,7 +216,9 @@ class EmployeeConfigServiceImpl implements EmployeeConfigService {
     // 检查是否已存在同名配置
     final existingIndex = configs.indexWhere((c) => c.name == config.name);
     if (existingIndex >= 0) {
-      throw ArgumentError('MCP server config with name "${config.name}" already exists');
+      throw ArgumentError(
+        'MCP server config with name "${config.name}" already exists',
+      );
     }
 
     configs.add(config);
@@ -249,7 +245,9 @@ class EmployeeConfigServiceImpl implements EmployeeConfigService {
     final configs = List<McpServerConfig>.from(employeeConfig.mcpConfigs);
     final index = configs.indexWhere((c) => c.name == config.name);
     if (index < 0) {
-      throw ArgumentError('MCP server config with name "${config.name}" not found');
+      throw ArgumentError(
+        'MCP server config with name "${config.name}" not found',
+      );
     }
     configs[index] = config;
     await updateEmployeeMcpConfigs(employeeUuid, configs);
@@ -261,11 +259,13 @@ class EmployeeConfigServiceImpl implements EmployeeConfigService {
     if (employee == null) {
       throw StateError('Employee not found: $employeeUuid');
     }
-    final updated = employee.copyWith(
-      enableMcp: enabled ? 1 : 0,
-    );
+    final updated = employee.copyWith(enableMcp: enabled ? 1 : 0);
     await _employeeManager.updateEmployee(updated);
-    _notifyChange(EmployeeConfigChangeType.mcpEnabled, employeeUuid, data: enabled);
+    _notifyChange(
+      EmployeeConfigChangeType.mcpEnabled,
+      employeeUuid,
+      data: enabled,
+    );
   }
 
   @override
@@ -277,11 +277,13 @@ class EmployeeConfigServiceImpl implements EmployeeConfigService {
     String employeeUuid, {
     dynamic data,
   }) {
-    _changeController.add(EmployeeConfigChangeEvent(
-      type: type,
-      employeeUuid: employeeUuid,
-      data: data,
-    ));
+    _changeController.add(
+      EmployeeConfigChangeEvent(
+        type: type,
+        employeeUuid: employeeUuid,
+        data: data,
+      ),
+    );
   }
 
   /// 释放资源
