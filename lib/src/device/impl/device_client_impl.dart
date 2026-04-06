@@ -948,9 +948,30 @@ class DeviceClientImpl implements DeviceClient {
           final existing = await _sessionManager.getSession(
             session.employeeId,
           );
-          if (existing == null ||
-              session.updateTime.isAfter(existing.updateTime)) {
+          
+          if (existing == null) {
+            // 本地不存在 → 创建（包括已删除的会话）
             await _sessionManager.save(session);
+          } else {
+            // 本地已存在 → 判断是否需要更新
+            
+            // 优先比较 deletedTime（如果任一会话被删除）
+            // 注意：Session 实体目前没有 deletedTime 字段，使用 updateTime 代替
+            if (session.deleted == 1 || existing.deleted == 1) {
+              // 至少一方被删除，比较 updateTime（因为 deleted 时会更新 updateTime）
+              if (session.updateTime.isAfter(existing.updateTime)) {
+                // 远程删除更新 → 同步删除状态
+                await _sessionManager.save(session);
+              }
+              // 否则保留本地的删除状态
+            } else {
+              // 都未删除，正常比较 updateTime
+              if (session.updateTime.isAfter(existing.updateTime)) {
+                // 远程更新 → 更新本地
+                await _sessionManager.save(session);
+              }
+              // 否则：本地更新或相同 → 保留本地
+            }
           }
         }
       } catch (e) {
