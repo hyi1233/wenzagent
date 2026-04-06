@@ -3,7 +3,7 @@
 import '../agent_state.dart';
 import '../entity/entity.dart';
 import '../i_agent.dart';
-import '../rpc/agent_rpc_config.dart';
+import '../rpc/agent_rpc_util.dart';
 import '../tool/agent_tool.dart';
 
 /// RPC 调用回调类型
@@ -33,8 +33,8 @@ class AgentProxy {
   /// 本地 Agent 实例（本地模式使用）
   final IAgent? _localAgent;
 
-  /// RPC 调用回调（远程模式使用）
-  final RpcCall? _rpcCall;
+  /// RPC 工具类（远程模式使用）
+  AgentRpcUtil? _rpcUtil;
 
   /// 远程状态缓存
   final _RemoteStateCache _remoteCache = _RemoteStateCache();
@@ -55,8 +55,7 @@ class AgentProxy {
     required this.deviceId,
     required IAgent localAgent,
   }) : isLocalMode = true,
-       _localAgent = localAgent,
-       _rpcCall = null;
+       _localAgent = localAgent;
 
   /// 创建远程模式 Proxy
   AgentProxy.remote({
@@ -65,8 +64,8 @@ class AgentProxy {
     required RpcCall rpcCall,
     Stream<Map<String, dynamic>>? remoteEventStream,
   }) : isLocalMode = false,
-       _localAgent = null,
-       _rpcCall = rpcCall {
+       _localAgent = null {
+    _rpcUtil = AgentRpcUtil(rpcCall);
     if (remoteEventStream != null) {
       _subscribeRemoteEvents(remoteEventStream);
     }
@@ -112,10 +111,11 @@ class AgentProxy {
     print('[AgentProxy] calling RPC sendMessage');
     // 将 MessageInput 转换为 Map 以便 RPC 传输
     final messageData = input.toMap();
-    final result = await _rpc(AgentRpcConfig.methodSendMessage, {
-      'employeeId': employeeId,
-      'messageData': messageData,
-    });
+    final request = SendMessageRequest(
+      employeeId: employeeId,
+      messageData: messageData,
+    );
+    final result = await _rpcUtil!.sendMessage(request);
     final messageId = result['messageId'] as String? ?? '';
     // 将完整消息数据添加到待确认队列
     if (messageId.isNotEmpty) {
@@ -130,7 +130,8 @@ class AgentProxy {
     if (isLocalMode && _localAgent != null) {
       return _localAgent.interrupt();
     }
-    await _rpc(AgentRpcConfig.methodInterrupt, {'employeeId': employeeId});
+    final request = InterruptRequest(employeeId: employeeId);
+    await _rpcUtil!.interrupt(request);
   }
 
   /// 撤回消息
@@ -138,10 +139,11 @@ class AgentProxy {
     if (isLocalMode && _localAgent != null) {
       return _localAgent.revokeMessage(messageId);
     }
-    await _rpc(AgentRpcConfig.methodRevokeMessage, {
-      'employeeId': employeeId,
-      'messageId': messageId,
-    });
+    final request = RevokeMessageRequest(
+      employeeId: employeeId,
+      messageId: messageId,
+    );
+    await _rpcUtil!.revokeMessage(request);
   }
 
   /// 获取当前权限请求（如果有，同步版本仅适用于本地模式）
@@ -152,14 +154,13 @@ class AgentProxy {
     return null;
   }
 
-  /// 获取当前权限请求（异步版本，支持远程 RPC）
+  /// 获取当前权限请求(异步版本,支持远程 RPC)
   Future<AgentPermissionRequest?> getPendingPermissionRequestAsync() async {
     if (isLocalMode && _localAgent != null) {
       return _localAgent.getPendingPermissionRequest();
     }
-    final result = await _rpc(AgentRpcConfig.methodGetPendingPermission, {
-      'employeeId': employeeId,
-    });
+    final request = GetPendingPermissionRequest(employeeId: employeeId);
+    final result = await _rpcUtil!.getPendingPermission(request);
     final requestData = result['request'] as Map<String, dynamic>?;
     if (requestData == null) return null;
     return AgentPermissionRequest.fromMap(requestData);
@@ -177,9 +178,8 @@ class AgentProxy {
       _removeConfirmedMessages(messages.map((m) => m.toMap()).toList());
       return messages;
     }
-    final result = await _rpc(AgentRpcConfig.methodGetSessionMessages, {
-      'employeeId': employeeId,
-    });
+    final request = GetSessionMessagesRequest(employeeId: employeeId);
+    final result = await _rpcUtil!.getSessionMessages(request);
     final messages =
         (result['messages'] as List?)?.cast<Map<String, dynamic>>() ?? [];
     // 根据返回的消息ID，从消息队列中移除
@@ -193,7 +193,8 @@ class AgentProxy {
     if (isLocalMode && _localAgent != null) {
       return _localAgent.clearCurrentSession();
     }
-    await _rpc(AgentRpcConfig.methodClearSession, {'employeeId': employeeId});
+    final request = ClearSessionRequest(employeeId: employeeId);
+    await _rpcUtil!.clearSession(request);
   }
 
   // ===== 上下文管理 =====
@@ -202,10 +203,11 @@ class AgentProxy {
     if (isLocalMode && _localAgent != null) {
       return _localAgent.setContext(contextData);
     }
-    await _rpc(AgentRpcConfig.methodSetContext, {
-      'employeeId': employeeId,
-      'contextData': contextData,
-    });
+    final request = SetContextRequest(
+      employeeId: employeeId,
+      contextData: contextData,
+    );
+    await _rpcUtil!.setContext(request);
   }
 
   Map<String, dynamic>? getCurrentContext() {
@@ -221,10 +223,11 @@ class AgentProxy {
     if (isLocalMode && _localAgent != null) {
       return _localAgent.setProvider(providerConfig);
     }
-    await _rpc(AgentRpcConfig.methodSetProvider, {
-      'employeeId': employeeId,
-      'providerConfig': providerConfig.toMap(),
-    });
+    final request = SetProviderRequest(
+      employeeId: employeeId,
+      providerConfig: providerConfig.toMap(),
+    );
+    await _rpcUtil!.setProvider(request);
   }
 
   ProviderConfig? getProviderConfig() {
@@ -241,10 +244,11 @@ class AgentProxy {
     if (isLocalMode && _localAgent != null) {
       return _localAgent.setProject(projectData);
     }
-    await _rpc(AgentRpcConfig.methodSetProject, {
-      'employeeId': employeeId,
-      'projectData': projectData?.toMap(),
-    });
+    final request = SetProjectRequest(
+      employeeId: employeeId,
+      projectData: projectData?.toMap(),
+    );
+    await _rpcUtil!.setProject(request);
   }
 
   String? getCurrentProjectUuid() {
@@ -290,11 +294,12 @@ class AgentProxy {
     if (isLocalMode && _localAgent != null) {
       return _localAgent.respondToPermission(requestId, decision);
     }
-    await _rpc(AgentRpcConfig.methodRespondPermission, {
-      'employeeId': employeeId,
-      'requestId': requestId,
-      'decision': decision.name,
-    });
+    final request = RespondPermissionRequest(
+      employeeId: employeeId,
+      requestId: requestId,
+      decision: decision.name,
+    );
+    await _rpcUtil!.respondPermission(request);
   }
 
   // ===== 状态查询 =====
@@ -311,9 +316,8 @@ class AgentProxy {
     if (isLocalMode && _localAgent != null) {
       return _localAgent.getStateSnapshot();
     }
-    final result = await _rpc(AgentRpcConfig.methodGetState, {
-      'employeeId': employeeId,
-    });
+    final request = GetStateRequest(employeeId: employeeId);
+    final result = await _rpcUtil!.getState(request);
     return AgentStateSnapshot.fromMap(result);
   }
 
@@ -351,17 +355,6 @@ class AgentProxy {
   }
 
   // ===== 内部方法 =====
-
-  /// RPC 调用封装
-  Future<Map<String, dynamic>> _rpc(
-    String method,
-    Map<String, dynamic> params,
-  ) async {
-    if (_rpcCall == null) {
-      throw StateError('Remote RPC callback not configured');
-    }
-    return _rpcCall(method, params);
-  }
 
   /// 订阅远程事件流
   void _subscribeRemoteEvents(Stream<Map<String, dynamic>> stream) {

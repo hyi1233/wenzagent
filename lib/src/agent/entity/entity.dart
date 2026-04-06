@@ -6,5 +6,6 @@ export 'message_input.dart';
 export 'pending_message.dart';
 export 'project_data.dart';
 export 'queued_message.dart';
+export 'rpc_request.dart';
 export '../adapter/provider_config.dart';
 
