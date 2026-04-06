@@ -1,16 +1,22 @@
 import 'dart:async';
 
+import '../entity/entity.dart';
+
 /// 消息队列项
 class MessageQueueItem {
-  final String messageId;
-  final Map<String, dynamic> messageData;
+  final QueuedMessage message;
   final Completer<void>? completer;
 
   MessageQueueItem({
-    required this.messageId,
-    required this.messageData,
+    required this.message,
     this.completer,
   });
+
+  /// 消息ID（便捷访问）
+  String get messageId => message.id;
+
+  /// 消息数据（向后兼容）
+  Map<String, dynamic> get messageData => message.toMap();
 }
 
 /// 消息队列

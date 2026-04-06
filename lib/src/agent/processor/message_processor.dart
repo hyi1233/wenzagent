@@ -1,4 +1,5 @@
 ﻿import '../agent_state.dart';
+import '../entity/entity.dart';
 import '../tool/permission_manager.dart';
 import '../tool/tool_registry.dart';
 import 'cancellation_token.dart';
@@ -240,17 +241,25 @@ class MessageProcessor {
     print('[MessageProcessor] submitMessage: $messageId');
     if (_disposed) throw Exception('MessageProcessor 已销毁');
 
-    final item = MessageQueueItem(
-      messageId: messageId,
-      messageData: messageData,
-    );
+    // 创建 QueuedMessage
+    final queuedMessage = QueuedMessage.fromMap({
+      ...messageData,
+      'id': messageId,
+      'processingStatus': MessageProcessingStatus.queued.name,
+      'enqueuedAt': DateTime.now().toIso8601String(),
+    });
+
+    final item = MessageQueueItem(message: queuedMessage);
 
     // 1. 追踪消息
     _tracker.track(messageId, messageData);
 
     // 2. 入队
     _queue.enqueue(item);
-    onMessageStatusChanged?.call(messageId, AgentMessageStatus.queued);
+    onMessageStatusChanged?.call(
+      messageId,
+      MessageProcessingStatus.queued.toAgentMessageStatus(),
+    );
     print('[MessageProcessor] message queued, queue length: ${_queue.length}');
     print('[MessageProcessor] current status: $_status');
 
@@ -302,9 +311,9 @@ class MessageProcessor {
     if (_currentProcessingMessageId != null) {
       onMessageStatusChanged?.call(
         _currentProcessingMessageId!,
-        AgentMessageStatus.interrupted,
+        MessageProcessingStatus.interrupted.toAgentMessageStatus(),
       );
-      _tracker.updateStatus(_currentProcessingMessageId!, AgentMessageStatus.interrupted);
+      _tracker.updateStatus(_currentProcessingMessageId!, MessageProcessingStatus.interrupted);
     }
 
     _currentProcessingMessageId = null;
@@ -319,8 +328,11 @@ class MessageProcessor {
   Future<void> revokeMessage(String messageId) async {
     if (_queue.contains(messageId)) {
       _queue.revoke(messageId);
-      onMessageStatusChanged?.call(messageId, AgentMessageStatus.revoked);
-      _tracker.updateStatus(messageId, AgentMessageStatus.revoked);
+      onMessageStatusChanged?.call(
+        messageId,
+        MessageProcessingStatus.revoked.toAgentMessageStatus(),
+      );
+      _tracker.updateStatus(messageId, MessageProcessingStatus.revoked);
     }
   }
 
@@ -359,8 +371,11 @@ class MessageProcessor {
     _currentProcessingMessageId = item.messageId;
     _currentCancellationToken = CancellationToken();
     _setStatus(AgentStatus.processing);
-    onMessageStatusChanged?.call(item.messageId, AgentMessageStatus.processing);
-    _tracker.updateStatus(item.messageId, AgentMessageStatus.processing); // 同步追踪器状态
+    onMessageStatusChanged?.call(
+      item.messageId,
+      MessageProcessingStatus.processing.toAgentMessageStatus(),
+    );
+    _tracker.updateStatus(item.messageId, MessageProcessingStatus.processing); // 同步追踪器状态
 
     _processMessage(item.messageId, item.messageData);
   }
@@ -390,10 +405,10 @@ class MessageProcessor {
           print('[MessageProcessor] error: ${response.error}');
           onMessageStatusChanged?.call(
             messageId,
-            AgentMessageStatus.failed,
+            MessageProcessingStatus.failed.toAgentMessageStatus(),
             error: response.error,
           );
-          _tracker.updateStatus(messageId, AgentMessageStatus.failed);
+          _tracker.updateStatus(messageId, MessageProcessingStatus.failed);
           _finishProcessing();
           return;
         }
@@ -407,8 +422,11 @@ class MessageProcessor {
 
         if (response.isDone) {
           print('[MessageProcessor] message completed: $messageId');
-          onMessageStatusChanged?.call(messageId, AgentMessageStatus.completed);
-          _tracker.updateStatus(messageId, AgentMessageStatus.completed);
+          onMessageStatusChanged?.call(
+            messageId,
+            MessageProcessingStatus.completed.toAgentMessageStatus(),
+          );
+          _tracker.updateStatus(messageId, MessageProcessingStatus.completed);
           _finishProcessing();
           return;
         }
@@ -416,8 +434,11 @@ class MessageProcessor {
 
       // 流正常结束
       if (!_disposed && _currentProcessingMessageId == messageId) {
-        onMessageStatusChanged?.call(messageId, AgentMessageStatus.completed);
-        _tracker.updateStatus(messageId, AgentMessageStatus.completed);
+        onMessageStatusChanged?.call(
+          messageId,
+          MessageProcessingStatus.completed.toAgentMessageStatus(),
+        );
+        _tracker.updateStatus(messageId, MessageProcessingStatus.completed);
         _finishProcessing();
       }
     } catch (e) {
@@ -425,10 +446,10 @@ class MessageProcessor {
       if (!_disposed && _currentProcessingMessageId == messageId) {
         onMessageStatusChanged?.call(
           messageId,
-          AgentMessageStatus.failed,
+          MessageProcessingStatus.failed.toAgentMessageStatus(),
           error: e.toString(),
         );
-        _tracker.updateStatus(messageId, AgentMessageStatus.failed);
+        _tracker.updateStatus(messageId, MessageProcessingStatus.failed);
         _finishProcessing();
       }
     }

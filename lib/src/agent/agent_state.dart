@@ -1,4 +1,6 @@
-﻿/// Agent 工作状态
+﻿import 'entity/entity.dart';
+
+/// Agent 工作状态
 enum AgentStatus {
   /// 空闲
   idle,
@@ -25,6 +27,9 @@ enum AgentStatus {
 }
 
 /// 消息处理状态
+///
+/// 注意：保留此枚举以向后兼容，新的代码应该使用 MessageProcessingStatus
+@Deprecated('Use MessageProcessingStatus from entity/queued_message.dart instead')
 enum AgentMessageStatus {
   /// 无状态
   none,
@@ -238,5 +243,54 @@ class AgentRuntimeSummary {
       queueLength: map['queueLength'] as int? ?? 0,
       refCount: map['refCount'] as int? ?? 0,
     );
+  }
+}
+
+// ===== 类型转换扩展（向后兼容） =====
+
+/// AgentMessageStatus 到 MessageProcessingStatus 的转换
+extension AgentMessageStatusExtension on AgentMessageStatus {
+  /// 转换为 MessageProcessingStatus
+  MessageProcessingStatus toMessageProcessingStatus() {
+    switch (this) {
+      case AgentMessageStatus.none:
+        return MessageProcessingStatus.none;
+      case AgentMessageStatus.queued:
+        return MessageProcessingStatus.queued;
+      case AgentMessageStatus.processing:
+        return MessageProcessingStatus.processing;
+      case AgentMessageStatus.completed:
+        return MessageProcessingStatus.completed;
+      case AgentMessageStatus.failed:
+        return MessageProcessingStatus.failed;
+      case AgentMessageStatus.interrupted:
+        return MessageProcessingStatus.interrupted;
+      case AgentMessageStatus.revoked:
+        return MessageProcessingStatus.revoked;
+    }
+  }
+}
+
+/// MessageProcessingStatus 到 AgentMessageStatus 的转换（向后兼容）
+extension MessageProcessingStatusExtension on MessageProcessingStatus {
+  /// 转换为 AgentMessageStatus
+  @Deprecated('Use MessageProcessingStatus directly')
+  AgentMessageStatus toAgentMessageStatus() {
+    switch (this) {
+      case MessageProcessingStatus.none:
+        return AgentMessageStatus.none;
+      case MessageProcessingStatus.queued:
+        return AgentMessageStatus.queued;
+      case MessageProcessingStatus.processing:
+        return AgentMessageStatus.processing;
+      case MessageProcessingStatus.completed:
+        return AgentMessageStatus.completed;
+      case MessageProcessingStatus.failed:
+        return AgentMessageStatus.failed;
+      case MessageProcessingStatus.interrupted:
+        return AgentMessageStatus.interrupted;
+      case MessageProcessingStatus.revoked:
+        return AgentMessageStatus.revoked;
+    }
   }
 }

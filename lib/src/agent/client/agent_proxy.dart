@@ -1,6 +1,7 @@
 ﻿import 'dart:async';
 
 import '../agent_state.dart';
+import '../entity/entity.dart';
 import '../i_agent.dart';
 import '../rpc/agent_rpc_config.dart';
 import '../tool/agent_tool.dart';
@@ -44,6 +45,9 @@ class AgentProxy {
 
   /// 远程事件流订阅取消器
   StreamSubscription<Map<String, dynamic>>? _remoteEventSubscription;
+
+  /// 待确认消息队列（存储已发送但未被查询确认的完整消息内容）
+  final List<PendingMessage> _pendingMessageQueue = [];
 
   /// 创建本地模式 Proxy
   AgentProxy.local({
@@ -99,14 +103,24 @@ class AgentProxy {
     print('[AgentProxy] sendMessage isLocalMode: $isLocalMode');
     if (isLocalMode && _localAgent != null) {
       print('[AgentProxy] calling local agent sendMessage');
-      return _localAgent.sendMessage(messageData);
+      final messageId = await _localAgent.sendMessage(messageData);
+      // 将完整消息数据添加到待确认队列
+      final pendingMessage = _createPendingMessage(messageData, messageId);
+      _pendingMessageQueue.add(pendingMessage);
+      return messageId;
     }
     print('[AgentProxy] calling RPC sendMessage');
     final result = await _rpc(AgentRpcConfig.methodSendMessage, {
       'employeeId': employeeId,
       'messageData': messageData,
     });
-    return result['messageId'] as String? ?? '';
+    final messageId = result['messageId'] as String? ?? '';
+    // 将完整消息数据添加到待确认队列
+    if (messageId.isNotEmpty) {
+      final pendingMessage = _createPendingMessage(messageData, messageId);
+      _pendingMessageQueue.add(pendingMessage);
+    }
+    return messageId;
   }
 
   /// 中断当前处理
@@ -157,12 +171,19 @@ class AgentProxy {
   Future<List<Map<String, dynamic>>> getSessionMessages() async {
     if (isLocalMode && _localAgent != null) {
       final uuid = _localAgent.employeeId;
-      return _localAgent.getSessionMessages(uuid);
+      final messages = await _localAgent.getSessionMessages(uuid);
+      // 根据返回的消息ID，从消息队列中移除
+      _removeConfirmedMessages(messages);
+      return messages;
     }
     final result = await _rpc(AgentRpcConfig.methodGetSessionMessages, {
       'employeeId': employeeId,
     });
-    return (result['messages'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+    final messages =
+        (result['messages'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+    // 根据返回的消息ID，从消息队列中移除
+    _removeConfirmedMessages(messages);
+    return messages;
   }
 
   /// 清空当前会话
@@ -302,6 +323,17 @@ class AgentProxy {
         _remoteCache.status == AgentStatus.streaming;
   }
 
+  /// 待确认消息队列长度
+  int get pendingMessageQueueLength => _pendingMessageQueue.length;
+
+  /// 待确认消息列表（只读副本，包含完整消息内容）
+  List<PendingMessage> get pendingMessages =>
+      List.unmodifiable(_pendingMessageQueue);
+
+  /// 待确认消息ID列表（只读副本）
+  List<String> get pendingMessageIds =>
+      _pendingMessageQueue.map((msg) => msg.id).toList();
+
   // ===== 引用计数 =====
 
   void attach() {
@@ -408,6 +440,61 @@ class AgentProxy {
   Future<void> dispose() async {
     await _remoteEventSubscription?.cancel();
     await _stateController.close();
+  }
+
+  // ===== 私有方法 =====
+
+  /// 创建待确认消息
+  PendingMessage _createPendingMessage(
+    Map<String, dynamic> messageData,
+    String messageId,
+  ) {
+    // 提取或创建元数据
+    final metadata = <String, dynamic>{};
+    for (final entry in messageData.entries) {
+      // 排除已知字段，其他都放入 metadata
+      if (!['id', 'role', 'type', 'content', 'createdAt', 'toolCallId', 'toolName', 'toolArguments', 'toolResult', 'toolCalls'].contains(entry.key)) {
+        metadata[entry.key] = entry.value;
+      }
+    }
+
+    return PendingMessage(
+      id: messageId,
+      role: messageData['role'] as String? ?? 'user',
+      type: messageData['type'] as String? ?? 'text',
+      content: messageData['content'] as String?,
+      createdAt: messageData['createdAt'] != null
+          ? AgentMessage.parseDateTime(messageData['createdAt'])
+          : DateTime.now(),
+      toolCallId: messageData['toolCallId'] as String?,
+      toolName: messageData['toolName'] as String?,
+      toolArguments: messageData['toolArguments'] as Map<String, dynamic>?,
+      toolResult: messageData['toolResult'] as String?,
+      metadata: metadata.isEmpty ? null : metadata,
+      sentAt: DateTime.now(),
+      status: PendingMessageStatus.pending,
+      deviceId: deviceId,
+      employeeId: employeeId,
+    );
+  }
+
+  /// 从待确认队列中移除已确认的消息
+  ///
+  /// 当查询消息列表时，如果返回的消息在队列中，说明已被持久化，可以从队列中移除
+  void _removeConfirmedMessages(List<Map<String, dynamic>> messages) {
+    if (_pendingMessageQueue.isEmpty) return;
+
+    // 提取返回消息中的所有ID
+    final confirmedIds = <String>{};
+    for (final message in messages) {
+      final id = message['id'] as String?;
+      if (id != null && id.isNotEmpty) {
+        confirmedIds.add(id);
+      }
+    }
+
+    // 从队列中移除已确认的消息（根据消息ID）
+    _pendingMessageQueue.removeWhere((msg) => confirmedIds.contains(msg.id));
   }
 }
 

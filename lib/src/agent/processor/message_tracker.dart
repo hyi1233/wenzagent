@@ -1,21 +1,30 @@
-import '../agent_state.dart';
+import '../entity/entity.dart';
 
 /// 带状态追踪的消息记录
 class TrackedMessage {
-  final String messageId;
-  final Map<String, dynamic> messageData;
-  AgentMessageStatus status;
-  final DateTime createdAt;
+  QueuedMessage message;
 
   TrackedMessage({
-    required this.messageId,
-    required this.messageData,
-    this.status = AgentMessageStatus.none,
-    DateTime? createdAt,
-  }) : createdAt = createdAt ?? DateTime.now();
+    required this.message,
+  });
+
+  /// 消息ID
+  String get messageId => message.id;
+
+  /// 消息数据（向后兼容）
+  Map<String, dynamic> get messageData => message.toMap();
+
+  /// 消息状态
+  MessageProcessingStatus get status => message.processingStatus;
+  set status(MessageProcessingStatus value) {
+    message = message.updateStatus(value);
+  }
 
   /// 消息内容（快捷访问）
-  String get content => messageData['content'] as String? ?? '';
+  String get content => message.content ?? '';
+
+  /// 创建时间
+  DateTime get createdAt => message.createdAt;
 
   @override
   String toString() {
@@ -29,27 +38,37 @@ class MessageTracker {
 
   /// 追踪新消息
   void track(String messageId, Map<String, dynamic> messageData) {
-    _messages.add(TrackedMessage(
-      messageId: messageId,
-      messageData: messageData,
-      status: AgentMessageStatus.queued,
-    ));
+    // 创建 QueuedMessage
+    final queuedMessage = QueuedMessage.fromMap({
+      ...messageData,
+      'id': messageId,
+      'processingStatus': MessageProcessingStatus.queued.name,
+      'enqueuedAt': DateTime.now().toIso8601String(),
+    });
+
+    _messages.add(TrackedMessage(message: queuedMessage));
   }
 
   /// 更新消息状态
-  void updateStatus(String messageId, AgentMessageStatus status) {
+  void updateStatus(String messageId, MessageProcessingStatus status) {
     final msg = _messages.where((m) => m.messageId == messageId).firstOrNull;
-    if (msg != null) msg.status = status;
+    if (msg != null) {
+      msg.status = status;
+    }
   }
 
   /// 获取当前处理中的消息
   TrackedMessage? getProcessingMessage() {
-    return _messages.where((m) => m.status == AgentMessageStatus.processing).firstOrNull;
+    return _messages
+        .where((m) => m.status == MessageProcessingStatus.processing)
+        .firstOrNull;
   }
 
   /// 获取所有排队中的消息
   List<TrackedMessage> getQueuedMessages() {
-    return _messages.where((m) => m.status == AgentMessageStatus.queued).toList();
+    return _messages
+        .where((m) => m.status == MessageProcessingStatus.queued)
+        .toList();
   }
 
   /// 获取全部消息（只读副本）
