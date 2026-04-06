@@ -19,7 +19,9 @@ class MessageManager {
   /// 获取所有消息（持久化 + 待确认）
   List<Map<String, dynamic>> get allMessages {
     // 将 PendingMessage 转换为 Map
-    final pendingMaps = agentProxy.pendingMessages.map((m) => m.toMap()).toList();
+    final pendingMaps = agentProxy.pendingMessages
+        .map((m) => m.toMap())
+        .toList();
     return [..._persistedMessages, ...pendingMaps];
   }
 
@@ -33,7 +35,8 @@ class MessageManager {
   ///
   /// 调用此方法后，待确认队列会自动清理
   Future<void> refreshMessages() async {
-    _persistedMessages = await agentProxy.getSessionMessages();
+    final agentMessages = await agentProxy.getSessionMessages();
+    _persistedMessages = agentMessages.map((m) => m.toMap()).toList();
     print('已加载 ${_persistedMessages.length} 条持久化消息');
     print('待确认队列: ${agentProxy.pendingMessageQueueLength} 条');
   }
@@ -42,8 +45,8 @@ class MessageManager {
   ///
   /// 消息发送后会立即出现在 pendingMessages 中，
   /// 前端可以立即渲染，无需等待持久化完成
-  Future<String> sendMessage(Map<String, dynamic> messageData) async {
-    final messageId = await agentProxy.sendMessage(messageData);
+  Future<String> sendMessage(MessageInput input) async {
+    final messageId = await agentProxy.sendMessage(input);
     print('消息已发送: $messageId');
     print('待确认队列长度: $pendingCount');
     return messageId;
@@ -77,13 +80,12 @@ class MessageWithStatus {
   final Map<String, dynamic> data;
   final MessageRenderStatus status;
 
-  MessageWithStatus({
-    required this.data,
-    required this.status,
-  });
+  MessageWithStatus({required this.data, required this.status});
 
   String get content => data['content'] ?? '';
+
   String get id => data['id'] ?? '';
+
   DateTime? get createdAt {
     final str = data['createdAt'] as String?;
     return str != null ? DateTime.tryParse(str) : null;
@@ -113,10 +115,9 @@ Future<void> main() async {
 
   // ===== 场景 1: 用户发送第一条消息 =====
   print('【场景 1】用户发送第一条消息');
-  final msgId1 = await messageManager.sendMessage({
-    'content': '你好，这是第一条消息',
-    'type': 'text',
-  });
+  final msgId1 = await messageManager.sendMessage(
+    MessageInput(content: '你好，这是第一条消息', type: 'text'),
+  );
 
   messageManager.printMessages();
   // 输出:
@@ -155,10 +156,9 @@ Future<void> main() async {
   print('【场景 4】快速发送多条消息');
   final msgIds = <String>[];
   for (int i = 1; i <= 3; i++) {
-    final msgId = await messageManager.sendMessage({
-      'content': '快速消息 $i',
-      'type': 'text',
-    });
+    final msgId = await messageManager.sendMessage(
+      MessageInput(content: '快速消息 $i', type: 'text'),
+    );
     msgIds.add(msgId);
   }
 
@@ -176,18 +176,16 @@ Future<void> main() async {
 
   // 添加持久化消息
   for (final msg in messageManager._persistedMessages) {
-    messagesWithStatus.add(MessageWithStatus(
-      data: msg,
-      status: MessageRenderStatus.sent,
-    ));
+    messagesWithStatus.add(
+      MessageWithStatus(data: msg, status: MessageRenderStatus.sent),
+    );
   }
 
   // 添加待确认消息
   for (final msg in agentProxy.pendingMessages) {
-    messagesWithStatus.add(MessageWithStatus(
-      data: msg.toMap(),
-      status: MessageRenderStatus.pending,
-    ));
+    messagesWithStatus.add(
+      MessageWithStatus(data: msg.toMap(), status: MessageRenderStatus.pending),
+    );
   }
 
   // 渲染
@@ -249,17 +247,28 @@ class _MockAgent implements IAgent {
   }
 
   @override
-  Future<String> sendMessage(Map<String, dynamic> messageData) async {
+  Future<String> sendMessage(MessageInput input) async {
     final messageId =
-        messageData['id'] as String? ??
-        'msg_${DateTime.now().millisecondsSinceEpoch}';
-    messageData['id'] = messageId;
+        input.id ?? 'msg_${DateTime.now().millisecondsSinceEpoch}';
     return messageId;
   }
 
   @override
-  Future<List<Map<String, dynamic>>> getSessionMessages(String employeeId) async {
-    return _persistedMessages.values.toList();
+  Future<String> sendMessageFromMap(Map<String, dynamic> messageData) {
+    return sendMessage(MessageInput.fromMap(messageData));
+  }
+
+  @override
+  Future<List<AgentMessage>> getSessionMessages() async {
+    return _persistedMessages.values
+        .map((m) => AgentMessage.fromMap(m))
+        .toList();
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> getSessionMessagesAsMap() async {
+    final messages = await getSessionMessages();
+    return messages.map((m) => m.toMap()).toList();
   }
 
   @override
@@ -300,15 +309,6 @@ class _MockAgent implements IAgent {
 
   @override
   Map<String, dynamic>? getCurrentContext() => null;
-
-  @override
-  Future<void> setProvider(Map<String, dynamic> providerConfig) async {}
-
-  @override
-  Map<String, dynamic>? getProviderConfig() => null;
-
-  @override
-  Future<void> setProject(Map<String, dynamic>? projectData) async {}
 
   @override
   String? getCurrentProjectUuid() => null;
@@ -360,4 +360,15 @@ class _MockAgent implements IAgent {
 
   @override
   DateTime get lastActiveTime => DateTime.now();
+
+  @override
+  ProviderConfig? getProviderConfig() {
+    return null;
+  }
+
+  @override
+  Future<void> setProject(ProjectData? projectData) async {}
+
+  @override
+  Future<void> setProvider(ProviderConfig providerConfig) async {}
 }

@@ -99,17 +99,19 @@ class AgentProxy {
   // ===== 对话操作 =====
 
   /// 发送消息
-  Future<String> sendMessage(Map<String, dynamic> messageData) async {
+  Future<String> sendMessage(MessageInput input) async {
     print('[AgentProxy] sendMessage isLocalMode: $isLocalMode');
     if (isLocalMode && _localAgent != null) {
       print('[AgentProxy] calling local agent sendMessage');
-      final messageId = await _localAgent.sendMessage(messageData);
+      final messageId = await _localAgent.sendMessage(input);
       // 将完整消息数据添加到待确认队列
-      final pendingMessage = _createPendingMessage(messageData, messageId);
+      final pendingMessage = _createPendingMessage(input, messageId);
       _pendingMessageQueue.add(pendingMessage);
       return messageId;
     }
     print('[AgentProxy] calling RPC sendMessage');
+    // 将 MessageInput 转换为 Map 以便 RPC 传输
+    final messageData = input.toMap();
     final result = await _rpc(AgentRpcConfig.methodSendMessage, {
       'employeeId': employeeId,
       'messageData': messageData,
@@ -117,7 +119,7 @@ class AgentProxy {
     final messageId = result['messageId'] as String? ?? '';
     // 将完整消息数据添加到待确认队列
     if (messageId.isNotEmpty) {
-      final pendingMessage = _createPendingMessage(messageData, messageId);
+      final pendingMessage = _createPendingMessage(input, messageId);
       _pendingMessageQueue.add(pendingMessage);
     }
     return messageId;
@@ -167,13 +169,12 @@ class AgentProxy {
 
   /// 获取会话消息
   ///
-  /// [employeeId] 可选，不提供时使用 Agent 当前活跃会话
-  Future<List<Map<String, dynamic>>> getSessionMessages() async {
+  /// 返回当前 Agent 的会话消息列表
+  Future<List<AgentMessage>> getSessionMessages() async {
     if (isLocalMode && _localAgent != null) {
-      final uuid = _localAgent.employeeId;
-      final messages = await _localAgent.getSessionMessages(uuid);
+      final messages = await _localAgent.getSessionMessages();
       // 根据返回的消息ID，从消息队列中移除
-      _removeConfirmedMessages(messages);
+      _removeConfirmedMessages(messages.map((m) => m.toMap()).toList());
       return messages;
     }
     final result = await _rpc(AgentRpcConfig.methodGetSessionMessages, {
@@ -183,7 +184,8 @@ class AgentProxy {
         (result['messages'] as List?)?.cast<Map<String, dynamic>>() ?? [];
     // 根据返回的消息ID，从消息队列中移除
     _removeConfirmedMessages(messages);
-    return messages;
+    // 转换为 AgentMessage 列表
+    return messages.map((m) => AgentMessage.fromMap(m)).toList();
   }
 
   /// 清空当前会话
@@ -215,32 +217,33 @@ class AgentProxy {
 
   // ===== 模型管理 =====
 
-  Future<void> setProvider(Map<String, dynamic> providerConfig) async {
+  Future<void> setProvider(ProviderConfig providerConfig) async {
     if (isLocalMode && _localAgent != null) {
       return _localAgent.setProvider(providerConfig);
     }
     await _rpc(AgentRpcConfig.methodSetProvider, {
       'employeeId': employeeId,
-      'providerConfig': providerConfig,
+      'providerConfig': providerConfig.toMap(),
     });
   }
 
-  Map<String, dynamic>? getProviderConfig() {
+  ProviderConfig? getProviderConfig() {
     if (isLocalMode && _localAgent != null) {
       return _localAgent.getProviderConfig();
     }
-    return _remoteCache.providerConfig;
+    final configMap = _remoteCache.providerConfig;
+    return configMap != null ? ProviderConfig.fromMap(configMap) : null;
   }
 
   // ===== 项目管理 =====
 
-  Future<void> setProject(Map<String, dynamic>? projectData) async {
+  Future<void> setProject(ProjectData? projectData) async {
     if (isLocalMode && _localAgent != null) {
       return _localAgent.setProject(projectData);
     }
     await _rpc(AgentRpcConfig.methodSetProject, {
       'employeeId': employeeId,
-      'projectData': projectData,
+      'projectData': projectData?.toMap(),
     });
   }
 
@@ -446,33 +449,22 @@ class AgentProxy {
 
   /// 创建待确认消息
   PendingMessage _createPendingMessage(
-    Map<String, dynamic> messageData,
+    MessageInput input,
     String messageId,
   ) {
-    // 提取或创建元数据
-    final metadata = <String, dynamic>{};
-    for (final entry in messageData.entries) {
-      // 排除已知字段，其他都放入 metadata
-      if (!['id', 'role', 'type', 'content', 'createdAt', 'toolCallId', 'toolName', 'toolArguments', 'toolResult', 'toolCalls'].contains(entry.key)) {
-        metadata[entry.key] = entry.value;
-      }
-    }
-
     return PendingMessage(
       id: messageId,
-      role: messageData['role'] as String? ?? 'user',
-      type: messageData['type'] as String? ?? 'text',
-      content: messageData['content'] as String?,
-      createdAt: messageData['createdAt'] != null
-          ? AgentMessage.parseDateTime(messageData['createdAt'])
-          : DateTime.now(),
-      toolCallId: messageData['toolCallId'] as String?,
-      toolName: messageData['toolName'] as String?,
-      toolArguments: messageData['toolArguments'] as Map<String, dynamic>?,
-      toolResult: messageData['toolResult'] as String?,
-      metadata: metadata.isEmpty ? null : metadata,
+      role: input.role ?? 'user',
+      type: input.type,
+      content: input.content,
+      createdAt: input.createdAt ?? DateTime.now(),
+      toolCallId: input.toolCallId,
+      toolName: input.toolName,
+      toolArguments: input.toolArguments,
+      toolResult: input.toolResult,
+      metadata: input.metadata,
       sentAt: DateTime.now(),
-      status: PendingMessageStatus.pending,
+      pendingStatus: PendingMessageStatus.pending,
       deviceId: deviceId,
       employeeId: employeeId,
     );

@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:langchain_core/chat_models.dart';
 
 import '../agent_state.dart';
+import '../entity/entity.dart';
 import '../processor/cancellation_token.dart';
 import '../processor/message_processor.dart';
 import '../processor/persistence_queue.dart';
@@ -115,10 +116,16 @@ class PersistentChatAdapter extends LangChainChatAdapter {
 
                 if (msgId != null) {
                   // 使用 MessageWrapper 创建方法，传入稳定的 UUID
+                  // 获取 processingStatus 作为 status
+                  final processingStatus = msgData['processingStatus'] as String?;
+                  
                   final wrapper = MessageWrapper(
                     uuid: msgId,
                     message: chatMessage,
                     createdAt: msgCreatedAt,
+                    metadata: processingStatus != null 
+                        ? {'status': processingStatus} 
+                        : null,
                   );
                   session.addMessageWrapper(msgDeviceId, wrapper);
 
@@ -259,7 +266,7 @@ class PersistentChatAdapter extends LangChainChatAdapter {
   }
 
   @override
-  Future<List<Map<String, dynamic>>> getSessionMessages(
+  Future<List<AgentMessage>> getSessionMessages(
     String employeeId,
   ) async {
     // 直接返回内存中的消息，不触发持久化

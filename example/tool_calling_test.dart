@@ -32,12 +32,13 @@ void main() async {
   await agent.initialize();
 
   // 3. 配置 LLM Provider
-  await agent.setProvider({
-    'provider': 'openai',
-    'model': 'gpt-4o-mini',
-    'apiKey': apiKey,
-    'options': {'temperature': 0.7},
-  });
+  final providerConfig = ProviderConfig(
+    provider: LLMProvider.openai,
+    model: 'gpt-4o-mini',
+    apiKey: apiKey,
+    options: const LLMOptions(temperature: 0.7),
+  );
+  await agent.setProvider(providerConfig);
 
   // 4. 查看已注册的工具
   final tools = agent.getRegisteredTools();
@@ -128,7 +129,7 @@ Future<void> _sendAndWait(AgentImpl agent, String content) async {
   late StreamSubscription stateSub;
   stateSub = agent.onStateChanged.listen((_) {});
 
-  await agent.sendMessage({'content': content});
+  await agent.sendMessage(MessageInput(content: content));
 
   // 等待完成（超时 60 秒）
   await completer.future.timeout(

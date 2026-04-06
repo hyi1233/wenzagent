@@ -5,6 +5,7 @@ import 'package:langchain_core/prompts.dart';
 import 'package:meta/meta.dart';
 
 import '../agent_state.dart';
+import '../entity/entity.dart';
 import '../processor/cancellation_token.dart';
 import '../processor/message_processor.dart';
 import '../tool/agent_tool.dart';
@@ -396,7 +397,7 @@ class LangChainChatAdapter implements IChatAdapter {
   }
 
   @override
-  Future<List<Map<String, dynamic>>> getSessionMessages(
+  Future<List<AgentMessage>> getSessionMessages(
     String employeeId,
   ) async {
     // employeeId 实际上就是 employeeId
@@ -404,7 +405,8 @@ class LangChainChatAdapter implements IChatAdapter {
     if (session == null) return [];
 
     // ✅ 使用 _messageWrapperToMap 而不是 _chatMessageToMap
-    return session.allMessages.map(_messageWrapperToMap).toList();
+    final messages = session.allMessages.map(_messageWrapperToMap).toList();
+    return messages.map((m) => AgentMessage.fromMap(m)).toList();
   }
 
   @override
@@ -586,6 +588,11 @@ class LangChainChatAdapter implements IChatAdapter {
     // Tool 消息附加 toolCallId
     if (message is ToolChatMessage) {
       map['toolCallId'] = message.toolCallId;
+    }
+
+    // 从 wrapper.metadata 读取 status
+    if (wrapper.metadata != null && wrapper.metadata!['status'] != null) {
+      map['status'] = wrapper.metadata!['status'];
     }
 
     return map;

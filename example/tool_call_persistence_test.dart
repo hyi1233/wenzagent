@@ -167,10 +167,9 @@ class ToolCallPersistenceTest {
 
     // 发送触发工具调用的消息
     print('  发送触发工具调用的消息...');
-    final messageId = await agentProxy.sendMessage({
-      'content': '请使用 test_calculator 工具计算 "1+1"',
-      'role': 'user',
-    });
+    final messageId = await agentProxy.sendMessage(
+      MessageInput(content: '请使用 test_calculator 工具计算 "1+1"', role: 'user'),
+    );
     print('  ✓ 消息已发送 (ID: $messageId)');
 
     // 等待工具调用完成
@@ -184,10 +183,10 @@ class ToolCallPersistenceTest {
     // 打印所有消息
     for (var i = 0; i < messages.length; i++) {
       final msg = messages[i];
-      final role = msg['role'] as String? ?? 'unknown';
-      final content = msg['content'] as String? ?? '';
-      final toolCalls = msg['toolCalls'];
-      final toolCallId = msg['toolCallId'];
+      final role = msg.role ?? 'unknown';
+      final content = msg.content ?? '';
+      final toolCalls = msg.toolCalls;
+      final toolCallId = msg.toolCallId;
       final preview = content.length > 30 ? '${content.substring(0, 30)}...' : content;
 
       print('    消息 ${i + 1}: [$role]');
@@ -266,11 +265,11 @@ class ToolCallPersistenceTest {
 
     for (var i = 0; i < messages.length; i++) {
       final msg = messages[i];
-      if (msg['toolCalls'] != null) {
+      if (msg.toolCalls != null) {
         hasToolCalls = true;
         print('  ✓ 找到含 tool_calls 的消息');
       }
-      if (msg['toolCallId'] != null) {
+      if (msg.toolCallId != null) {
         hasToolResult = true;
         print('  ✓ 找到工具结果消息');
       }

@@ -76,14 +76,16 @@ class AgentClient {
       throw Exception('employeeId is required');
     }
 
+    final input = MessageInput(
+      content: content,
+      employeeId: empId,
+    );
+
     final result = await _rpcCall(
       AgentRpcConfig.methodSendMessage,
       {
         'employeeId': empId,
-        'messageData': {
-          'content': content,
-          'employeeId': empId,
-        },
+        'messageData': input.toMap(),
       },
     );
 
@@ -149,14 +151,20 @@ class AgentClient {
   }
 
   /// 获取会话消息
-  Future<List<Map<String, dynamic>>> getSessionMessages({
-    required String employeeId,
+  Future<List<AgentMessage>> getSessionMessages({
+    String? employeeId,
   }) async {
+    final empId = employeeId ?? _currentEmployeeId;
+    if (empId == null) {
+      throw Exception('employeeId is required');
+    }
+
     final result = await _rpcCall(AgentRpcConfig.methodGetSessionMessages, {
-      'employeeId': employeeId,
+      'employeeId': empId,
     });
 
-    return (result['messages'] as List).cast<Map<String, dynamic>>();
+    final messages = (result['messages'] as List).cast<Map<String, dynamic>>();
+    return messages.map((m) => AgentMessage.fromMap(m)).toList();
   }
 
   /// 获取 Agent 状态
@@ -201,6 +209,71 @@ class AgentClient {
     });
 
     return result['context'] as Map<String, dynamic>?;
+  }
+
+  // ===== 模型管理 =====
+
+  /// 切换 AI 模型
+  Future<void> setProvider({
+    required ProviderConfig providerConfig,
+    String? employeeId,
+  }) async {
+    final empId = employeeId ?? _currentEmployeeId;
+    if (empId == null) {
+      throw Exception('employeeId is required');
+    }
+
+    await _rpcCall(AgentRpcConfig.methodSetProvider, {
+      'employeeId': empId,
+      'providerConfig': providerConfig.toMap(),
+    });
+  }
+
+  /// 获取当前模型配置
+  Future<ProviderConfig?> getProvider({String? employeeId}) async {
+    final empId = employeeId ?? _currentEmployeeId;
+    if (empId == null) {
+      throw Exception('employeeId is required');
+    }
+
+    final result = await _rpcCall(AgentRpcConfig.methodGetProvider, {
+      'employeeId': empId,
+    });
+
+    final configMap = result['providerConfig'] as Map<String, dynamic>?;
+    return configMap != null ? ProviderConfig.fromMap(configMap) : null;
+  }
+
+  // ===== 项目管理 =====
+
+  /// 绑定项目
+  Future<void> setProject({
+    required ProjectData? projectData,
+    String? employeeId,
+  }) async {
+    final empId = employeeId ?? _currentEmployeeId;
+    if (empId == null) {
+      throw Exception('employeeId is required');
+    }
+
+    await _rpcCall(AgentRpcConfig.methodSetProject, {
+      'employeeId': empId,
+      'projectData': projectData?.toMap(),
+    });
+  }
+
+  /// 获取当前项目UUID
+  Future<String?> getProjectUuid({String? employeeId}) async {
+    final empId = employeeId ?? _currentEmployeeId;
+    if (empId == null) {
+      throw Exception('employeeId is required');
+    }
+
+    final result = await _rpcCall(AgentRpcConfig.methodGetProjectUuid, {
+      'employeeId': empId,
+    });
+
+    return result['projectUuid'] as String?;
   }
 
   /// 获取活跃 Agent 列表

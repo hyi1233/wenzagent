@@ -332,10 +332,9 @@ class RemoteDeviceChatTest {
     
     String? messageId;
     try {
-      messageId = await agentProxy.sendMessage({
-        'content': testMessage,
-        'role': 'user',
-      });
+      messageId = await agentProxy.sendMessage(
+        MessageInput(content: testMessage, role: 'user'),
+      );
       print('  [对话测试] 消息已发送， messageId: $messageId');
     } catch (e) {
       print('  [对话测试] 发送失败: $e');
@@ -385,15 +384,15 @@ class RemoteDeviceChatTest {
       print('  [对话测试] 消息历史数量: ${messages.length}');
       print('\n  ======== 对话内容 ========');
       for (final msg in messages) {
-        final role = msg['role'] as String? ?? 'unknown';
-        final content = msg['content'] as String? ?? '';
+        final role = msg.role ?? 'unknown';
+        final content = msg.content ?? '';
         final roleLabel = role == 'user' ? '用户' : (role == 'assistant' ? '助手' : role);
         print('  [$roleLabel] $content');
       }
       print('  ==========================\n');
       
       // 验证输出
-      _verifyChatOutput(messages, testMessage);
+      _verifyChatOutput(messages.map((m) => m.toMap()).toList(), testMessage);
     } catch (e) {
       print('  [对话测试] 获取消息失败: $e');
     }

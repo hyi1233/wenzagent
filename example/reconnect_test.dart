@@ -182,10 +182,9 @@ class ReconnectTest {
     print('\n  [Device-A 发送初始消息]');
     final agentProxy = await deviceA.getOrCreateAgentProxy(employeeId: employeeAliceId);
 
-    final messageId = await agentProxy.sendMessage({
-      'content': '你好 Alice，这是初始消息',
-      'role': 'user',
-    });
+    final messageId = await agentProxy.sendMessage(
+      MessageInput(content: '你好 Alice，这是初始消息', role: 'user'),
+    );
     print('    消息ID: $messageId');
 
     await _waitForMessageComplete(deviceA, messageId);
@@ -206,10 +205,9 @@ class ReconnectTest {
     print('\n  [Device-A 在 Device-B 断线期间发送消息]');
     final agentProxy = await deviceA.getOrCreateAgentProxy(employeeId: employeeAliceId);
 
-    final messageId = await agentProxy.sendMessage({
-      'content': '这是在 Device-B 断线期间发送的消息',
-      'role': 'user',
-    });
+    final messageId = await agentProxy.sendMessage(
+      MessageInput(content: '这是在 Device-B 断线期间发送的消息', role: 'user'),
+    );
     print('    消息ID: $messageId');
 
     await _waitForMessageComplete(deviceA, messageId);
@@ -289,24 +287,20 @@ class ReconnectTest {
 
     // 查找断线期间的消息
     final offlineMessage = messages.firstWhere(
-      (msg) => msg['uuid'] == offlineMessageId,
-      orElse: () => <String, dynamic>{},
+      (msg) => msg.id == offlineMessageId,
+      orElse: () => throw StateError('未找到断线期间的消息'),
     );
 
-    if (offlineMessage.isNotEmpty) {
-      print('  ✓ 找到断线期间的消息');
-      print('    消息内容: ${offlineMessage['content']}');
-      print('    消息角色: ${offlineMessage['role']}');
-    } else {
-      print('  ⚠️ 未找到断线期间的消息，可能需要检查同步逻辑');
-    }
+    print('  ✓ 找到断线期间的消息');
+    print('    消息内容: ${offlineMessage.content}');
+    print('    消息角色: ${offlineMessage.role}');
 
     // 打印所有消息
     print('\n  Device-B 所有消息:');
     for (int i = 0; i < messages.length; i++) {
       final msg = messages[i];
-      final role = msg['role'] as String? ?? 'unknown';
-      final content = msg['content'] as String? ?? '';
+      final role = msg.role ?? 'unknown';
+      final content = msg.content ?? '';
       print('    [$i] $role: ${content.length > 50 ? "${content.substring(0, 50)}..." : content}');
     }
   }
@@ -319,10 +313,9 @@ class ReconnectTest {
     assert(!agentProxy.isLocalMode, '应该是远程模式');
     print('  AgentProxy 模式: 远程 ✓');
 
-    final messageId = await agentProxy.sendMessage({
-      'content': '这是 Device-B 重连后发送的消息',
-      'role': 'user',
-    });
+    final messageId = await agentProxy.sendMessage(
+      MessageInput(content: '这是 Device-B 重连后发送的消息', role: 'user'),
+    );
     print('    消息ID: $messageId');
 
     await _waitForMessageComplete(deviceB, messageId);
@@ -348,9 +341,9 @@ class ReconnectTest {
            '两个设备的消息数量应该相同');
     print('  ✓ 两个设备的消息数量一致: ${messagesA.length}');
 
-    // 验证消息内容一致（通过 uuid 对比）
-    final messageIdsA = messagesA.map((msg) => msg['uuid'] as String?).whereType<String>().toSet();
-    final messageIdsB = messagesB.map((msg) => msg['uuid'] as String?).whereType<String>().toSet();
+    // 验证消息内容一致（通过 id 对比）
+    final messageIdsA = messagesA.map((msg) => msg.id).whereType<String>().toSet();
+    final messageIdsB = messagesB.map((msg) => msg.id).whereType<String>().toSet();
 
     assert(messageIdsA.containsAll(messageIdsB),
            'Device-A 应该包含 Device-B 的所有消息');
@@ -362,8 +355,8 @@ class ReconnectTest {
     print('\n  最终消息列表:');
     for (int i = 0; i < messagesA.length; i++) {
       final msg = messagesA[i];
-      final role = msg['role'] as String? ?? 'unknown';
-      final content = msg['content'] as String? ?? '';
+      final role = msg.role ?? 'unknown';
+      final content = msg.content ?? '';
       print('    [$i] $role: ${content.length > 50 ? "${content.substring(0, 50)}..." : content}');
     }
   }

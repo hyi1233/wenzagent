@@ -6,11 +6,13 @@ class MessageWrapper {
   final String uuid;
   final ChatMessage message;
   final DateTime createdAt;
+  final Map<String, dynamic>? metadata;
 
   MessageWrapper({
     required this.uuid,
     required this.message,
     required this.createdAt,
+    this.metadata,
   });
 
   /// 创建新的MessageWrapper（自动生成UUID）

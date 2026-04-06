@@ -244,10 +244,9 @@ class MultiDeviceConcurrentTest {
     assert(!agentProxy.isLocalMode, '设备A应该是远程模式');
     print('    AgentProxy 模式: 远程 ✓');
 
-    final messageId = await agentProxy.sendMessage({
-      'content': '你好 Alice，我是设备A，我在测试多设备并发对话',
-      'role': 'user',
-    });
+    final messageId = await agentProxy.sendMessage(
+      MessageInput(content: '你好 Alice，我是设备A，我在测试多设备并发对话', role: 'user'),
+    );
     print('    消息已发送，ID: $messageId');
 
     return messageId;
@@ -263,10 +262,9 @@ class MultiDeviceConcurrentTest {
     assert(!agentProxy.isLocalMode, '设备B应该是远程模式');
     print('    AgentProxy 模式: 远程 ✓');
 
-    final messageId = await agentProxy.sendMessage({
-      'content': '你好 Alice，我是设备B，我也在测试多设备并发对话',
-      'role': 'user',
-    });
+    final messageId = await agentProxy.sendMessage(
+      MessageInput(content: '你好 Alice，我是设备B，我也在测试多设备并发对话', role: 'user'),
+    );
     print('    消息已发送，ID: $messageId');
 
     return messageId;
@@ -342,17 +340,17 @@ class MultiDeviceConcurrentTest {
     assert(messagesB.length == messagesC.length, 'B和C的消息数量应该相同');
     print('  ✓ 三个设备的消息数量一致: ${messagesA.length}');
 
-    // 验证消息内容一致（通过 uuid 对比）
+    // 验证消息内容一致（通过 id 对比）
     final messageIdsA = messagesA
-        .map((msg) => msg['uuid'] as String?)
+        .map((msg) => msg.id)
         .whereType<String>()
         .toSet();
     final messageIdsB = messagesB
-        .map((msg) => msg['uuid'] as String?)
+        .map((msg) => msg.id)
         .whereType<String>()
         .toSet();
     final messageIdsC = messagesC
-        .map((msg) => msg['uuid'] as String?)
+        .map((msg) => msg.id)
         .whereType<String>()
         .toSet();
 
@@ -366,8 +364,8 @@ class MultiDeviceConcurrentTest {
     print('\n  消息摘要:');
     for (int i = 0; i < messagesA.length; i++) {
       final msg = messagesA[i];
-      final role = msg['role'] as String? ?? 'unknown';
-      final content = msg['content'] as String? ?? '';
+      final role = msg.role ?? 'unknown';
+      final content = msg.content ?? '';
       print(
         '    [$i] $role: ${content.length > 60 ? "${content.substring(0, 60)}..." : content}',
       );

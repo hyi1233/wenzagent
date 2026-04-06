@@ -128,6 +128,7 @@ class QueuedMessage extends AgentMessage {
     String? toolResult,
     List<ToolCall>? toolCalls,
     Map<String, dynamic>? metadata,
+    String? status,
     MessageProcessingStatus? processingStatus,
     String? processingError,
     DateTime? enqueuedAt,

@@ -151,10 +151,9 @@ class MessagePersistenceFullTest {
 
     print('  发送 ${userMessages.length} 条用户消息...');
     for (var i = 0; i < userMessages.length; i++) {
-      final messageId = await agentProxy.sendMessage({
-        'content': userMessages[i],
-        'role': 'user',
-      });
+      final messageId = await agentProxy.sendMessage(
+        MessageInput(content: userMessages[i], role: 'user'),
+      );
       print('  ✓ 消息 ${i + 1} 已发送 (ID: $messageId)');
 
       // 等待消息处理完成，即使 AI 回复失败，用户消息也应该被持久化
@@ -173,7 +172,7 @@ class MessagePersistenceFullTest {
     for (var i = 0; i < userMessages.length; i++) {
       if (i < messagesInMemory.length) {
         final msg = messagesInMemory[i];
-        final content = msg['content'] as String? ?? '';
+        final content = msg.content ?? '';
         if (content.contains(userMessages[i])) {
           print('    ✓ 消息 ${i + 1} 内容正确: ${content}');
         } else {
@@ -194,10 +193,9 @@ class MessagePersistenceFullTest {
 
     // 发送一条消息等待 AI 回复
     print('  发送消息并等待 AI 回复...');
-    final messageId = await agentProxy.sendMessage({
-      'content': '请回复 "AI 回复测试成功"',
-      'role': 'user',
-    });
+    final messageId = await agentProxy.sendMessage(
+      MessageInput(content: '请回复 "AI 回复测试成功"', role: 'user'),
+    );
     print('  消息已发送 (ID: $messageId)');
 
     // 等待 AI 处理完成
@@ -208,7 +206,7 @@ class MessagePersistenceFullTest {
     print('  当前消息数量: ${messages.length}');
 
     // 查找 AI 回复
-    final aiResponses = messages.where((msg) => msg['role'] == 'assistant').toList();
+    final aiResponses = messages.where((msg) => msg.role == 'assistant').toList();
     print('  AI 回复数量: ${aiResponses.length}');
 
     if (aiResponses.isEmpty) {
@@ -222,7 +220,7 @@ class MessagePersistenceFullTest {
     // 打印 AI 回复
     for (var i = 0; i < aiResponses.length; i++) {
       final response = aiResponses[i];
-      final content = response['content'] as String? ?? '';
+      final content = response.content ?? '';
       final preview = content.length > 50 ? '${content.substring(0, 50)}...' : content;
       print('    AI 回复 ${i + 1}: $preview');
     }
@@ -279,10 +277,9 @@ class MessagePersistenceFullTest {
     final agentProxy = await device.getOrCreateAgentProxy(employeeId: employeeId);
 
     final newMessage = '清空后的第一条消息';
-    final messageId = await agentProxy.sendMessage({
-      'content': newMessage,
-      'role': 'user',
-    });
+    final messageId = await agentProxy.sendMessage(
+      MessageInput(content: newMessage, role: 'user'),
+    );
     print('  消息已发送 (ID: $messageId)');
     await Future.delayed(const Duration(milliseconds: 200));
 
@@ -296,7 +293,7 @@ class MessagePersistenceFullTest {
     }
 
     // 验证消息内容
-    final content = messagesInMemory[0]['content'] as String? ?? '';
+    final content = messagesInMemory[0].content ?? '';
     if (content != newMessage) {
       print('  ❌ 错误: 消息内容不匹配');
       print('     期望: $newMessage');
@@ -331,7 +328,7 @@ class MessagePersistenceFullTest {
 
     // 验证消息内容
     final expectedMessage = '清空后的第一条消息';
-    final content = messages[0]['content'] as String? ?? '';
+    final content = messages[0].content ?? '';
 
     if (content != expectedMessage) {
       print('  ❌ 错误: 消息内容不一致');

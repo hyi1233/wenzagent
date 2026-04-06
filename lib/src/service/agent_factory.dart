@@ -2,6 +2,7 @@
 import 'dart:convert';
 
 import '../agent/adapter/persistent_chat_adapter.dart';
+import '../agent/entity/entity.dart';
 import '../agent/i_agent.dart';
 import '../agent/impl/agent_impl.dart';
 import '../agent/agent_state.dart';
@@ -108,21 +109,24 @@ class AgentFactoryImpl implements AgentFactory {
 
     // 设置Provider配置
     if (employee.provider != null && employee.provider!.isNotEmpty) {
-      final providerConfig = <String, dynamic>{'type': employee.provider};
+      final providerConfigMap = <String, dynamic>{
+        'provider': employee.provider,
+      };
       if (employee.model != null) {
-        providerConfig['model'] = employee.model;
+        providerConfigMap['model'] = employee.model;
       }
       if (employee.apiKey != null) {
-        providerConfig['apiKey'] = employee.apiKey;
+        providerConfigMap['apiKey'] = employee.apiKey;
       }
       if (employee.apiBaseUrl != null) {
-        providerConfig['baseUrl'] = employee.apiBaseUrl;
+        providerConfigMap['baseUrl'] = employee.apiBaseUrl;
       }
       if (employee.modelConfig != null) {
         try {
-          providerConfig['modelConfig'] = jsonDecode(employee.modelConfig!);
+          providerConfigMap['modelConfig'] = jsonDecode(employee.modelConfig!);
         } catch (_) {}
       }
+      final providerConfig = ProviderConfig.fromMap(providerConfigMap);
       await agent.setProvider(providerConfig);
     }
 

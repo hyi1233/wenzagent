@@ -123,7 +123,7 @@ abstract class IChatAdapter {
   Future<void> stopStreaming();
 
   /// 获取会话消息
-  Future<List<Map<String, dynamic>>> getSessionMessages(String employeeId);
+  Future<List<AgentMessage>> getSessionMessages(String employeeId);
 
   /// 清空当前会话
   Future<void> clearCurrentSession();

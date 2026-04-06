@@ -5,6 +5,7 @@ import 'package:test/test.dart';
 import 'package:wenzagent/src/agent/adapter/langchain_chat_adapter.dart';
 import 'package:wenzagent/src/agent/agent_state.dart';
 import 'package:wenzagent/src/agent/client/agent_proxy.dart';
+import 'package:wenzagent/src/agent/entity/entity.dart';
 import 'package:wenzagent/src/agent/i_agent.dart';
 import 'package:wenzagent/src/agent/impl/agent_impl.dart';
 
@@ -106,7 +107,7 @@ void main() {
       // 发送消息（这会触发状态变化）
       print('\n开始发送消息...');
       try {
-        await localAgent.sendMessage({'content': '测试消息'});
+        await localAgent.sendMessage(MessageInput(content: '测试消息'));
         print('✓ 消息发送完成');
       } catch (e) {
         print('⚠ 消息发送失败（可能因为没有配置模型）: $e');
@@ -153,7 +154,7 @@ void main() {
 
       print('发送消息...');
       try {
-        await localAgent.sendMessage({'content': '测试消息'});
+        await localAgent.sendMessage(MessageInput(content: '测试消息'));
       } catch (e) {
         print('⚠ 消息发送失败（预期）: $e');
       }
@@ -205,7 +206,7 @@ void main() {
 
       print('\n发送消息...');
       try {
-        final messageId = await localAgent.sendMessage({'content': '测试'});
+        final messageId = await localAgent.sendMessage(MessageInput(content: '测试'));
         print('消息 ID: $messageId');
       } catch (e) {
         print('⚠ 消息发送失败（预期）: $e');
@@ -247,7 +248,7 @@ void main() {
 
       print('\n发送消息...');
       try {
-        await localAgent.sendMessage({'content': '事件流测试'});
+        await localAgent.sendMessage(MessageInput(content: '事件流测试'));
       } catch (e) {
         print('⚠ 消息发送失败（预期）: $e');
       }
@@ -282,7 +283,7 @@ void main() {
         futures.add(
           Future.delayed(Duration(milliseconds: i * 100), () async {
             try {
-              await localAgent.sendMessage({'content': '并发测试 $i'});
+              await localAgent.sendMessage(MessageInput(content: '并发测试 $i'));
             } catch (e) {
               print('消息 $i 发送失败: $e');
             }
@@ -352,7 +353,7 @@ void main() {
 
       print('\n发送测试消息...');
       try {
-        await agent.sendMessage({'content': '诊断测试'});
+        await agent.sendMessage(MessageInput(content: '诊断测试'));
       } catch (e) {
         print('⚠ 发送失败（预期）: $e');
       }

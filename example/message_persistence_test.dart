@@ -128,10 +128,9 @@ class MessagePersistenceTest {
     print('  发送消息: "$testMessage"');
 
     try {
-      final messageId = await agentProxy.sendMessage({
-        'content': testMessage,
-        'role': 'user',
-      });
+      final messageId = await agentProxy.sendMessage(
+        MessageInput(content: testMessage, role: 'user'),
+      );
       print('  ✓ 消息已发送，ID: $messageId');
 
       // 等待一段时间让消息处理完成

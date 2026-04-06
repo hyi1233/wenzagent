@@ -35,6 +35,9 @@ class AgentMessage {
   /// 元数据（可选，用于存储自定义字段）
   final Map<String, dynamic>? metadata;
 
+  /// 消息状态 (none/queued/processing/completed/failed/interrupted)
+  final String? status;
+
   const AgentMessage({
     required this.id,
     this.role = 'user',
@@ -47,6 +50,7 @@ class AgentMessage {
     this.toolResult,
     this.toolCalls,
     this.metadata,
+    this.status,
   });
 
   /// 从 Map 创建
@@ -67,6 +71,7 @@ class AgentMessage {
               .toList()
           : null,
       metadata: map['metadata'] as Map<String, dynamic>?,
+      status: map['status'] as String?,
     );
   }
 
@@ -85,6 +90,7 @@ class AgentMessage {
       if (toolCalls != null)
         'toolCalls': toolCalls!.map((tc) => tc.toMap()).toList(),
       if (metadata != null) 'metadata': metadata,
+      if (status != null) 'status': status,
     };
   }
 
@@ -101,6 +107,7 @@ class AgentMessage {
     String? toolResult,
     List<ToolCall>? toolCalls,
     Map<String, dynamic>? metadata,
+    String? status,
   }) {
     return AgentMessage(
       id: id ?? this.id,
@@ -114,6 +121,7 @@ class AgentMessage {
       toolResult: toolResult ?? this.toolResult,
       toolCalls: toolCalls ?? this.toolCalls,
       metadata: metadata ?? this.metadata,
+      status: status ?? this.status,
     );
   }
 

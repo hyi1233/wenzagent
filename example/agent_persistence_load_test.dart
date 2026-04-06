@@ -142,10 +142,9 @@ class AgentPersistenceLoadTest {
     print('  发送 ${testMessages.length} 条消息...');
     for (var i = 0; i < testMessages.length; i++) {
       try {
-        final messageId = await agentProxy.sendMessage({
-          'content': testMessages[i],
-          'role': 'user',
-        });
+        final messageId = await agentProxy.sendMessage(
+          MessageInput(content: testMessages[i], role: 'user'),
+        );
         print('  ✓ 消息 ${i + 1} 已发送: "${testMessages[i]}" (ID: $messageId)');
 
         // 等待消息处理完成
@@ -210,8 +209,8 @@ class AgentPersistenceLoadTest {
     // 打印消息摘要
     for (var i = 0; i < messages.length; i++) {
       final msg = messages[i];
-      final role = msg['role'] as String? ?? 'unknown';
-      final content = msg['content'] as String? ?? '';
+      final role = msg.role ?? 'unknown';
+      final content = msg.content ?? '';
       final preview = content.length > 30 ? '${content.substring(0, 30)}...' : content;
       print('    消息 ${i + 1}: [$role] $preview');
     }
@@ -261,15 +260,15 @@ class AgentPersistenceLoadTest {
       final hiveMsg = hiveMessages[i];
       final agentMsg = agentMessages[i];
 
-      if (hiveMsg.role != agentMsg['role']) {
+      if (hiveMsg.role != agentMsg.role) {
         print('  ❌ 错误: 消息 ${i + 1} 的 role 不一致');
         continue;
       }
 
-      if (hiveMsg.content != agentMsg['content']) {
+      if (hiveMsg.content != agentMsg.content) {
         print('  ❌ 错误: 消息 ${i + 1} 的 content 不一致');
         print('     Hive: ${hiveMsg.content}');
-        print('     Agent: ${agentMsg['content']}');
+        print('     Agent: ${agentMsg.content}');
         continue;
       }
 

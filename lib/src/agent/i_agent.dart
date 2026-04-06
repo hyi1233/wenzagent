@@ -1,6 +1,7 @@
 ﻿import 'dart:async';
 
 import 'agent_state.dart';
+import 'entity/entity.dart';
 import 'tool/agent_tool.dart';
 
 /// Agent 主体接口
@@ -50,12 +51,20 @@ abstract class IAgent {
 
   /// 发送消息
   ///
-  /// [messageData] 消息数据，必须包含:
+  /// [input] 消息输入数据，必须包含:
   ///   - `content` (String): 消息内容
   ///   - `employeeId` (String?): 目标会话UUID，为 null 使用当前会话
   ///
   /// 返回消息ID
-  Future<String> sendMessage(Map<String, dynamic> messageData);
+  Future<String> sendMessage(MessageInput input);
+
+  /// 发送消息（从 Map 创建，向后兼容）
+  ///
+  /// [messageData] 消息数据 Map
+  @Deprecated('Use sendMessage(MessageInput) instead')
+  Future<String> sendMessageFromMap(Map<String, dynamic> messageData) {
+    return sendMessage(MessageInput.fromMap(messageData));
+  }
 
   /// 中断当前处理
   Future<void> interrupt();
@@ -68,7 +77,16 @@ abstract class IAgent {
   // ===== 会话管理 =====
 
   /// 获取会话消息列表
-  Future<List<Map<String, dynamic>>> getSessionMessages(String employeeId);
+  ///
+  /// 返回当前 Agent 的会话消息列表
+  Future<List<AgentMessage>> getSessionMessages();
+
+  /// 获取会话消息列表（返回 Map，向后兼容）
+  @Deprecated('Use getSessionMessages() instead')
+  Future<List<Map<String, dynamic>>> getSessionMessagesAsMap() async {
+    final messages = await getSessionMessages();
+    return messages.map((m) => m.toMap()).toList();
+  }
 
   /// 清空当前会话消息
   Future<void> clearCurrentSession();
@@ -87,15 +105,15 @@ abstract class IAgent {
   // ===== 模型管理 =====
 
   /// 切换 AI 模型
-  Future<void> setProvider(Map<String, dynamic> providerConfig);
+  Future<void> setProvider(ProviderConfig providerConfig);
 
   /// 获取当前模型配置
-  Map<String, dynamic>? getProviderConfig();
+  ProviderConfig? getProviderConfig();
 
   // ===== 项目管理 =====
 
   /// 绑定项目
-  Future<void> setProject(Map<String, dynamic>? projectData);
+  Future<void> setProject(ProjectData? projectData);
 
   /// 获取当前项目UUID
   String? getCurrentProjectUuid();

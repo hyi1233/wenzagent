@@ -1,6 +1,7 @@
 ﻿import 'dart:async';
 
 import '../agent_state.dart';
+import '../entity/entity.dart';
 import '../i_agent.dart';
 import '../processor/interrupt_judge.dart';
 import '../processor/message_processor.dart';
@@ -222,11 +223,14 @@ class AgentImpl implements IAgent {
   // ===== IAgent: 对话操作 =====
 
   @override
-  Future<String> sendMessage(Map<String, dynamic> messageData) async {
+  Future<String> sendMessage(MessageInput input) async {
     _touch();
-    print('[AgentImpl] sendMessage: ${messageData['content']?.toString().substring(0, (messageData['content']?.toString().length ?? 0).clamp(0, 50))}');
+    print('[AgentImpl] sendMessage: ${input.content.substring(0, input.content.length.clamp(0, 50))}');
 
     return await _withLock(() async {
+      // 转换为 Map 以便内部处理
+      final messageData = input.toMap();
+
       // 生成消息ID
       final messageId =
           messageData['id'] as String? ??
@@ -245,6 +249,11 @@ class AgentImpl implements IAgent {
   }
 
   @override
+  Future<String> sendMessageFromMap(Map<String, dynamic> messageData) {
+    return sendMessage(MessageInput.fromMap(messageData));
+  }
+
+  @override
   Future<void> interrupt() async {
     _touch();
     await _processor?.interruptCurrentTask();
@@ -254,10 +263,14 @@ class AgentImpl implements IAgent {
   // ===== IAgent: 会话管理 =====
 
   @override
-  Future<List<Map<String, dynamic>>> getSessionMessages(
-    String employeeId,
-  ) async {
+  Future<List<AgentMessage>> getSessionMessages() async {
     return _chatAdapter.getSessionMessages(employeeId);
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> getSessionMessagesAsMap() async {
+    final messages = await getSessionMessages();
+    return messages.map((m) => m.toMap()).toList();
   }
 
   @override
@@ -303,24 +316,25 @@ class AgentImpl implements IAgent {
   // ===== IAgent: 模型管理 =====
 
   @override
-  Future<void> setProvider(Map<String, dynamic> providerConfig) async {
+  Future<void> setProvider(ProviderConfig providerConfig) async {
     _touch();
     await _withLock(() async {
-      await _chatAdapter.updateProvider(providerConfig);
+      await _chatAdapter.updateProvider(providerConfig.toMap());
     });
   }
 
   @override
-  Map<String, dynamic>? getProviderConfig() {
-    return _chatAdapter.getProviderConfig();
+  ProviderConfig? getProviderConfig() {
+    final configMap = _chatAdapter.getProviderConfig();
+    return configMap != null ? ProviderConfig.fromMap(configMap) : null;
   }
 
   // ===== IAgent: 项目管理 =====
 
   @override
-  Future<void> setProject(Map<String, dynamic>? projectData) async {
+  Future<void> setProject(ProjectData? projectData) async {
     _touch();
-    await _chatAdapter.updateProjectContext(projectData);
+    await _chatAdapter.updateProjectContext(projectData?.toMap());
   }
 
   @override

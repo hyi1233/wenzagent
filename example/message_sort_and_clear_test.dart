@@ -181,14 +181,14 @@ class MessageSortAndClearTest {
       print('  前3条消息:');
       for (int i = 0; i < (messages.length < 3 ? messages.length : 3); i++) {
         final msg = messages[i];
-        print('    [$i] ${msg['content']} - ${msg['createTime']}');
+        print('    [$i] ${msg.content} - ${msg.createdAt}');
       }
 
       // 验证排序
       bool isSorted = true;
       for (int i = 1; i < messages.length; i++) {
-        final prevTime = _parseTime(messages[i - 1]['createTime']);
-        final currTime = _parseTime(messages[i]['createTime']);
+        final prevTime = messages[i - 1].createdAt;
+        final currTime = messages[i].createdAt;
         if (currTime.isBefore(prevTime)) {
           isSorted = false;
           print('  ❌ 排序错误: 消息 $i 应该在消息 ${i - 1} 之前');
@@ -231,10 +231,9 @@ class MessageSortAndClearTest {
 
     // 发送几条消息
     for (int i = 0; i < 3; i++) {
-      await agentProxy.sendMessage({
-        'content': 'Memory Test Message $i',
-        'role': 'user',
-      });
+      await agentProxy.sendMessage(
+        MessageInput(content: 'Memory Test Message $i', role: 'user'),
+      );
       await Future.delayed(const Duration(milliseconds: 100));
     }
 
@@ -376,7 +375,7 @@ class MessageSortAndClearTest {
       print('  ❌ 严重问题：Agent 加载了已删除的消息！');
       print('  消息数量: ${agentMessages.length}');
       for (int i = 0; i < agentMessages.length; i++) {
-        print('    [$i] ${agentMessages[i]['content']}');
+        print('    [$i] ${agentMessages[i].content}');
       }
       throw StateError('Agent 加载了已删除的消息！');
     }
@@ -408,10 +407,9 @@ class MessageSortAndClearTest {
 
     // 发送消息
     for (int i = 0; i < 3; i++) {
-      await agentProxy.sendMessage({
-        'content': 'Workflow Message $i',
-        'role': 'user',
-      });
+      await agentProxy.sendMessage(
+        MessageInput(content: 'Workflow Message $i', role: 'user'),
+      );
       await Future.delayed(const Duration(milliseconds: 200));
     }
 
@@ -436,10 +434,9 @@ class MessageSortAndClearTest {
 
     print('  步骤 4: 重新发送消息...');
     for (int i = 0; i < 2; i++) {
-      await agentProxy.sendMessage({
-        'content': 'New Workflow Message $i',
-        'role': 'user',
-      });
+      await agentProxy.sendMessage(
+        MessageInput(content: 'New Workflow Message $i', role: 'user'),
+      );
       await Future.delayed(const Duration(milliseconds: 200));
     }
 
@@ -453,15 +450,6 @@ class MessageSortAndClearTest {
     } else {
       throw StateError('完整流程测试失败！');
     }
-  }
-
-  /// 解析时间
-  DateTime _parseTime(dynamic time) {
-    if (time == null) return DateTime.now();
-    if (time is DateTime) return time;
-    if (time is int) return DateTime.fromMillisecondsSinceEpoch(time);
-    if (time is String) return DateTime.parse(time);
-    return DateTime.now();
   }
 
   /// 清理

@@ -5,6 +5,7 @@ import 'dart:io';
 import '../../agent/adapter/persistent_chat_adapter.dart';
 import '../../agent/agent_state.dart';
 import '../../agent/client/agent_proxy.dart';
+import '../../agent/entity/entity.dart';
 import '../../agent/i_agent.dart';
 import '../../agent/impl/agent_impl.dart';
 import '../../agent/rpc/agent_rpc_config.dart';
@@ -253,7 +254,8 @@ class DeviceClientImpl implements DeviceClient {
       if (agent == null) {
         throw Exception('Agent not found: $employeeId');
       }
-      final messageId = await agent.sendMessage(messageData);
+      final input = MessageInput.fromMap(messageData);
+      final messageId = await agent.sendMessage(input);
       return {'messageId': messageId};
     });
 
@@ -275,9 +277,8 @@ class DeviceClientImpl implements DeviceClient {
       if (agent == null) {
         throw Exception('Agent not found: $employeeId');
       }
-      final uuid = employeeId ?? agent.employeeId;
-      final messages = await agent.getSessionMessages(uuid);
-      return {'messages': messages};
+      final messages = await agent.getSessionMessages();
+      return {'messages': messages.map((m) => m.toMap()).toList()};
     });
 
     _rpcServer!.register(AgentRpcConfig.methodGetState, (params) async {
@@ -311,11 +312,12 @@ class DeviceClientImpl implements DeviceClient {
 
     _rpcServer!.register(AgentRpcConfig.methodSetProvider, (params) async {
       final employeeId = params['employeeId'] as String;
-      final providerConfig = params['providerConfig'] as Map<String, dynamic>;
+      final providerConfigMap = params['providerConfig'] as Map<String, dynamic>;
       final agent = _localAgents[employeeId];
       if (agent == null) {
         throw Exception('Agent not found: $employeeId');
       }
+      final providerConfig = ProviderConfig.fromMap(providerConfigMap);
       await agent.setProvider(providerConfig);
       return {};
     });
@@ -425,11 +427,14 @@ class DeviceClientImpl implements DeviceClient {
     // 项目管理
     _rpcServer!.register(AgentRpcConfig.methodSetProject, (params) async {
       final employeeId = params['employeeId'] as String;
-      final projectData = params['projectData'] as Map<String, dynamic>?;
+      final projectDataMap = params['projectData'] as Map<String, dynamic>?;
       final agent = _localAgents[employeeId];
       if (agent == null) {
         throw Exception('Agent not found: $employeeId');
       }
+      final projectData = projectDataMap != null 
+          ? ProjectData.fromMap(projectDataMap) 
+          : null;
       await agent.setProject(projectData);
       return {};
     });
@@ -684,27 +689,31 @@ class DeviceClientImpl implements DeviceClient {
     final deviceConfig = session.getConfig(deviceId);
     if (deviceConfig?.providerConfig != null) {
       try {
-        final config =
+        final configMap =
             jsonDecode(deviceConfig!.providerConfig!) as Map<String, dynamic>;
+        final config = ProviderConfig.fromMap(configMap);
         await agent.setProvider(config);
       } catch (_) {}
     } else if (employee.provider != null && employee.provider!.isNotEmpty) {
       // 向后兼容：使用Employee的配置
-      final providerConfig = <String, dynamic>{'type': employee.provider};
+      final providerConfigMap = <String, dynamic>{
+        'provider': employee.provider,
+      };
       if (employee.model != null) {
-        providerConfig['model'] = employee.model;
+        providerConfigMap['model'] = employee.model;
       }
       if (employee.apiKey != null) {
-        providerConfig['apiKey'] = employee.apiKey;
+        providerConfigMap['apiKey'] = employee.apiKey;
       }
       if (employee.apiBaseUrl != null) {
-        providerConfig['baseUrl'] = employee.apiBaseUrl;
+        providerConfigMap['baseUrl'] = employee.apiBaseUrl;
       }
       if (employee.modelConfig != null) {
         try {
-          providerConfig['modelConfig'] = jsonDecode(employee.modelConfig!);
+          providerConfigMap['modelConfig'] = jsonDecode(employee.modelConfig!);
         } catch (_) {}
       }
+      final providerConfig = ProviderConfig.fromMap(providerConfigMap);
       await agent.setProvider(providerConfig);
     }
 

@@ -150,10 +150,9 @@ class RemoteSessionMessageTest {
 
     // 发送第一条消息
     print('\n  [发送消息 1] "你好 Alice"');
-    final messageId1 = await agentProxy.sendMessage({
-      'content': '你好 Alice',
-      'role': 'user',
-    });
+    final messageId1 = await agentProxy.sendMessage(
+      MessageInput(content: '你好 Alice', role: 'user'),
+    );
     messageIds.add(messageId1);
     print('    消息ID: $messageId1');
 
@@ -162,10 +161,9 @@ class RemoteSessionMessageTest {
 
     // 发送第二条消息
     print('\n  [发送消息 2] "请介绍一下你自己"');
-    final messageId2 = await agentProxy.sendMessage({
-      'content': '请介绍一下你自己',
-      'role': 'user',
-    });
+    final messageId2 = await agentProxy.sendMessage(
+      MessageInput(content: '请介绍一下你自己', role: 'user'),
+    );
     messageIds.add(messageId2);
     print('    消息ID: $messageId2');
 
@@ -238,9 +236,9 @@ class RemoteSessionMessageTest {
 
     for (int i = 0; i < messages.length; i++) {
       final msg = messages[i];
-      final role = msg['role'] as String? ?? 'unknown';
-      final content = msg['content'] as String? ?? '';
-      final status = msg['status'] as String? ?? 'unknown';
+      final role = msg.role ?? 'unknown';
+      final content = msg.content ?? '';
+      final status = msg.status ?? 'unknown';
 
       print(
         '    [$i] $role: ${content.length > 50 ? "${content.substring(0, 50)}..." : content}',
@@ -267,8 +265,8 @@ class RemoteSessionMessageTest {
     int completedMessages = 0;
 
     for (final msg in messages) {
-      final role = msg['role'] as String?;
-      final status = msg['status'] as String?;
+      final role = msg.role;
+      final status = msg.status;
 
       if (role == 'user') {
         userMessages++;
@@ -301,10 +299,9 @@ class RemoteSessionMessageTest {
     assert(!agentProxy.isLocalMode, '应该是远程模式');
 
     print('\n  [远程发送消息] "你好，我是 Device-B"');
-    final messageId = await agentProxy.sendMessage({
-      'content': '你好，我是 Device-B',
-      'role': 'user',
-    });
+    final messageId = await agentProxy.sendMessage(
+      MessageInput(content: '你好，我是 Device-B', role: 'user'),
+    );
     print('    消息ID: $messageId');
 
     // 等待消息处理完成
@@ -316,7 +313,7 @@ class RemoteSessionMessageTest {
 
     // 检查最后一条消息是否是刚发送的
     final lastMessage = messages.last;
-    final content = lastMessage['content'] as String? ?? '';
+    final content = lastMessage.content ?? '';
     assert(content.contains('Device-B'), '最后一条消息应该包含 Device-B');
     print('  ✓ 远程消息已成功添加到消息列表');
   }

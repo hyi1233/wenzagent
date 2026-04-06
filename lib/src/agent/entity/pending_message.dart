@@ -15,8 +15,8 @@ class PendingMessage extends AgentMessage {
   /// 发送时间（用于前端显示）
   final DateTime sentAt;
 
-  /// 消息状态
-  final PendingMessageStatus status;
+  /// 消息状态（待确认专用）
+  final PendingMessageStatus pendingStatus;
 
   /// 设备ID（可选，用于多设备场景）
   final String? deviceId;
@@ -36,14 +36,26 @@ class PendingMessage extends AgentMessage {
     super.toolResult,
     super.toolCalls,
     super.metadata,
+    super.status,
     required this.sentAt,
-    this.status = PendingMessageStatus.pending,
+    this.pendingStatus = PendingMessageStatus.pending,
     this.deviceId,
     this.employeeId,
   });
 
   /// 从 Map 创建（兼容旧格式）
   factory PendingMessage.fromMap(Map<String, dynamic> map) {
+    // 解析 status
+    PendingMessageStatus pendingStatus = PendingMessageStatus.pending;
+    if (map['status'] is String) {
+      pendingStatus = PendingMessageStatus.values.firstWhere(
+        (e) => e.name == map['status'],
+        orElse: () => PendingMessageStatus.pending,
+      );
+    } else if (map['status'] is PendingMessageStatus) {
+      pendingStatus = map['status'] as PendingMessageStatus;
+    }
+
     return PendingMessage(
       id: map['id'] as String,
       role: map['role'] as String? ?? 'user',
@@ -61,10 +73,7 @@ class PendingMessage extends AgentMessage {
           : null,
       metadata: map['metadata'] as Map<String, dynamic>?,
       sentAt: AgentMessage.parseDateTime(map['sentAt'] ?? map['createdAt']),
-      status: PendingMessageStatus.values.firstWhere(
-        (e) => e.name == (map['status'] as String? ?? 'pending'),
-        orElse: () => PendingMessageStatus.pending,
-      ),
+      pendingStatus: pendingStatus,
       deviceId: map['deviceId'] as String?,
       employeeId: map['employeeId'] as String?,
     );
@@ -76,7 +85,7 @@ class PendingMessage extends AgentMessage {
     return {
       ...map,
       'sentAt': sentAt.toIso8601String(),
-      'status': status.name,
+      'status': pendingStatus.name,
       if (deviceId != null) 'deviceId': deviceId,
       if (employeeId != null) 'employeeId': employeeId,
     };
@@ -95,8 +104,9 @@ class PendingMessage extends AgentMessage {
     String? toolResult,
     List<ToolCall>? toolCalls,
     Map<String, dynamic>? metadata,
+    String? status,
     DateTime? sentAt,
-    PendingMessageStatus? status,
+    PendingMessageStatus? pendingStatus,
     String? deviceId,
     String? employeeId,
   }) {
@@ -113,17 +123,17 @@ class PendingMessage extends AgentMessage {
       toolCalls: toolCalls ?? this.toolCalls,
       metadata: metadata ?? this.metadata,
       sentAt: sentAt ?? this.sentAt,
-      status: status ?? this.status,
+      pendingStatus: pendingStatus ?? this.pendingStatus,
       deviceId: deviceId ?? this.deviceId,
       employeeId: employeeId ?? this.employeeId,
     );
   }
 
   /// 标记为已确认
-  PendingMessage confirm() => copyWith(status: PendingMessageStatus.confirmed);
+  PendingMessage confirm() => copyWith(pendingStatus: PendingMessageStatus.confirmed);
 
   /// 标记为失败
-  PendingMessage fail() => copyWith(status: PendingMessageStatus.failed);
+  PendingMessage fail() => copyWith(pendingStatus: PendingMessageStatus.failed);
 
   /// 是否待确认
   bool get isPending => status == PendingMessageStatus.pending;
