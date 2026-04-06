@@ -14,9 +14,35 @@ import '../../lan/impl/lan_client_service_impl.dart';
 import '../../persistence/persistence.dart';
 import '../../rpc/remote_call_manager.dart';
 import '../../rpc/remote_call_server.dart';
-import '../../rpc/rpc_config.dart';
 import '../../service/service.dart';
 import '../device_client.dart';
+
+/// 简单的异步锁实现
+class _AsyncLock {
+  bool _locked = false;
+  final _completerQueue = <Completer<void>>[];
+
+  Future<T> synchronized<T>(Future<T> Function() fn) async {
+    if (_locked) {
+      final completer = Completer<void>();
+      _completerQueue.add(completer);
+      await completer.future;
+    }
+
+    _locked = true;
+    try {
+      return await fn();
+    } finally {
+      if (_completerQueue.isNotEmpty) {
+        final next = _completerQueue.removeAt(0);
+        _locked = false;
+        next.complete();
+      } else {
+        _locked = false;
+      }
+    }
+  }
+}
 
 /// DeviceClient 实现类
 class DeviceClientImpl implements DeviceClient {
@@ -27,10 +53,10 @@ class DeviceClientImpl implements DeviceClient {
   final String? deviceName;
 
   @override
-  final String host;
+  String host;
 
   @override
-  final int port;
+  int port;
 
   @override
   final String? topic;
@@ -77,6 +103,9 @@ class DeviceClientImpl implements DeviceClient {
 
   /// 是否已释放
   bool _disposed = false;
+
+  /// 连接操作锁，防止并发连接/断开/重连导致的问题
+  final _connectionLock = _AsyncLock();
 
   // ===== 服务层成员 =====
 
@@ -143,6 +172,11 @@ class DeviceClientImpl implements DeviceClient {
 
   @override
   Future<void> connect() async {
+    await _connectionLock.synchronized(() => _connectInternal());
+  }
+
+  /// 内部连接方法（无锁，供reconnect调用）
+  Future<void> _connectInternal() async {
     if (_disposed) {
       throw StateError('DeviceClient 已释放');
     }
@@ -185,6 +219,27 @@ class DeviceClientImpl implements DeviceClient {
       _updateState(DeviceConnectionState.disconnected);
       rethrow;
     }
+  }
+
+  @override
+  Future<void> reconnect({String? newHost, int? newPort}) async {
+    await _connectionLock.synchronized(() async {
+      // 更新连接参数（如果提供了新的值）
+      if (newHost != null) {
+        host = newHost;
+      }
+      if (newPort != null) {
+        port = newPort;
+      }
+
+      // 如果当前已连接，先断开
+      if (isConnected || _connectionState == DeviceConnectionState.connecting) {
+        await _disconnectInternal();
+      }
+
+      // 重新连接
+      await _connectInternal();
+    });
   }
 
   /// 注册 RPC 方法处理器
@@ -391,6 +446,11 @@ class DeviceClientImpl implements DeviceClient {
 
   @override
   Future<void> disconnect() async {
+    await _connectionLock.synchronized(() => _disconnectInternal());
+  }
+
+  /// 内部断开连接方法（无锁，供reconnect调用）
+  Future<void> _disconnectInternal() async {
     await _messageSubscription?.cancel();
     _messageSubscription = null;
 

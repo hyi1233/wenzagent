@@ -99,6 +99,13 @@ abstract class DeviceClient {
   /// 连接到服务器
   Future<void> connect();
 
+  /// 重新连接到服务器
+  ///
+  /// [newHost] 新的服务器主机地址，如果为null则使用当前host
+  /// [newPort] 新的服务器端口，如果为null则使用当前port
+  /// 该方法会先断开当前连接（如果已连接），然后使用新的参数重新连接
+  Future<void> reconnect({String? newHost, int? newPort});
+
   /// 断开连接
   Future<void> disconnect();
 
