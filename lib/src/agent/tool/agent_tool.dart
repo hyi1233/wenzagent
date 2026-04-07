@@ -69,6 +69,14 @@ abstract class AgentTool {
   /// [arguments] 为 LLM 传递的参数（已解析的 JSON Map）
   Future<ToolResult> execute(Map<String, dynamic> arguments);
 
+  /// 取消工具执行
+  ///
+  /// 默认实现为空，子类可以重写此方法以支持取消长时间运行的操作。
+  /// 例如：命令执行工具可以杀死正在运行的进程。
+  void cancel() {
+    // 默认空实现，子类可重写
+  }
+
   /// 转换为 LangChain ToolSpec
   ToolSpec toToolSpec() {
     return ToolSpec(

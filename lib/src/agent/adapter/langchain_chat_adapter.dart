@@ -9,11 +9,11 @@ import '../entity/entity.dart';
 import '../processor/cancellation_token.dart';
 import '../processor/message_processor.dart';
 import '../tool/agent_tool.dart';
+import '../tool/cancellable_tool_executor.dart';
 import '../tool/permission_manager.dart';
 import '../tool/tool_registry.dart';
 import 'chat_model_factory.dart';
 import 'context_compressor.dart';
-import 'provider_config.dart';
 import 'session_memory_manager.dart';
 
 /// Tool calling 循环最大迭代次数
@@ -57,6 +57,9 @@ class LangChainChatAdapter implements IChatAdapter {
 
   /// 工具事件回调
   void Function(Map<String, dynamic> event)? _toolEventCallback;
+
+  /// 当前正在执行的工具（用于取消）
+  AgentTool? _currentTool;
 
   /// 上下文压缩器
   ContextCompressor? _compressor;
@@ -345,10 +348,18 @@ class LangChainChatAdapter implements IChatAdapter {
           // 执行工具
           final stopwatch = Stopwatch()..start();
           ToolResult result;
+          _currentTool = tool;  // 记录当前工具用于取消
           try {
-            result = await tool.execute(toolArguments);
+            // 使用可取消的执行器
+            final executor = CancellableToolExecutor(tool, cancellationToken!);
+            result = await executor.execute(toolArguments);
+          } on ToolCancelledException {
+            yield StreamResponse.error('Cancelled');
+            return;
           } catch (e) {
             result = ToolResult.error('工具执行异常: $e');
+          } finally {
+            _currentTool = null;  // 清除当前工具
           }
           stopwatch.stop();
 
@@ -394,6 +405,12 @@ class LangChainChatAdapter implements IChatAdapter {
   @override
   Future<void> stopStreaming() async {
     _isStreaming = false;
+    
+    // 取消正在执行的工具
+    if (_currentTool != null) {
+      _currentTool!.cancel();
+      _currentTool = null;
+    }
   }
 
   @override
