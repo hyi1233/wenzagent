@@ -166,6 +166,18 @@ class MessageStore {
 
     await indexBox.delete(indexKey);
   }
+  
+  /// 删除单条消息（硬删除）
+  Future<void> delete(String? deviceId, String uuid) async {
+    final box = _hiveManager.messageBox;
+    final key = _hiveManager.buildMessageKey(deviceId, uuid);
+    
+    // 从消息存储中删除
+    await box.delete(key);
+    
+    // 注意：简化处理，仅从消息box中删除
+    // 会话索引中的uuid会在下次getMessages时自动过滤已删除的消息
+  }
 
   /// 获取最后一条消息
   Future<AiEmployeeMessageEntity?> getLastMessage(

@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:uuid/uuid.dart';
+
 import 'agent_proxy.dart';
 import '../entity/entity.dart';
 import '../agent_state.dart';
@@ -56,6 +58,13 @@ class CachedAgentProxy {
   List<AgentMessage> _cachedMessages = [];
   DateTime? _lastSyncTime;
   
+  /// 同步锁
+  Completer<void>? _syncCompleter;
+
+  /// 事件订阅
+  StreamSubscription<Map<String, dynamic>>? _eventSubscription;
+  StreamSubscription<AgentStateSnapshot>? _stateSubscription;
+  
   /// 是否已释放
   bool _isDisposed = false;
   
@@ -93,11 +102,226 @@ class CachedAgentProxy {
       // 2. 同步一次远程消息（确保启动时有最新数据）
       await syncWithRemote();
       
+      // 3. 初始化事件监听
+      _initializeEventListeners();
+      
       _updateCacheState(CacheState.idle);
     } catch (e) {
       _updateCacheState(CacheState.error);
       // 同步失败不影响本地缓存使用
       print('初始化同步失败: $e');
+    }
+  }
+  
+  /// 初始化事件监听
+  void _initializeEventListeners() {
+    if (!_needCache) return;
+    
+    print('[CachedAgentProxy] 初始化事件监听...');
+    
+    // 监听Agent事件
+    _eventSubscription = _proxy.onEvent.listen((event) {
+      _handleAgentEvent(event);
+    });
+    
+    // 监听状态变更
+    _stateSubscription = _proxy.onStateChanged.listen((state) {
+      _handleStateChange(state);
+    });
+  }
+  
+  /// 处理Agent事件
+  void _handleAgentEvent(Map<String, dynamic> event) {
+    final type = event['type'] as String?;
+    final data = event['data'] as Map<String, dynamic>? ?? {};
+    final employeeId = event['employeeId'] as String?;
+    
+    // 只处理当前员工的事件
+    if (employeeId != null && employeeId != _employeeId) {
+      return;
+    }
+    
+    print('[CachedAgentProxy] 收到事件: $type');
+    
+    switch (type) {
+      case 'messageStatusChanged':
+        _handleMessageStatusChanged(data);
+        break;
+      case 'agentStatusChanged':
+        _handleAgentStatusChanged(data);
+        break;
+      case 'toolCallStart':
+      case 'toolCallResult':
+        if (type != null) {
+          _handleToolEvent(type, data);
+        }
+        break;
+      case 'messageReplied':
+        _handleMessageReplied(data);
+        break;
+      case 'messageQueued':
+        _handleMessageQueued(data);
+        break;
+      case 'messageProcessing':
+        _handleMessageProcessing(data);
+        break;
+    }
+  }
+  
+  /// 处理消息状态变更事件
+  void _handleMessageStatusChanged(Map<String, dynamic> data) {
+    final messageId = data['messageId'] as String?;
+    final status = data['status'] as String?;
+    
+    if (messageId == null || status == null) return;
+    
+    print('[CachedAgentProxy] 消息状态变更: $messageId -> $status');
+    
+    // 更新本地缓存中的消息状态
+    _updateMessageStatus(messageId, status);
+    
+    // 如果是完成或失败状态，触发消息列表查询
+    if (status == 'completed' || status == 'failed' || status == 'interrupted') {
+      // 延迟查询，确保远程消息已持久化
+      Future.delayed(const Duration(milliseconds: 500), () {
+        _syncMessagesFromRemote();
+      });
+    }
+  }
+  
+  /// 处理Agent状态变更事件
+  void _handleAgentStatusChanged(Map<String, dynamic> data) {
+    final status = data['status'] as String?;
+    print('[CachedAgentProxy] Agent状态变更: $status');
+    
+    // 如果是空闲状态，可能意味着消息处理完成
+    if (status == 'idle') {
+      // 触发消息同步
+      _syncMessagesFromRemote();
+    }
+  }
+  
+  /// 处理工具事件
+  void _handleToolEvent(String eventType, Map<String, dynamic> data) {
+    print('[CachedAgentProxy] 工具事件: $eventType');
+    
+    // 工具事件可能会影响消息内容，触发消息同步
+    if (eventType == 'toolCallResult') {
+      Future.delayed(const Duration(milliseconds: 300), () {
+        _syncMessagesFromRemote();
+      });
+    }
+  }
+  
+  /// 处理消息被回复事件
+  void _handleMessageReplied(Map<String, dynamic> data) {
+    final originalMessageId = data['originalMessageId'] as String?;
+    final replyMessageId = data['replyMessageId'] as String?;
+    
+    if (originalMessageId == null || replyMessageId == null) return;
+    
+    print('[CachedAgentProxy] 消息被回复: $originalMessageId -> $replyMessageId');
+    
+    // 更新原消息的metadata，添加回复信息
+    final index = _cachedMessages.indexWhere((m) => m.id == originalMessageId);
+    if (index != -1) {
+      final message = _cachedMessages[index];
+      final updatedMessage = message.copyWith(
+        metadata: {
+          ...?message.metadata,
+          'replyMessageId': replyMessageId,
+          'replied': true,
+          'updateTime': DateTime.now().toIso8601String(),
+        },
+      );
+      _cachedMessages[index] = updatedMessage;
+      _notifyMessagesChanged();
+      _updateMessageInDatabase(updatedMessage);
+    }
+    
+    // 同步消息列表以获取最新的回复内容
+    Future.delayed(const Duration(milliseconds: 300), () {
+      _syncMessagesFromRemote();
+    });
+  }
+  
+  /// 处理队列中消息事件
+  void _handleMessageQueued(Map<String, dynamic> data) {
+    final messageId = data['messageId'] as String?;
+    final queuePosition = data['queuePosition'] as int?;
+    
+    if (messageId == null) return;
+    
+    print('[CachedAgentProxy] 消息进入队列: $messageId, 位置: $queuePosition');
+    
+    // 更新消息状态为queued
+    final index = _cachedMessages.indexWhere((m) => m.id == messageId);
+    if (index != -1) {
+      final message = _cachedMessages[index];
+      final updatedMessage = message.copyWith(
+        status: 'queued',
+        metadata: {
+          ...?message.metadata,
+          'queuePosition': queuePosition,
+          'updateTime': DateTime.now().toIso8601String(),
+        },
+      );
+      _cachedMessages[index] = updatedMessage;
+      _notifyMessagesChanged();
+      _updateMessageInDatabase(updatedMessage);
+    }
+  }
+  
+  /// 处理消息处理中事件
+  void _handleMessageProcessing(Map<String, dynamic> data) {
+    final messageId = data['messageId'] as String?;
+    
+    if (messageId == null) return;
+    
+    print('[CachedAgentProxy] 消息开始处理: $messageId');
+    
+    // 更新消息状态为processing
+    _updateMessageStatus(messageId, 'processing');
+  }
+  
+  /// 处理状态变更
+  void _handleStateChange(AgentStateSnapshot state) {
+    print('[CachedAgentProxy] 状态变更: ${state.status}');
+    
+    // 根据状态决定是否触发消息同步
+    if (state.status == AgentStatus.idle) {
+      // Agent空闲时，同步消息
+      _syncMessagesFromRemote();
+    }
+  }
+  
+  /// 从远程同步消息
+  Future<void> _syncMessagesFromRemote() async {
+    if (_isDisposed || !_needCache) return;
+    
+    try {
+      print('[CachedAgentProxy] 开始从远程同步消息...');
+      
+      // 1. 查询远程消息列表
+      final allRemoteMessages = await _proxy.getSessionMessages();
+      
+      // 2. 限制只保留最近20条消息（按时间倒序取前20条）
+      allRemoteMessages.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      final remoteMessages = allRemoteMessages.take(20).toList();
+      remoteMessages.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+      
+      // 3. 根据ID合并消息，取最新更新消息
+      await _mergeMessages(remoteMessages);
+      
+      // 4. 更新本地缓存
+      await _updateLocalCache();
+      
+      // 5. 通知界面
+      _notifyMessagesChanged();
+      
+      print('[CachedAgentProxy] 消息同步完成，共 ${_cachedMessages.length} 条消息');
+    } catch (e) {
+      print('[CachedAgentProxy] 同步远程消息失败: $e');
     }
   }
   
@@ -120,43 +344,22 @@ class CachedAgentProxy {
     // 本地模式：直接透传
     if (!_needCache) {
       final messages = await _proxy.getSessionMessages();
-      // 应用分页
-      if (offset != null && offset > 0) {
-        return messages.skip(offset).toList();
-      }
-      if (limit != null && limit > 0) {
-        return messages.take(limit).toList();
-      }
-      return messages;
+      return _applyPagination(messages, limit, offset);
     }
     
     // 远程模式：
-    // 1. 先返回本地缓存（快速响应）
-    var messages = _cachedMessages;
-    
-    // 2. 主动查询远程消息（后台同步）
-    // 无论是否有缓存，都主动查询确保数据最新
     if (forceRefresh) {
-      // 强制刷新：等待同步完成再返回
+      // 强制刷新：立即同步远程消息
       await syncWithRemote();
-      messages = _cachedMessages;
     } else {
-      // 非强制：先返回缓存，后台同步更新
-      // 不等待同步完成，用户立即看到缓存数据
+      // 非强制：先返回缓存，后台同步
+      // 每次都触发后台同步，确保获取最新的assistant消息
       syncWithRemote().catchError((e) {
-        print('同步远程消息失败: $e');
+        print('[CachedAgentProxy] 后台同步失败: $e');
       });
     }
     
-    // 应用分页
-    if (offset != null && offset > 0) {
-      messages = messages.skip(offset).toList();
-    }
-    if (limit != null && limit > 0) {
-      messages = messages.take(limit).toList();
-    }
-    
-    return messages;
+    return _applyPagination(_cachedMessages, limit, offset);
   }
   
   /// 同步远程消息（仅远程模式有效）
@@ -168,27 +371,27 @@ class CachedAgentProxy {
       return;
     }
     
+    // 防止并发同步
+    if (_syncCompleter != null) {
+      return _syncCompleter!.future;
+    }
+    
+    _syncCompleter = Completer<void>();
     _updateCacheState(CacheState.syncing);
     
     try {
-      // 1. 获取远程消息
-      final remoteMessages = await _proxy.getSessionMessages();
-      
-      // 2. 合并消息
-      await _mergeMessages(remoteMessages);
-      
-      // 3. 更新本地缓存
-      await _updateLocalCache();
+      // 调用统一的同步逻辑
+      await _syncMessagesFromRemote();
       
       _lastSyncTime = DateTime.now();
       _updateCacheState(CacheState.idle);
       
-      // 4. 通知界面消息已更新
-      _notifyMessagesChanged();
+      _syncCompleter!.complete();
     } catch (e) {
       _updateCacheState(CacheState.error);
-      // 同步失败不影响本地缓存使用
-      print('同步远程消息失败: $e');
+      _syncCompleter!.completeError(e);
+    } finally {
+      _syncCompleter = null;
     }
   }
   
@@ -212,34 +415,100 @@ class CachedAgentProxy {
     }
   }
   
-  /// 合并本地和远程消息
+  /// 合并本地和远程消息（基于ID和updateTime）
   Future<void> _mergeMessages(List<AgentMessage> remoteMessages) async {
     if (!_needCache) return;
     
-    // 使用 Map 按 ID 去重，保留最新的消息
-    final mergedMap = <String, AgentMessage>{};
+    print('[CachedAgentProxy] 开始合并消息:');
+    print('  - 本地消息数: ${_cachedMessages.length}');
+    print('  - 远程消息数: ${remoteMessages.length}');
     
-    // 1. 优先添加远程消息（状态更准确、已持久化）
+    // 创建本地消息Map，key为消息ID
+    final localMap = <String, AgentMessage>{};
+    for (final msg in _cachedMessages) {
+      localMap[msg.id] = msg;
+      print('  - 本地消息ID: ${msg.id}, role: ${msg.role}, status: ${msg.status}');
+    }
+    
+    // 创建远程消息Map，key为消息ID
+    final remoteMap = <String, AgentMessage>{};
+    for (final msg in remoteMessages) {
+      remoteMap[msg.id] = msg;
+      print('  - 远程消息ID: ${msg.id}, role: ${msg.role}, status: ${msg.status}');
+    }
+    
+    // 合并策略：基于ID和updateTime
+    final mergedMessages = <AgentMessage>[];
+    final processedIds = <String>{};
+    
+    // 1. 处理所有远程消息（优先使用远程的）
     for (final remoteMsg in remoteMessages) {
-      mergedMap[remoteMsg.id] = remoteMsg;
-    }
-    
-    // 2. 添加本地待同步消息（仅限远程没有的）
-    for (final localMsg in _cachedMessages) {
-      if (!mergedMap.containsKey(localMsg.id)) {
-        // 远程没有这个消息ID
-        if (_isPendingSync(localMsg)) {
-          // 是待同步消息，保留本地的
-          mergedMap[localMsg.id] = localMsg;
+      processedIds.add(remoteMsg.id);
+      
+      if (localMap.containsKey(remoteMsg.id)) {
+        // 双方都有，使用最新的（基于updateTime）
+        final localMsg = localMap[remoteMsg.id]!;
+        final localTime = _getMessageUpdateTime(localMsg);
+        final remoteTime = _getMessageUpdateTime(remoteMsg);
+        
+        print('[CachedAgentProxy] 消息ID ${remoteMsg.id} 同时存在于本地和远程');
+        print('  - 本地updateTime: $localTime');
+        print('  - 远程updateTime: $remoteTime');
+        
+        if (remoteTime.isAfter(localTime)) {
+          // 远程更新，使用远程的
+          mergedMessages.add(remoteMsg);
+          print('  -> 使用远程消息（更新）');
+        } else {
+          // 本地更新或相同，使用本地的
+          mergedMessages.add(localMsg);
+          print('  -> 使用本地消息（更新或相同）');
         }
-        // 否则丢弃（本地已确认但远程没有的旧消息）
+      } else {
+        // 只有远程有，添加远程的
+        mergedMessages.add(remoteMsg);
+        print('[CachedAgentProxy] 添加远程消息（本地没有）: ${remoteMsg.id}');
       }
-      // 如果远程已有该消息，直接使用远程的（已在 mergedMap 中）
     }
     
-    // 3. 转换为列表并按时间排序
-    final mergedMessages = mergedMap.values.toList();
+    // 2. 处理本地有但远程没有的消息
+    final deletedMessageIds = <String>[];
+    for (final localMsg in _cachedMessages) {
+      if (!processedIds.contains(localMsg.id)) {
+        print('[CachedAgentProxy] 本地消息ID ${localMsg.id} 不在远程消息中');
+        print('  - 消息状态: ${localMsg.status}');
+        print('  - 消息角色: ${localMsg.role}');
+        print('  - 创建时间: ${localMsg.createdAt}');
+        
+        if (_isLocalPendingMessage(localMsg)) {
+          // 本地待同步消息，保留
+          mergedMessages.add(localMsg);
+          print('  -> 保留本地待同步消息');
+        } else if (_shouldKeepLocalMessage(localMsg)) {
+          // 需要保留的本地消息
+          mergedMessages.add(localMsg);
+          print('  -> 保留本地消息（可能远程还没同步）');
+        } else {
+          // 远程已删除，标记为删除
+          deletedMessageIds.add(localMsg.id);
+          print('  -> 丢弃本地消息（远程已删除）');
+        }
+      }
+    }
+    
+    // 删除本地数据库中已删除的消息
+    if (deletedMessageIds.isNotEmpty) {
+      print('[CachedAgentProxy] 从本地数据库删除 ${deletedMessageIds.length} 条消息');
+      await _deleteMessagesFromDatabase(deletedMessageIds);
+    }
+    
+    // 3. 按时间排序
     mergedMessages.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+    
+    print('[CachedAgentProxy] 合并完成，最终消息数: ${mergedMessages.length}');
+    for (final msg in mergedMessages) {
+      print('  - 最终消息ID: ${msg.id}, role: ${msg.role}');
+    }
     
     _cachedMessages = mergedMessages;
   }
@@ -258,10 +527,153 @@ class CachedAgentProxy {
     }
   }
   
-  /// 检查消息是否待同步
-  bool _isPendingSync(AgentMessage message) {
-    return message.status == 'pending' || 
-           message.metadata?['localOnly'] == true;
+  /// 生成消息ID（标准UUID格式）
+  String _generateMessageId() {
+    return const Uuid().v4();
+  }
+  
+  /// 获取消息的更新时间
+  DateTime _getMessageUpdateTime(AgentMessage message) {
+    // 优先使用metadata中的updateTime
+    if (message.metadata?['updateTime'] != null) {
+      final updateTime = message.metadata!['updateTime'];
+      if (updateTime is String) {
+        return DateTime.parse(updateTime);
+      } else if (updateTime is DateTime) {
+        return updateTime;
+      }
+    }
+    
+    // 其次使用createdAt
+    return message.createdAt;
+  }
+  
+  /// 判断是否是本地待同步消息
+  bool _isLocalPendingMessage(AgentMessage message) {
+    // 1. 状态为pending或failed（发送中或失败，需要重试）
+    if (message.status == 'pending' || message.status == 'failed') {
+      return true;
+    }
+    
+    // 2. metadata标记为localOnly（还未确认远程已接收）
+    if (message.metadata?['localOnly'] == true) {
+      return true;
+    }
+    
+    return false;
+  }
+  
+  /// 判断是否应该保留本地消息（当远程没有时）
+  bool _shouldKeepLocalMessage(AgentMessage message) {
+    // 1. 如果消息状态是pending或failed，应该保留（等待重试）
+    if (message.status == 'pending' || message.status == 'failed') {
+      return true;
+    }
+    
+    // 2. 如果有本地修改标记
+    if (message.metadata?['locallyModified'] == true) {
+      return true;
+    }
+    
+    // 3. 如果消息非常新（最近5分钟内创建），可能远程还没同步
+    final now = DateTime.now();
+    final messageTime = message.createdAt;
+    final diff = now.difference(messageTime);
+    if (diff.inMinutes < 5) {
+      return true;
+    }
+    
+    // 4. 默认不保留（远程已删除）
+    return false;
+  }
+  
+  /// 添加消息到缓存
+  void _addMessageToCache(AgentMessage message) {
+    // 检查是否已存在
+    final existingIndex = _cachedMessages.indexWhere((m) => m.id == message.id);
+    if (existingIndex != -1) {
+      // 已存在，更新
+      _cachedMessages[existingIndex] = message;
+    } else {
+      // 不存在，添加
+      _cachedMessages.add(message);
+    }
+    
+    // 排序
+    _cachedMessages.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+    
+    // 通知
+    _notifyMessagesChanged();
+  }
+  
+  /// 更新消息状态
+  void _updateMessageStatus(String messageId, String status) {
+    final index = _cachedMessages.indexWhere((m) => m.id == messageId);
+    if (index != -1) {
+      final message = _cachedMessages[index];
+      final updatedMessage = message.copyWith(
+        status: status,
+        metadata: {
+          ...?message.metadata,
+          'updateTime': DateTime.now().toIso8601String(),
+        },
+      );
+      _cachedMessages[index] = updatedMessage;
+      _notifyMessagesChanged();
+      _updateMessageInDatabase(updatedMessage);
+    }
+  }
+  
+  /// 保存消息到数据库
+  Future<void> _saveMessageToDatabase(AgentMessage message) async {
+    try {
+      final entity = _messageToEntity(message);
+      await _messageStore.addMessage(entity, deviceId: _deviceId);
+    } catch (e) {
+      print('保存消息到数据库失败: $e');
+    }
+  }
+  
+  /// 更新数据库中的消息
+  Future<void> _updateMessageInDatabase(AgentMessage message) async {
+    try {
+      final entity = _messageToEntity(message);
+      await _messageStore.updateMessage(entity, deviceId: _deviceId);
+    } catch (e) {
+      print('更新数据库消息失败: $e');
+    }
+  }
+  
+  /// 从数据库删除消息（硬删除）
+  Future<void> _deleteMessagesFromDatabase(List<String> messageIds) async {
+    try {
+      // 使用硬删除，直接从数据库删除消息
+      for (final messageId in messageIds) {
+        await _messageStore.hardDeleteMessage(messageId, deviceId: _deviceId);
+      }
+      print('[CachedAgentProxy] 成功删除 ${messageIds.length} 条消息');
+    } catch (e) {
+      print('[CachedAgentProxy] 删除消息失败: $e');
+    }
+  }
+  
+  /// 应用分页
+  List<AgentMessage> _applyPagination(
+    List<AgentMessage> messages, 
+    int? limit, 
+    int? offset,
+  ) {
+    var result = messages;
+    
+    if (offset != null && offset > 0) {
+      result = result.skip(offset).toList();
+    }
+    
+    if (limit != null && limit > 0) {
+      result = result.take(limit).toList();
+    }
+    
+    return result;
   }
   
   /// 更新缓存状态
@@ -300,6 +712,7 @@ class CachedAgentProxy {
               .toList()
           : null,
       status: entity.processingStatus,
+      metadata: {'updateTime': entity.updateTime.toIso8601String()},
     );
   }
   
@@ -321,82 +734,74 @@ class CachedAgentProxy {
           : null,
       processingStatus: message.status ?? 'none',
       createTime: message.createdAt,
-      updateTime: DateTime.now(),
+      updateTime: _getMessageUpdateTime(message),
     );
   }
   
   // ===== 代理方法（智能透传） =====
   
-  /// 发送消息
+  /// 发送消息（优化版：事件驱动）
   Future<String> sendMessage(MessageInput input) async {
-    final messageId = await _proxy.sendMessage(input);
+    // 1. 客户端生成UUID作为消息ID
+    final messageId = input.id ?? _generateMessageId();
+    print('[CachedAgentProxy] 客户端生成消息ID: $messageId');
     
-    // 远程模式：从 AgentProxy 的待确认队列获取消息，避免重复创建
+    // 2. 创建本地消息（立即可见）
+    final localMessage = AgentMessage(
+      id: messageId,
+      role: input.role ?? 'user',
+      type: input.type,
+      content: input.content,
+      createdAt: input.createdAt ?? DateTime.now(),
+      toolCallId: input.toolCallId,
+      toolName: input.toolName,
+      toolArguments: input.toolArguments,
+      toolResult: input.toolResult,
+      metadata: {
+        ...?input.metadata,
+        'localOnly': true,  // 标记为本地消息
+        'updateTime': DateTime.now().toIso8601String(),
+      },
+      status: 'pending',
+    );
+    
+    print('[CachedAgentProxy] 创建本地消息: ID=${localMessage.id}, role=${localMessage.role}');
+    
+    // 3. 添加到本地缓存（立即可见）
     if (_needCache) {
-      try {
-        // 从 AgentProxy 的待确认队列获取刚发送的消息
-        final pendingMsg = _proxy.pendingMessages.firstWhere(
-          (m) => m.id == messageId,
-          orElse: () => throw Exception('Pending message not found: $messageId'),
-        );
-        
-        // 转换为 AgentMessage 并添加到缓存
-        final message = AgentMessage(
-          id: pendingMsg.id,
-          role: pendingMsg.role,
-          type: pendingMsg.type,
-          content: pendingMsg.content,
-          createdAt: pendingMsg.createdAt,
-          toolCallId: pendingMsg.toolCallId,
-          toolName: pendingMsg.toolName,
-          toolArguments: pendingMsg.toolArguments,
-          toolResult: pendingMsg.toolResult,
-          toolCalls: pendingMsg.toolCalls,
-          metadata: pendingMsg.metadata,
-          status: 'pending',  // 标记为待确认状态
-        );
-        
-        _cachedMessages.add(message);
-        _cachedMessages.sort((a, b) => a.createdAt.compareTo(b.createdAt));
-        
-        // 通知界面消息已更新
-        _notifyMessagesChanged();
-        
-        // 异步保存到数据库，不等待
-        final entity = _messageToEntity(message);
-        _messageStore.addMessage(entity, deviceId: _deviceId).then((_) {
-          // 保存成功
-        }).catchError((e) {
-          print('保存消息到本地数据库失败: $e');
-        });
-      } catch (e) {
-        print('从待确认队列获取消息失败: $e');
-        // 如果获取失败，仍然创建本地消息（降级处理）
-        final localMessage = AgentMessage(
-          id: messageId,
-          role: input.role ?? 'user',
-          type: input.type,
-          content: input.content,
-          createdAt: input.createdAt ?? DateTime.now(),
-          toolCallId: input.toolCallId,
-          toolName: input.toolName,
-          toolArguments: input.toolArguments,
-          toolResult: input.toolResult,
-          metadata: input.metadata,
-          status: 'pending',
-        );
-        
-        _cachedMessages.add(localMessage);
-        _cachedMessages.sort((a, b) => a.createdAt.compareTo(b.createdAt));
-        _notifyMessagesChanged();
-        
-        final entity = _messageToEntity(localMessage);
-        _messageStore.addMessage(entity, deviceId: _deviceId).then((_) {
-          // 保存成功
-        }).catchError((e) {
-          print('保存消息到本地数据库失败: $e');
-        });
+      _addMessageToCache(localMessage);
+      // 异步保存到数据库
+      _saveMessageToDatabase(localMessage);
+    }
+    
+    // 4. 发送到远程（异步）
+    try {
+      // 传递生成的messageId，确保远程使用相同的ID
+      final inputWithId = input.copyWith(id: messageId);
+      print('[CachedAgentProxy] 发送消息到远程: ID=$messageId');
+      
+      final returnedId = await _proxy.sendMessage(inputWithId);
+      
+      print('[CachedAgentProxy] AgentProxy返回的消息ID: $returnedId');
+      
+      // 🔑 验证返回的ID是否一致
+      if (returnedId != messageId) {
+        print('[CachedAgentProxy] ⚠️ 严重错误：AgentProxy返回了不同的ID！期望: $messageId, 实际: $returnedId');
+        // 强制使用客户端生成的ID
       }
+      
+      // 发送成功，更新状态
+      if (_needCache) {
+        _updateMessageStatus(messageId, 'sent');
+        print('[CachedAgentProxy] 消息状态更新为sent: ID=$messageId');
+      }
+    } catch (e) {
+      // 发送失败，更新状态
+      if (_needCache) {
+        _updateMessageStatus(messageId, 'failed');
+        print('[CachedAgentProxy] 消息发送失败: ID=$messageId, error: $e');
+      }
+      rethrow;
     }
     
     return messageId;
@@ -408,6 +813,10 @@ class CachedAgentProxy {
   /// 获取消息（强制刷新）
   ///
   /// 立即同步远程消息并返回最新数据
+  /// 建议在以下场景使用：
+  /// - 监听到Agent状态变化时（processing -> idle）
+  /// - 收到消息状态变更通知时
+  /// - 需要确保数据最新时
   Future<List<AgentMessage>> getMessagesForceRefresh() async {
     if (!_needCache) {
       return await _proxy.getSessionMessages();
@@ -415,6 +824,21 @@ class CachedAgentProxy {
     
     await syncWithRemote();
     return _cachedMessages;
+  }
+  
+  /// 主动同步远程消息（用于监听状态变化时调用）
+  ///
+  /// 建议在监听 `onStateChanged` 流时调用此方法：
+  /// ```dart
+  /// proxy.onStateChanged.listen((state) {
+  ///   if (state.status == AgentStatus.idle) {
+  ///     proxy.syncOnStateChange();
+  ///   }
+  /// });
+  /// ```
+  Future<void> syncOnStateChange() async {
+    if (!_needCache) return;
+    await syncWithRemote();
   }
   
   /// 中断当前处理
@@ -441,12 +865,14 @@ class CachedAgentProxy {
   
   /// 清空当前会话
   Future<void> clearCurrentSession() async {
+    // 第一步：清空远程会话
     await _proxy.clearCurrentSession();
     
-    // 远程模式：清空缓存并通知
+    // 第二步：清空本地缓存（远程模式）
     if (_needCache) {
       _cachedMessages.clear();
-      await _messageStore.deleteMessages(_employeeId);
+      // 使用正确的 deviceId 删除消息
+      await _messageStore.deleteMessages(_employeeId, deviceId: _deviceId);
       _notifyMessagesChanged();
     }
   }
@@ -551,12 +977,17 @@ class CachedAgentProxy {
     
     _cachedMessages.clear();
     _lastSyncTime = null;
-    await _messageStore.deleteMessages(_employeeId);
+    // 使用正确的 deviceId 删除消息
+    await _messageStore.deleteMessages(_employeeId, deviceId: _deviceId);
   }
   
   /// 释放资源
   Future<void> dispose() async {
     _isDisposed = true;
+    
+    // 取消事件订阅
+    await _eventSubscription?.cancel();
+    await _stateSubscription?.cancel();
     
     if (_needCache) {
       await _cacheStateController.close();

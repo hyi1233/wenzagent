@@ -45,6 +45,10 @@ class AgentProxy {
   final StreamController<AgentStateSnapshot> _stateController =
       StreamController<AgentStateSnapshot>.broadcast();
 
+  /// 事件通知（用于缓存层监听原始事件）
+  final StreamController<Map<String, dynamic>> _eventController =
+      StreamController<Map<String, dynamic>>.broadcast();
+
   /// 远程事件流订阅取消器
   StreamSubscription<Map<String, dynamic>>? _remoteEventSubscription;
 
@@ -81,6 +85,16 @@ class AgentProxy {
     return _stateController.stream;
   }
 
+  /// 事件流（暴露原始事件，供CachedAgentProxy监听）
+  Stream<Map<String, dynamic>> get onEvent {
+    if (isLocalMode && _localAgent != null) {
+      // 本地模式：尝试从IAgent获取事件流
+      // 如果IAgent没有onEvent，返回空流
+      return _eventController.stream;
+    }
+    return _eventController.stream;
+  }
+
   /// 当前状态
   AgentStatus get status {
     if (isLocalMode && _localAgent != null) {
@@ -110,13 +124,29 @@ class AgentProxy {
     // 创建带有ID的input副本
     final inputWithId = input.id != null ? input : input.copyWith(id: messageId);
     
+    // 🔑 如果是客户端生成的ID，验证UUID格式
+    // 如果是用户提供ID，不验证（允许自定义格式）
+    if (input.id == null && !_isValidUUID(messageId)) {
+      print('[AgentProxy] ⚠️ Warning: Generated message ID is not valid UUID format: $messageId');
+      // 但不抛出异常，继续使用
+    }
+    
     if (isLocalMode && _localAgent != null) {
       print('[AgentProxy] calling local agent sendMessage');
       final returnedId = await _localAgent.sendMessage(inputWithId);
-      // 将完整消息数据添加到待确认队列
-      final pendingMessage = _createPendingMessage(inputWithId, returnedId);
+      
+      // 🔑 验证本地Agent没有修改ID
+      if (returnedId != messageId) {
+        print('[AgentProxy] ⚠️ 严重错误：本地Agent修改了消息ID！期望: $messageId, 实际: $returnedId');
+        // 记录错误但继续使用客户端生成的ID
+      }
+      
+      // 将完整消息数据添加到待确认队列（使用客户端生成的messageId）
+      final pendingMessage = _createPendingMessage(inputWithId, messageId);
       _pendingMessageQueue.add(pendingMessage);
-      return returnedId;
+      
+      // ✅ 返回客户端生成的messageId，而不是Agent返回的ID
+      return messageId;
     }
     
     print('[AgentProxy] calling RPC sendMessage');
@@ -132,7 +162,7 @@ class AgentProxy {
     // 远程服务器应该使用客户端提供的ID
     final returnedId = result['messageId'] as String? ?? '';
     if (returnedId.isNotEmpty && returnedId != messageId) {
-      print('[AgentProxy] ⚠️ Warning: Remote returned different ID ($returnedId) than client generated ($messageId)');
+      print('[AgentProxy] ⚠️ 严重错误：远程Agent修改了消息ID！期望: $messageId, 实际: $returnedId');
     }
     
     // 将完整消息数据添加到待确认队列
@@ -140,6 +170,15 @@ class AgentProxy {
     _pendingMessageQueue.add(pendingMessage);
     
     return messageId;
+  }
+  
+  /// 验证UUID格式
+  bool _isValidUUID(String uuid) {
+    final uuidRegExp = RegExp(
+      r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
+      caseSensitive: false,
+    );
+    return uuidRegExp.hasMatch(uuid);
   }
 
   /// 中断当前处理
@@ -398,6 +437,9 @@ class AgentProxy {
       return;
     }
 
+    // 🔑 关键改进：广播原始事件，供CachedAgentProxy监听
+    _eventController.add(eventData);
+
     switch (type) {
       case 'agentStatusChanged':
         final snapshot = AgentStateSnapshot.fromMap(data);
@@ -452,6 +494,7 @@ class AgentProxy {
   Future<void> dispose() async {
     await _remoteEventSubscription?.cancel();
     await _stateController.close();
+    await _eventController.close();
   }
 
   // ===== 私有方法 =====

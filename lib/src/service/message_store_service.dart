@@ -72,7 +72,16 @@ abstract class MessageStoreService {
   });
 
   /// 删除会话的所有消息
-  Future<void> deleteMessages(String employeeId);
+  ///
+  /// [deviceId] 设备ID，为null时使用实例默认deviceId
+  /// [employeeId] 员工ID
+  Future<void> deleteMessages(String employeeId, {String? deviceId});
+  
+  /// 硬删除单条消息（从数据库直接删除，非软删除）
+  ///
+  /// [uuid] 消息UUID
+  /// [deviceId] 设备ID，为null时使用实例默认deviceId
+  Future<void> hardDeleteMessage(String uuid, {String? deviceId});
 
   /// 获取最后一条消息
   Future<AiEmployeeMessageEntity?> getLastMessage(String employeeId);
@@ -169,8 +178,13 @@ class MessageStoreServiceImpl implements MessageStoreService {
   }
 
   @override
-  Future<void> deleteMessages(String employeeId) async {
-    await _store.deleteBySession(_deviceId, employeeId);
+  Future<void> deleteMessages(String employeeId, {String? deviceId}) async {
+    await _store.deleteBySession(deviceId ?? _deviceId, employeeId);
+  }
+  
+  @override
+  Future<void> hardDeleteMessage(String uuid, {String? deviceId}) async {
+    await _store.delete(deviceId ?? _deviceId, uuid);
   }
 
   @override
