@@ -81,6 +81,45 @@ abstract class IAgent {
   /// 返回当前 Agent 的会话消息列表
   Future<List<AgentMessage>> getSessionMessages();
 
+  /// 根据用户消息计数获取会话消息列表
+  ///
+  /// 统计用户发送的消息数（role='user'），达到 [userMessageLimit] 条时停止，
+  /// 返回该时间段内的所有消息（包括user和assistant）
+  ///
+  /// [userMessageLimit] 用户消息数量限制，默认20条
+  Future<List<AgentMessage>> getSessionMessagesByUserCount({
+    int userMessageLimit = 20,
+  });
+
+  /// 分页获取会话消息列表
+  ///
+  /// [pageSize] 每页数量，默认20条
+  /// [offset] 偏移量，默认0
+  Future<List<AgentMessage>> getSessionMessagesPaged({
+    int pageSize = 20,
+    int offset = 0,
+  });
+
+  /// 获取未接收消息列表
+  ///
+  /// 查询指定设备的未接收消息（本机deviceId，而非proxy的deviceId）
+  ///
+  /// [receiverDeviceId] 接收设备的ID（本机设备ID）
+  Future<List<AgentMessage>> getUnreceivedMessages({
+    required String receiverDeviceId,
+  });
+
+  /// 标记消息为已接收
+  ///
+  /// 更新消息接收状态到服务端，后续查询不会返回已接收消息（除非状态更新）
+  ///
+  /// [receiverDeviceId] 接收设备的ID（本机设备ID）
+  /// [messageReceiveList] 消息接收列表（包含消息ID和更新时间）
+  Future<void> markMessagesAsReceived({
+    required String receiverDeviceId,
+    required List<MessageReceiveInfo> messageReceiveList,
+  });
+
   /// 获取会话消息列表（返回 Map，向后兼容）
   @Deprecated('Use getSessionMessages() instead')
   Future<List<Map<String, dynamic>>> getSessionMessagesAsMap() async {

@@ -244,6 +244,113 @@ class AgentProxy {
     return messages.map((m) => AgentMessage.fromMap(m)).toList();
   }
 
+  /// 根据用户消息计数获取会话消息
+  ///
+  /// 统计用户发送的消息数（role='user'），达到 [userMessageLimit] 条时停止，
+  /// 返回该时间段内的所有消息（包括user和assistant）
+  Future<List<AgentMessage>> getSessionMessagesByUserCount({
+    int userMessageLimit = 20,
+  }) async {
+    if (isLocalMode && _localAgent != null) {
+      final messages = await _localAgent.getSessionMessagesByUserCount(
+        userMessageLimit: userMessageLimit,
+      );
+      // 根据返回的消息ID，从消息队列中移除
+      _removeConfirmedMessages(messages.map((m) => m.toMap()).toList());
+      return messages;
+    }
+    final request = GetSessionMessagesByUserCountRequest(
+      employeeId: employeeId,
+      userMessageLimit: userMessageLimit,
+    );
+    final result = await _rpcUtil!.getSessionMessagesByUserCount(request);
+    final messages =
+        (result['messages'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+    // 根据返回的消息ID，从消息队列中移除
+    _removeConfirmedMessages(messages);
+    // 转换为 AgentMessage 列表
+    return messages.map((m) => AgentMessage.fromMap(m)).toList();
+  }
+
+  /// 分页获取会话消息
+  ///
+  /// [pageSize] 每页数量，默认20条
+  /// [offset] 偏移量，默认0
+  Future<List<AgentMessage>> getSessionMessagesPaged({
+    int pageSize = 20,
+    int offset = 0,
+  }) async {
+    if (isLocalMode && _localAgent != null) {
+      final messages = await _localAgent.getSessionMessagesPaged(
+        pageSize: pageSize,
+        offset: offset,
+      );
+      // 根据返回的消息ID，从消息队列中移除
+      _removeConfirmedMessages(messages.map((m) => m.toMap()).toList());
+      return messages;
+    }
+    final request = GetSessionMessagesPagedRequest(
+      employeeId: employeeId,
+      pageSize: pageSize,
+      offset: offset,
+    );
+    final result = await _rpcUtil!.getSessionMessagesPaged(request);
+    final messages =
+        (result['messages'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+    // 根据返回的消息ID，从消息队列中移除
+    _removeConfirmedMessages(messages);
+    // 转换为 AgentMessage 列表
+    return messages.map((m) => AgentMessage.fromMap(m)).toList();
+  }
+
+  /// 获取未接收消息
+  ///
+  /// 查询指定设备的未接收消息（本机deviceId，而非proxy的deviceId）
+  ///
+  /// [receiverDeviceId] 接收设备的ID（本机设备ID）
+  Future<List<AgentMessage>> getUnreceivedMessages({
+    required String receiverDeviceId,
+  }) async {
+    if (isLocalMode && _localAgent != null) {
+      return _localAgent.getUnreceivedMessages(
+        receiverDeviceId: receiverDeviceId,
+      );
+    }
+    final request = GetUnreceivedMessagesRequest(
+      employeeId: employeeId,
+      receiverDeviceId: receiverDeviceId,
+    );
+    final result = await _rpcUtil!.getUnreceivedMessages(request);
+    final messages =
+        (result['messages'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+    // 转换为 AgentMessage 列表
+    return messages.map((m) => AgentMessage.fromMap(m)).toList();
+  }
+
+  /// 标记消息为已接收
+  ///
+  /// 更新消息接收状态到服务端，后续查询不会返回已接收消息（除非状态更新）
+  ///
+  /// [receiverDeviceId] 接收设备的ID（本机设备ID）
+  /// [messageReceiveList] 消息接收列表（包含消息ID和更新时间）
+  Future<void> markMessagesAsReceived({
+    required String receiverDeviceId,
+    required List<MessageReceiveInfo> messageReceiveList,
+  }) async {
+    if (isLocalMode && _localAgent != null) {
+      return _localAgent.markMessagesAsReceived(
+        receiverDeviceId: receiverDeviceId,
+        messageReceiveList: messageReceiveList,
+      );
+    }
+    final request = MarkMessagesAsReceivedRequest(
+      employeeId: employeeId,
+      receiverDeviceId: receiverDeviceId,
+      messageReceiveList: messageReceiveList,
+    );
+    await _rpcUtil!.markMessagesAsReceived(request);
+  }
+
   /// 清空当前会话
   Future<void> clearCurrentSession() async {
     if (isLocalMode && _localAgent != null) {

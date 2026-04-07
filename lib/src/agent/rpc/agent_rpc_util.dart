@@ -39,6 +39,34 @@ class AgentRpcUtil {
     return _rpcCall(AgentRpcConfig.methodGetSessionMessages, request.toMap());
   }
 
+  /// 根据用户消息计数获取会话消息
+  Future<Map<String, dynamic>> getSessionMessagesByUserCount(
+    GetSessionMessagesByUserCountRequest request,
+  ) async {
+    return _rpcCall(AgentRpcConfig.methodGetSessionMessagesByUserCount, request.toMap());
+  }
+
+  /// 分页获取会话消息
+  Future<Map<String, dynamic>> getSessionMessagesPaged(
+    GetSessionMessagesPagedRequest request,
+  ) async {
+    return _rpcCall(AgentRpcConfig.methodGetSessionMessagesPaged, request.toMap());
+  }
+
+  /// 获取未接收消息
+  Future<Map<String, dynamic>> getUnreceivedMessages(
+    GetUnreceivedMessagesRequest request,
+  ) async {
+    return _rpcCall(AgentRpcConfig.methodGetUnreceivedMessages, request.toMap());
+  }
+
+  /// 标记消息为已接收
+  Future<Map<String, dynamic>> markMessagesAsReceived(
+    MarkMessagesAsReceivedRequest request,
+  ) async {
+    return _rpcCall(AgentRpcConfig.methodMarkMessagesAsReceived, request.toMap());
+  }
+
   /// 清空当前会话
   Future<Map<String, dynamic>> clearSession(ClearSessionRequest request) async {
     return _rpcCall(AgentRpcConfig.methodClearSession, request.toMap());

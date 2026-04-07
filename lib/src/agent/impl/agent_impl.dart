@@ -46,6 +46,12 @@ class AgentImpl implements IAgent {
   /// 待处理的权限请求信息
   final Map<String, AgentPermissionRequest> _pendingPermissionRequests = {};
 
+  /// 消息接收状态跟踪
+  /// Map<messageId, Map<receiverDeviceId, updateTime>>
+  /// 当消息被设备接收后，记录接收时间和消息的更新时间
+  /// 当消息状态更新时，清除接收状态，让设备可以重新接收
+  final Map<String, Map<String, DateTime>> _messageReceiveStatus = {};
+
   // ===== 内部状态 =====
 
   /// 当前 Agent 状态
@@ -265,6 +271,150 @@ class AgentImpl implements IAgent {
   @override
   Future<List<AgentMessage>> getSessionMessages() async {
     return _chatAdapter.getSessionMessages(employeeId);
+  }
+
+  @override
+  Future<List<AgentMessage>> getSessionMessagesByUserCount({
+    int userMessageLimit = 20,
+  }) async {
+    // 1. 获取所有消息
+    final allMessages = await _chatAdapter.getSessionMessages(employeeId);
+
+    if (allMessages.isEmpty) {
+      return [];
+    }
+
+    // 2. 按时间倒序排列（最新的在前）
+    allMessages.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
+    // 3. 统计用户消息，达到限制时停止
+    int userMessageCount = 0;
+    final selectedMessages = <AgentMessage>[];
+
+    for (final message in allMessages) {
+      selectedMessages.add(message);
+
+      // 统计用户消息
+      if (message.role == 'user') {
+        userMessageCount++;
+
+        // 达到限制时停止
+        if (userMessageCount >= userMessageLimit) {
+          break;
+        }
+      }
+    }
+
+    // 4. 按时间正序排列返回
+    selectedMessages.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+
+    return selectedMessages;
+  }
+
+  @override
+  Future<List<AgentMessage>> getSessionMessagesPaged({
+    int pageSize = 20,
+    int offset = 0,
+  }) async {
+    // 1. 获取所有消息
+    final allMessages = await _chatAdapter.getSessionMessages(employeeId);
+
+    if (allMessages.isEmpty) {
+      return [];
+    }
+
+    // 2. 按时间倒序排列（最新的在前）
+    allMessages.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
+    // 3. 分页获取
+    final pagedMessages = allMessages.skip(offset).take(pageSize).toList();
+
+    // 4. 按时间正序排列返回
+    pagedMessages.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+
+    return pagedMessages;
+  }
+
+  @override
+  Future<List<AgentMessage>> getUnreceivedMessages({
+    required String receiverDeviceId,
+  }) async {
+    // 1. 获取所有消息
+    final allMessages = await _chatAdapter.getSessionMessages(employeeId);
+
+    if (allMessages.isEmpty) {
+      return [];
+    }
+
+    // 2. 过滤出该设备未接收的消息
+    final unreceivedMessages = <AgentMessage>[];
+
+    for (final message in allMessages) {
+      final messageUpdateTime = _getMessageUpdateTime(message);
+
+      // 检查该设备是否已接收此消息
+      final receiveStatus = _messageReceiveStatus[message.id];
+      if (receiveStatus == null) {
+        // 消息未被任何设备接收过，属于未接收消息
+        unreceivedMessages.add(message);
+        continue;
+      }
+
+      final deviceReceiveTime = receiveStatus[receiverDeviceId];
+      if (deviceReceiveTime == null) {
+        // 该设备未接收过此消息，属于未接收消息
+        unreceivedMessages.add(message);
+        continue;
+      }
+
+      // 检查消息是否已更新（updateTime比接收时间更新）
+      if (messageUpdateTime.isAfter(deviceReceiveTime)) {
+        // 消息已更新，需要重新接收
+        unreceivedMessages.add(message);
+      }
+    }
+
+    print('[AgentImpl] 查询设备 $receiverDeviceId 的未接收消息，共 ${unreceivedMessages.length} 条');
+    return unreceivedMessages;
+  }
+
+  @override
+  Future<void> markMessagesAsReceived({
+    required String receiverDeviceId,
+    required List<MessageReceiveInfo> messageReceiveList,
+  }) async {
+    // 记录消息接收状态
+    for (final info in messageReceiveList) {
+      // 获取或创建消息的接收状态Map
+      _messageReceiveStatus[info.messageId] ??= {};
+
+      // 记录该设备的接收时间
+      _messageReceiveStatus[info.messageId]![receiverDeviceId] = info.updateTime;
+    }
+
+    print('[AgentImpl] 已标记设备 $receiverDeviceId 接收 ${messageReceiveList.length} 条消息');
+  }
+
+  /// 获取消息的更新时间
+  DateTime _getMessageUpdateTime(AgentMessage message) {
+    // 优先使用metadata中的updateTime
+    if (message.metadata?['updateTime'] != null) {
+      final updateTime = message.metadata!['updateTime'];
+      if (updateTime is String) {
+        return DateTime.parse(updateTime);
+      } else if (updateTime is DateTime) {
+        return updateTime;
+      }
+    }
+
+    // 其次使用createdAt
+    return message.createdAt;
+  }
+
+  /// 清除消息的接收状态（当消息更新时调用）
+  void _clearMessageReceiveStatus(String messageId) {
+    _messageReceiveStatus.remove(messageId);
+    print('[AgentImpl] 已清除消息 $messageId 的接收状态');
   }
 
   @override

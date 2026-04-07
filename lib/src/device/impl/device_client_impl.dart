@@ -288,6 +288,64 @@ class DeviceClientImpl implements DeviceClient {
       return {'messages': messages.map((m) => m.toMap()).toList()};
     });
 
+    _rpcServer!.register(AgentRpcConfig.methodGetSessionMessagesByUserCount, (
+      params,
+    ) async {
+      final request = GetSessionMessagesByUserCountRequest.fromMap(params);
+      final agent = _localAgents[request.employeeId];
+      if (agent == null) {
+        throw Exception('Agent not found: ${request.employeeId}');
+      }
+      final messages = await agent.getSessionMessagesByUserCount(
+        userMessageLimit: request.userMessageLimit,
+      );
+      return {'messages': messages.map((m) => m.toMap()).toList()};
+    });
+
+    _rpcServer!.register(AgentRpcConfig.methodGetSessionMessagesPaged, (
+      params,
+    ) async {
+      final request = GetSessionMessagesPagedRequest.fromMap(params);
+      final agent = _localAgents[request.employeeId];
+      if (agent == null) {
+        throw Exception('Agent not found: ${request.employeeId}');
+      }
+      final messages = await agent.getSessionMessagesPaged(
+        pageSize: request.pageSize,
+        offset: request.offset,
+      );
+      return {'messages': messages.map((m) => m.toMap()).toList()};
+    });
+
+    _rpcServer!.register(AgentRpcConfig.methodGetUnreceivedMessages, (
+      params,
+    ) async {
+      final request = GetUnreceivedMessagesRequest.fromMap(params);
+      final agent = _localAgents[request.employeeId];
+      if (agent == null) {
+        throw Exception('Agent not found: ${request.employeeId}');
+      }
+      final messages = await agent.getUnreceivedMessages(
+        receiverDeviceId: request.receiverDeviceId,
+      );
+      return {'messages': messages.map((m) => m.toMap()).toList()};
+    });
+
+    _rpcServer!.register(AgentRpcConfig.methodMarkMessagesAsReceived, (
+      params,
+    ) async {
+      final request = MarkMessagesAsReceivedRequest.fromMap(params);
+      final agent = _localAgents[request.employeeId];
+      if (agent == null) {
+        throw Exception('Agent not found: ${request.employeeId}');
+      }
+      await agent.markMessagesAsReceived(
+        receiverDeviceId: request.receiverDeviceId,
+        messageReceiveList: request.messageReceiveList,
+      );
+      return {'success': true};
+    });
+
     _rpcServer!.register(AgentRpcConfig.methodGetState, (params) async {
       final request = GetStateRequest.fromMap(params);
       final agent = _localAgents[request.employeeId];

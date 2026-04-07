@@ -103,6 +103,160 @@ class GetSessionMessagesRequest {
   }
 }
 
+/// 根据用户消息计数获取会话消息请求
+///
+/// 统计用户发送的消息数（role='user'），达到 [userMessageLimit] 条时停止，
+/// 返回该时间段内的所有消息（包括user和assistant）
+class GetSessionMessagesByUserCountRequest {
+  final String employeeId;
+
+  /// 用户消息数量限制（默认20条）
+  final int userMessageLimit;
+
+  const GetSessionMessagesByUserCountRequest({
+    required this.employeeId,
+    this.userMessageLimit = 20,
+  });
+
+  Map<String, dynamic> toMap() {
+    return {
+      'employeeId': employeeId,
+      'userMessageLimit': userMessageLimit,
+    };
+  }
+
+  factory GetSessionMessagesByUserCountRequest.fromMap(Map<String, dynamic> map) {
+    return GetSessionMessagesByUserCountRequest(
+      employeeId: map['employeeId'] as String,
+      userMessageLimit: map['userMessageLimit'] as int? ?? 20,
+    );
+  }
+}
+
+/// 获取未接收消息请求
+///
+/// 查询指定设备的未接收消息（本机deviceId，而非proxy的deviceId）
+class GetUnreceivedMessagesRequest {
+  final String employeeId;
+
+  /// 接收设备的ID（本机设备ID）
+  final String receiverDeviceId;
+
+  const GetUnreceivedMessagesRequest({
+    required this.employeeId,
+    required this.receiverDeviceId,
+  });
+
+  Map<String, dynamic> toMap() {
+    return {
+      'employeeId': employeeId,
+      'receiverDeviceId': receiverDeviceId,
+    };
+  }
+
+  factory GetUnreceivedMessagesRequest.fromMap(Map<String, dynamic> map) {
+    return GetUnreceivedMessagesRequest(
+      employeeId: map['employeeId'] as String,
+      receiverDeviceId: map['receiverDeviceId'] as String,
+    );
+  }
+}
+
+/// 标记消息为已接收请求
+///
+/// 更新消息接收状态到服务端，后续查询不会返回已接收消息（除非状态更新）
+class MarkMessagesAsReceivedRequest {
+  final String employeeId;
+
+  /// 接收设备的ID（本机设备ID）
+  final String receiverDeviceId;
+
+  /// 消息接收列表（包含消息ID和更新时间）
+  final List<MessageReceiveInfo> messageReceiveList;
+
+  const MarkMessagesAsReceivedRequest({
+    required this.employeeId,
+    required this.receiverDeviceId,
+    required this.messageReceiveList,
+  });
+
+  Map<String, dynamic> toMap() {
+    return {
+      'employeeId': employeeId,
+      'receiverDeviceId': receiverDeviceId,
+      'messageReceiveList': messageReceiveList.map((m) => m.toMap()).toList(),
+    };
+  }
+
+  factory MarkMessagesAsReceivedRequest.fromMap(Map<String, dynamic> map) {
+    return MarkMessagesAsReceivedRequest(
+      employeeId: map['employeeId'] as String,
+      receiverDeviceId: map['receiverDeviceId'] as String,
+      messageReceiveList: (map['messageReceiveList'] as List)
+          .map((m) => MessageReceiveInfo.fromMap(m as Map<String, dynamic>))
+          .toList(),
+    );
+  }
+}
+
+/// 消息接收信息
+class MessageReceiveInfo {
+  final String messageId;
+  final DateTime updateTime;
+
+  const MessageReceiveInfo({
+    required this.messageId,
+    required this.updateTime,
+  });
+
+  Map<String, dynamic> toMap() {
+    return {
+      'messageId': messageId,
+      'updateTime': updateTime.toIso8601String(),
+    };
+  }
+
+  factory MessageReceiveInfo.fromMap(Map<String, dynamic> map) {
+    return MessageReceiveInfo(
+      messageId: map['messageId'] as String,
+      updateTime: DateTime.parse(map['updateTime'] as String),
+    );
+  }
+}
+
+/// 分页获取会话消息请求
+class GetSessionMessagesPagedRequest {
+  final String employeeId;
+
+  /// 每页数量
+  final int pageSize;
+
+  /// 偏移量（跳过的消息数）
+  final int offset;
+
+  const GetSessionMessagesPagedRequest({
+    required this.employeeId,
+    this.pageSize = 20,
+    this.offset = 0,
+  });
+
+  Map<String, dynamic> toMap() {
+    return {
+      'employeeId': employeeId,
+      'pageSize': pageSize,
+      'offset': offset,
+    };
+  }
+
+  factory GetSessionMessagesPagedRequest.fromMap(Map<String, dynamic> map) {
+    return GetSessionMessagesPagedRequest(
+      employeeId: map['employeeId'] as String,
+      pageSize: map['pageSize'] as int? ?? 20,
+      offset: map['offset'] as int? ?? 0,
+    );
+  }
+}
+
 /// 清空会话请求
 class ClearSessionRequest {
   final String employeeId;
