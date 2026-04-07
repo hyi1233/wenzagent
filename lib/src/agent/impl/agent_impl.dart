@@ -236,21 +236,28 @@ class AgentImpl implements IAgent {
     print('[AgentImpl] sendMessage: ${input.content.substring(0, input.content.length.clamp(0, 50))}');
 
     return await _withLock(() async {
+      // 🔑 关键修复：优先使用 MessageInput.id，避免被 metadata.id 覆盖
+      // 这是客户端提供的"真实"消息ID，必须在整个传输链中保持一致
+      final clientProvidedId = input.id;
+      
       // 转换为 Map 以便内部处理
       final messageData = input.toMap();
-
-      // 🔑 关键：使用客户端提供的消息ID，不得修改
-      // 如果客户端没有提供ID，则生成一个新的
-      final messageId = messageData['id'] as String?;
-
-      if (messageId == null || messageId.isEmpty) {
-        // 客户端没有提供ID，生成一个新的
-        final newMessageId = const Uuid().v4();
-        messageData['id'] = newMessageId;
-        print('[AgentImpl] 生成新消息ID: $newMessageId');
+      
+      // 🔑 关键：如果客户端提供了ID，强制使用它，覆盖metadata中的id
+      if (clientProvidedId != null && clientProvidedId.isNotEmpty) {
+        messageData['id'] = clientProvidedId;
+        print('[AgentImpl] 使用客户端提供的消息ID: $clientProvidedId (强制覆盖metadata)');
       } else {
-        // 使用客户端提供的ID，确保不被修改
-        print('[AgentImpl] 使用客户端提供的消息ID: $messageId');
+        // 客户端没有提供ID，检查messageData中是否有ID（可能来自metadata）
+        final existingId = messageData['id'] as String?;
+        if (existingId == null || existingId.isEmpty) {
+          // 没有任何ID，生成一个新的
+          final newMessageId = const Uuid().v4();
+          messageData['id'] = newMessageId;
+          print('[AgentImpl] 生成新消息ID: $newMessageId');
+        } else {
+          print('[AgentImpl] 使用metadata中的消息ID: $existingId');
+        }
       }
 
       final finalMessageId = messageData['id'] as String;
@@ -258,7 +265,7 @@ class AgentImpl implements IAgent {
       messageData['type'] = messageData['type'] as String? ?? 'text';
       messageData['createdAt'] = DateTime.now().toIso8601String();
 
-      print('[AgentImpl] 提交消息到处理器，消息ID: $finalMessageId');
+      print('[AgentImpl] 提交消息到处理器，最终消息ID: $finalMessageId');
       // 提交到处理器
       await _processor?.submitMessage(finalMessageId, messageData);
 
