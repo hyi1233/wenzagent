@@ -239,7 +239,7 @@ class CachedAgentProxy {
     try {
       for (final message in _cachedMessages) {
         final entity = _messageToEntity(message);
-        await _messageStore.updateMessage(entity);
+        await _messageStore.updateMessage(entity, deviceId: _deviceId);
       }
     } catch (e) {
       print('更新本地缓存失败: $e');
@@ -344,7 +344,7 @@ class CachedAgentProxy {
       _cachedMessages.sort((a, b) => a.createdAt.compareTo(b.createdAt));
       
       final entity = _messageToEntity(localMessage);
-      await _messageStore.addMessage(entity);
+      await _messageStore.addMessage(entity, deviceId: _deviceId);
     }
     
     return messageId;

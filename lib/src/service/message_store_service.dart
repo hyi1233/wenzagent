@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:uuid/uuid.dart';
 
@@ -45,16 +44,25 @@ abstract class MessageStoreService {
   });
 
   /// 获取单条消息
-  Future<AiEmployeeMessageEntity?> getMessage(String uuid);
+  Future<AiEmployeeMessageEntity?> getMessage(String uuid, {String? deviceId});
 
   /// 添加消息
-  Future<AiEmployeeMessageEntity> addMessage(AiEmployeeMessageEntity message);
+  Future<AiEmployeeMessageEntity> addMessage(
+    AiEmployeeMessageEntity message, {
+    String? deviceId,
+  });
 
   /// 批量添加消息
-  Future<void> addMessages(List<AiEmployeeMessageEntity> messages);
+  Future<void> addMessages(
+    List<AiEmployeeMessageEntity> messages, {
+    String? deviceId,
+  });
 
   /// 更新消息
-  Future<void> updateMessage(AiEmployeeMessageEntity message);
+  Future<void> updateMessage(
+    AiEmployeeMessageEntity message, {
+    String? deviceId,
+  });
 
   /// 更新消息状态
   Future<void> updateMessageStatus(
@@ -107,32 +115,43 @@ class MessageStoreServiceImpl implements MessageStoreService {
   }
 
   @override
-  Future<AiEmployeeMessageEntity?> getMessage(String uuid) async {
-    return _store.find(_deviceId, uuid);
+  Future<AiEmployeeMessageEntity?> getMessage(
+    String uuid, {
+    String? deviceId,
+  }) async {
+    return _store.find(deviceId ?? _deviceId, uuid);
   }
 
   @override
   Future<AiEmployeeMessageEntity> addMessage(
-      AiEmployeeMessageEntity message) async {
-    await _store.addWithDeviceId(_deviceId, message);
+    AiEmployeeMessageEntity message, {
+    String? deviceId,
+  }) async {
+    await _store.addWithDeviceId(deviceId ?? _deviceId, message);
     _notifyChange(MessageChangeType.added, message);
     return message;
   }
 
   @override
-  Future<void> addMessages(List<AiEmployeeMessageEntity> messages) async {
+  Future<void> addMessages(
+    List<AiEmployeeMessageEntity> messages, {
+    String? deviceId,
+  }) async {
     for (final message in messages) {
-      await _store.addWithDeviceId(_deviceId, message);
+      await _store.addWithDeviceId(deviceId ?? _deviceId, message);
       _notifyChange(MessageChangeType.added, message);
     }
   }
 
   @override
-  Future<void> updateMessage(AiEmployeeMessageEntity message) async {
+  Future<void> updateMessage(
+    AiEmployeeMessageEntity message, {
+    String? deviceId,
+  }) async {
     final updated = message.copyWith(
       updateTime: DateTime.now(),
     );
-    await _store.updateWithDeviceId(_deviceId, updated);
+    await _store.updateWithDeviceId(deviceId ?? _deviceId, updated);
     _notifyChange(MessageChangeType.updated, updated);
   }
 
