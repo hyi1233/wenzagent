@@ -135,12 +135,25 @@ class LangChainChatAdapter implements IChatAdapter {
       }
 
       // 添加用户消息到历史
+      // 🔑 关键：使用客户端提供的消息ID，而不是生成新的UUID
       final userMessage = ChatMessage.humanText(userContent);
-      memoryManager.addMessage(
-        currentEmployeeUuid!,
-        deviceId ?? 'default',
-        userMessage,
-      );
+      final userMessageId = messageData['id'] as String?;
+      if (userMessageId != null) {
+        print('[LangChainChatAdapter] 使用客户端提供的消息ID: $userMessageId');
+        memoryManager.addMessage(
+          currentEmployeeUuid!,
+          deviceId ?? 'default',
+          userMessage,
+          messageId: userMessageId,
+        );
+      } else {
+        print('[LangChainChatAdapter] 没有提供消息ID，自动生成');
+        memoryManager.addMessage(
+          currentEmployeeUuid!,
+          deviceId ?? 'default',
+          userMessage,
+        );
+      }
 
       // 检查是否有可用工具
       final hasTools = _toolRegistry != null && !_toolRegistry!.isEmpty;
@@ -582,7 +595,9 @@ class LangChainChatAdapter implements IChatAdapter {
     final content = message.contentAsString;
 
     // ✅ 使用 MessageWrapper 的稳定 UUID，而不是每次生成新 ID
+    // 🔑 同时设置 'uuid' 和 'id' 字段，确保数据库存储和查询一致
     final map = <String, dynamic>{
+      'uuid': wrapper.uuid,
       'id': wrapper.uuid,
       'role': type == 'human'
           ? 'user'

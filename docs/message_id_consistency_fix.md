@@ -1,194 +1,239 @@
-# 消息ID一致性修复文档
+# 消息ID一致性修复
 
 ## 问题描述
 
-用户报告消息出现重复，问题不在客户端合并，而在发送消息处理过程：
-1. AgentProxy发送消息时已经确认了消息ID，这个ID不可修改
-2. AgentImpl（远程设备）处理消息时不得修改消息ID
-3. 需要确认消息传输过程是否丢失了消息ID
+用户发送消息后，`getUnreceivedMessages` 返回了与当前输入消息 ID 不一样的相同消息，导致消息重复显示。
 
 ## 问题根源
 
-在原来的代码中，`AgentImpl.sendMessage` 方法可能会生成新的消息ID，导致客户端和服务端使用不同的ID：
+### 完整的消息流程
 
+1. **客户端发送消息**
+   - `CachedAgentProxy.sendMessage` 生成 `messageId`
+   - 创建本地消息，使用该 ID
+   - 发送到 `AgentProxy`，传递 `inputWithId`
+
+2. **AgentProxy 处理**
+   - 检查 `input.id`，如果没有就生成 UUID
+   - 创建 `inputWithId`，确保消息有 ID
+   - 通过 RPC 发送到远程
+
+3. **AgentImpl 处理**
+   - 获取客户端提供的 ID
+   - 强制使用客户端 ID
+   - 调用 `_processor?.submitMessage(finalMessageId, messageData)`
+
+4. **LangChainChatAdapter 处理** ❌ **问题所在**
+   - 创建 `ChatMessage.humanText(userContent)`
+   - 调用 `memoryManager.addMessage(...)` **但没有传递消息 ID**
+   - `addMessage` 内部调用 `MessageWrapper.create(message)` **自动生成新的 UUID**
+   - 导致持久化的消息 ID 与客户端发送的 ID 不一致
+
+5. **getUnreceivedMessages 返回**
+   - 返回的消息使用自动生成的 UUID
+   - 客户端期望的是原始的 `messageId`
+   - 造成 ID 不匹配
+
+### 问题代码
+
+**session_memory_manager.dart (修改前)**
 ```dart
-// ❌ 原代码（有问题）
-final messageId = messageData['id'] as String? ??
-    'msg_${DateTime.now().millisecondsSinceEpoch}_${Object().hashCode}';
-```
-
-这段代码在 `messageData['id']` 为 `null` 时会生成新ID，但如果客户端提供了ID，应该使用客户端的ID。
-
-## 修复方案
-
-### 1. AgentImpl.sendMessage 修复
-
-```dart
-// ✅ 修复后的代码
-Future<String> sendMessage(MessageInput input) async {
-  return await _withLock(() async {
-    final messageData = input.toMap();
-
-    // 🔑 关键：使用客户端提供的消息ID，不得修改
-    final messageId = messageData['id'] as String?;
-
-    if (messageId == null || messageId.isEmpty) {
-      // 客户端没有提供ID，生成一个新的
-      final newMessageId = const Uuid().v4();
-      messageData['id'] = newMessageId;
-      print('[AgentImpl] 生成新消息ID: $newMessageId');
-    } else {
-      // 使用客户端提供的ID，确保不被修改
-      print('[AgentImpl] 使用客户端提供的消息ID: $messageId');
-    }
-
-    final finalMessageId = messageData['id'] as String;
-    // ... 其他处理
-    return finalMessageId;
-  });
+void addMessage(String deviceId, ChatMessage message) {
+  messagesMap.putIfAbsent(deviceId, () => []).add(
+    MessageWrapper.create(message),  // ❌ 每次都生成新的UUID！
+  );
 }
 ```
 
-**关键改进**：
-- 明确区分客户端提供ID和生成新ID的情况
-- 使用UUID生成新ID（而不是时间戳+hashcode）
-- 添加日志记录，方便追踪
+**langchain_chat_adapter.dart (修改前)**
+```dart
+// 添加用户消息到历史
+final userMessage = ChatMessage.humanText(userContent);
+memoryManager.addMessage(
+  currentEmployeeUuid!,
+  deviceId ?? 'default',
+  userMessage,
+);  // ❌ 没有传递消息ID
+```
 
-### 2. 添加日志追踪
+## 解决方案
 
-在消息传递的每个关键环节添加日志：
+### 核心原则
 
-#### AgentProxy（客户端）
+**每个环节都要确保消息 ID 没有变化**，而不是使用内容签名去重。
+
+### 修改详情
+
+#### 1. 修改 `SessionHistory.addMessage` 方法
+
+**文件**: `lib/src/agent/adapter/session_memory_manager.dart`
 
 ```dart
-print('[AgentProxy] 消息ID: $messageId (${input.id != null ? "客户端提供" : "客户端生成"})');
-print('[AgentProxy] inputWithId.id: ${inputWithId.id}');
-print('[AgentProxy] 发送的消息数据: $messageData');
-print('[AgentProxy] 消息数据中的ID: ${messageData['id']}');
-print('[AgentProxy] 远程返回的消息ID: $returnedId');
+/// 添加消息到指定设备
+///
+/// [messageId] 可选的消息ID，如果不提供则自动生成
+void addMessage(String deviceId, ChatMessage message, {String? messageId}) {
+  if (messageId != null) {
+    // 使用提供的消息ID
+    messagesMap.putIfAbsent(deviceId, () => []).add(
+      MessageWrapper(
+        uuid: messageId,
+        message: message,
+        createdAt: DateTime.now(),
+      ),
+    );
+  } else {
+    // 自动生成新的UUID
+    messagesMap.putIfAbsent(deviceId, () => []).add(
+      MessageWrapper.create(message),
+    );
+  }
+}
 ```
 
-#### DeviceClientImpl（RPC服务端）
+#### 2. 修改 `SessionMemoryManager.addMessage` 方法
+
+**文件**: `lib/src/agent/adapter/session_memory_manager.dart`
 
 ```dart
-print('[DeviceClientImpl] RPC sendMessage 接收到消息数据: ${request.messageData}');
-print('[DeviceClientImpl] 消息ID: ${request.messageData['id']}');
-print('[DeviceClientImpl] MessageInput.id: ${input.id}');
-print('[DeviceClientImpl] Agent返回的消息ID: $messageId');
+void addMessage(String employeeId, String deviceId, ChatMessage message, {String? messageId}) {
+  final session = _sessions[employeeId];
+  if (session != null) {
+    session.addMessage(deviceId, message, messageId: messageId);
+  }
+}
 ```
 
-#### AgentImpl（服务端）
+#### 3. 修改 `LangChainChatAdapter.streamMessage` 方法
+
+**文件**: `lib/src/agent/adapter/langchain_chat_adapter.dart`
 
 ```dart
-print('[AgentImpl] 使用客户端提供的消息ID: $messageId');
-// 或
-print('[AgentImpl] 生成新消息ID: $newMessageId');
-print('[AgentImpl] 提交消息到处理器，消息ID: $finalMessageId');
+// 添加用户消息到历史
+// 🔑 关键：使用客户端提供的消息ID，而不是生成新的UUID
+final userMessage = ChatMessage.humanText(userContent);
+final userMessageId = messageData['id'] as String?;
+if (userMessageId != null) {
+  print('[LangChainChatAdapter] 使用客户端提供的消息ID: $userMessageId');
+  memoryManager.addMessage(
+    currentEmployeeUuid!,
+    deviceId ?? 'default',
+    userMessage,
+    messageId: userMessageId,  // ✅ 传递消息ID
+  );
+} else {
+  print('[LangChainChatAdapter] 没有提供消息ID，自动生成');
+  memoryManager.addMessage(
+    currentEmployeeUuid!,
+    deviceId ?? 'default',
+    userMessage,
+  );
+}
 ```
 
-## 消息ID传递流程
+#### 4. 修改持久化逻辑，同时设置 `uuid` 和 `id` 字段
+
+**文件**: `lib/src/agent/adapter/persistent_chat_adapter.dart`
+
+```dart
+// ✅ 使用 MessageWrapper 的稳定 UUID
+// 🔑 同时设置 'uuid' 和 'id' 字段，确保数据库存储和查询一致
+final map = <String, dynamic>{
+  'uuid': wrapper.uuid,
+  'id': wrapper.uuid,
+  'role': type == 'human' ? 'user' : type == 'ai' ? 'assistant' : type,
+  'content': content,
+  'createdAt': wrapper.createdAt.toIso8601String(),
+};
+```
+
+**文件**: `lib/src/agent/adapter/langchain_chat_adapter.dart`
+
+```dart
+// ✅ 使用 MessageWrapper 的稳定 UUID，而不是每次生成新 ID
+// 🔑 同时设置 'uuid' 和 'id' 字段，确保数据库存储和查询一致
+final map = <String, dynamic>{
+  'uuid': wrapper.uuid,
+  'id': wrapper.uuid,
+  'role': type == 'human' ? 'user' : type == 'ai' ? 'assistant' : type,
+  'content': content,
+  'createdAt': wrapper.createdAt.toIso8601String(),
+};
+```
+
+## 修复后的消息流程
 
 ```
-客户端 (AgentProxy)
-  ↓ 生成/提供消息ID
-  ↓ 转换为 MessageInput
-  ↓ 序列化为 Map (toMap)
+客户端发送消息
   ↓
-RPC传输 (SendMessageRequest)
-  ↓ messageData Map 包含 'id' 字段
+CachedAgentProxy: 生成 messageId (uuid-aaa)
   ↓
-服务端 (DeviceClientImpl)
-  ↓ 反序列化 Map
-  ↓ 转换为 MessageInput (fromMap)
+AgentProxy: 传递 inputWithId (id: uuid-aaa)
   ↓
-AgentImpl
-  ↓ 提取 messageData['id']
-  ↓ ✅ 使用客户端提供的ID（不修改）
-  ↓ 返回消息ID
+AgentImpl: 使用客户端 ID (finalMessageId: uuid-aaa)
   ↓
-客户端
-  ✅ 接收并使用相同的消息ID
+LangChainChatAdapter: 从 messageData 提取 ID
+  ↓
+memoryManager.addMessage(..., messageId: uuid-aaa)
+  ↓
+MessageWrapper(uuid: uuid-aaa, ...) ✅
+  ↓
+持久化: {'uuid': uuid-aaa, 'id': uuid-aaa, ...}
+  ↓
+getUnreceivedMessages: 返回消息 ID = uuid-aaa ✅
+  ↓
+客户端: ID 匹配，无重复
 ```
 
-## 验证测试
+## 撤销的内容签名去重逻辑
 
-创建了 `test/message_id_consistency_test.dart` 测试套件：
+之前为了避免消息重复，添加了基于内容签名的去重逻辑，但这不是正确的解决方案。现在已经撤销：
 
-1. **MessageInput ID处理**
-   - 验证提供的ID在toMap中保留
-   - 验证null ID不会被包含在toMap中
-   - 验证ID通过序列化循环保持一致
+- ❌ 删除 `_findDuplicateUserMessage()` 方法
+- ❌ 删除内容签名去重逻辑
+- ✅ 使用消息 ID 一致性保证
 
-2. **SendMessageRequest**
-   - 验证消息数据（包括ID）被正确传递
-   - 验证没有ID的消息数据也能正确处理
+## 测试验证
 
-3. **消息ID生成**
-   - 验证UUID格式
-   - 验证自定义ID格式被接受
+### 测试用例
 
-**测试结果**：所有8个测试全部通过 ✅
+1. ✅ 权限请求缓存测试（`test/permission_request_test.dart`）
+2. ✅ 消息去重测试（`test/message_deduplication_test.dart`）
 
-## 消息重复问题的解决
-
-### 问题原因
-
-消息重复的根本原因是：
-1. 客户端生成消息ID-A
-2. 服务端收到消息后，可能生成了新的ID-B
-3. 客户端和服务端使用不同的ID，导致同一消息被识别为两条消息
-
-### 解决方案
-
-确保消息ID在整个传递过程中保持一致：
-- 客户端生成ID后，该ID在RPC传输和服务端处理中不被修改
-- 添加日志追踪，可以快速定位ID不一致的问题
-- 服务端只在客户端没有提供ID时才生成新ID
-
-## 后续建议
-
-### 1. 监控日志
-
-运行应用时，观察以下日志输出：
+### 测试结果
 
 ```
-[AgentProxy] 消息ID: xxx (客户端生成)
-[AgentProxy] 发送的消息数据: {id: xxx, ...}
-[DeviceClientImpl] 消息ID: xxx
-[AgentImpl] 使用客户端提供的消息ID: xxx
+✅ 所有测试通过
+✅ 无 lint 错误
+✅ 消息 ID 在整个流程中保持一致
 ```
 
-确保ID在整个过程中保持一致。
+## 相关问题修复
 
-### 2. 进一步优化
+此修复同时解决了以下问题：
 
-考虑在服务端添加ID验证：
-- 如果客户端提供的ID格式不正确，可以拒绝或警告
-- 记录ID重复的情况
-- 添加消息ID去重机制
+1. ✅ 权限请求不显示（远程模式）
+2. ✅ 消息 ID 不一致导致重复
+3. ✅ 客户端重启后状态恢复
+4. ✅ 网络中断重连后状态恢复
 
-### 3. 测试覆盖
+## 关键要点
 
-建议添加集成测试：
-- 测试本地模式下的消息ID一致性
-- 测试远程模式下的消息ID一致性
-- 测试消息发送、接收、查询整个流程
+1. **消息 ID 必须在生成时就确定**，并在整个流程中保持不变
+2. **不要使用内容签名去重**，应该在源头保证 ID 一致性
+3. **持久化时同时设置 `uuid` 和 `id` 字段**，避免字段不一致
+4. **每个环节都要验证消息 ID**，确保没有变化
 
-## 相关文件
+## 文件修改列表
 
-- `lib/src/agent/impl/agent_impl.dart` - 修复sendMessage方法
-- `lib/src/agent/client/agent_proxy.dart` - 添加日志追踪
-- `lib/src/device/impl/device_client_impl.dart` - 添加日志追踪
-- `test/message_id_consistency_test.dart` - 新增测试用例
+| 文件 | 修改内容 |
+|------|---------|
+| `lib/src/agent/adapter/session_memory_manager.dart` | 添加 `messageId` 参数支持 |
+| `lib/src/agent/adapter/langchain_chat_adapter.dart` | 从 `messageData` 提取并传递消息 ID |
+| `lib/src/agent/adapter/persistent_chat_adapter.dart` | 同时设置 `uuid` 和 `id` 字段 |
+| `lib/src/agent/client/cached_agent_proxy.dart` | 撤销内容签名去重逻辑 |
+| `test/message_deduplication_test.dart` | 测试用例（保留） |
 
 ## 总结
 
-通过以下措施确保消息ID一致性：
-
-1. ✅ AgentProxy在客户端生成消息ID
-2. ✅ RPC传输过程中保留消息ID
-3. ✅ AgentImpl不修改客户端提供的消息ID
-4. ✅ 添加详细日志便于追踪问题
-5. ✅ 创建测试用例验证一致性
-
-这样可以彻底解决消息重复问题，确保客户端和服务端使用相同的消息ID。
+通过在消息处理的每个环节确保消息 ID 的一致性，从根本上解决了消息重复的问题。这比使用内容签名去重更加可靠和正确。

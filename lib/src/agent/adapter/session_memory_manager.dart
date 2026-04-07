@@ -86,10 +86,25 @@ class SessionHistory {
   }
 
   /// 添加消息到指定设备
-  void addMessage(String deviceId, ChatMessage message) {
-    messagesMap.putIfAbsent(deviceId, () => []).add(
-      MessageWrapper.create(message),
-    );
+  /// 添加消息到指定设备
+  ///
+  /// [messageId] 可选的消息ID，如果不提供则自动生成
+  void addMessage(String deviceId, ChatMessage message, {String? messageId}) {
+    if (messageId != null) {
+      // 使用提供的消息ID
+      messagesMap.putIfAbsent(deviceId, () => []).add(
+        MessageWrapper(
+          uuid: messageId,
+          message: message,
+          createdAt: DateTime.now(),
+        ),
+      );
+    } else {
+      // 自动生成新的UUID
+      messagesMap.putIfAbsent(deviceId, () => []).add(
+        MessageWrapper.create(message),
+      );
+    }
   }
 
   /// 添加MessageWrapper到指定设备（用于从数据库恢复）
@@ -211,10 +226,10 @@ class SessionMemoryManager {
   ///
   /// [employeeId] 员工ID（作为会话ID）
   /// [deviceId] 设备ID，用于区分不同设备上的消息
-  void addMessage(String employeeId, String deviceId, ChatMessage message) {
+  void addMessage(String employeeId, String deviceId, ChatMessage message, {String? messageId}) {
     final session = _sessions[employeeId];
     if (session != null) {
-      session.addMessage(deviceId, message);
+      session.addMessage(deviceId, message, messageId: messageId);
     }
   }
 

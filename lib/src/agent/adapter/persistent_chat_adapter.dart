@@ -394,7 +394,9 @@ class PersistentChatAdapter extends LangChainChatAdapter {
     final content = message.contentAsString;
 
     // ✅ 使用 MessageWrapper 的稳定 UUID
+    // 🔑 同时设置 'uuid' 和 'id' 字段，确保数据库存储和查询一致
     final map = <String, dynamic>{
+      'uuid': wrapper.uuid,
       'id': wrapper.uuid,
       'role': type == 'human'
           ? 'user'
