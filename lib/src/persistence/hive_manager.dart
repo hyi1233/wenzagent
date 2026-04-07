@@ -23,6 +23,7 @@ class HiveManager {
   static const String skillBoxName = 'skill_box';
   static const String sessionMessagesBoxName = 'session_messages';
   static const String employeeSessionsBoxName = 'employee_sessions';
+  static const String deviceConfigBoxName = 'device_config_box';
 
   /// 初始化Hive
   ///
@@ -58,6 +59,9 @@ class HiveManager {
     if (!Hive.isAdapterRegistered(103)) {
       Hive.registerAdapter(AiEmployeeSkillAdapter());
     }
+    if (!Hive.isAdapterRegistered(104)) {
+      Hive.registerAdapter(DeviceConfigAdapter());
+    }
   }
 
   /// 打开所有Box
@@ -69,6 +73,7 @@ class HiveManager {
       Hive.openBox<AiEmployeeSkillEntity>(skillBoxName),
       Hive.openBox<List<dynamic>>(sessionMessagesBoxName),
       Hive.openBox<List<dynamic>>(employeeSessionsBoxName),
+      Hive.openBox<DeviceConfigEntity>(deviceConfigBoxName),
     ]);
   }
 
@@ -95,6 +100,10 @@ class HiveManager {
   /// 获取员工会话索引Box
   Box<List<dynamic>> get employeeSessionsBox =>
       Hive.box<List<dynamic>>(employeeSessionsBoxName);
+
+  /// 获取设备配置Box
+  Box<DeviceConfigEntity> get deviceConfigBox =>
+      Hive.box<DeviceConfigEntity>(deviceConfigBoxName);
 
   /// 获取指定Box
   Box<T> getBox<T>(String name) => Hive.box<T>(name);

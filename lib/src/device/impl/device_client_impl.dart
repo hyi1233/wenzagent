@@ -5,6 +5,7 @@ import 'dart:io';
 import '../../agent/adapter/persistent_chat_adapter.dart';
 import '../../agent/agent_state.dart';
 import '../../agent/client/agent_proxy.dart';
+import '../../agent/client/cached_agent_proxy.dart';
 import '../../agent/entity/entity.dart';
 import '../../agent/i_agent.dart';
 import '../../agent/impl/agent_impl.dart';
@@ -76,11 +77,11 @@ class DeviceClientImpl implements DeviceClient {
   /// 本地 Agent 实例缓存
   final Map<String, IAgent> _localAgents = {};
 
-  /// 本地 AgentProxy 缓存
-  final Map<String, AgentProxy> _localProxies = {};
+  /// 本地 AgentProxy 缓存（已包装为 CachedAgentProxy）
+  final Map<String, CachedAgentProxy> _localProxies = {};
 
-  /// 远程 AgentProxy 缓存
-  final Map<String, AgentProxy> _remoteProxies = {};
+  /// 远程 AgentProxy 缓存（已包装为 CachedAgentProxy）
+  final Map<String, CachedAgentProxy> _remoteProxies = {};
 
   /// Agent 事件订阅
   final Map<String, StreamSubscription<Map<String, dynamic>>>
@@ -127,6 +128,9 @@ class DeviceClientImpl implements DeviceClient {
   /// 员工配置服务
   late final EmployeeConfigServiceImpl _configService;
 
+  /// 设备配置存储
+  late final DeviceConfigStore _deviceConfigStore;
+
   DeviceClientImpl({
     required this.deviceId,
     this.deviceName,
@@ -146,6 +150,9 @@ class DeviceClientImpl implements DeviceClient {
       employeeManager: _employeeManager,
       skillManager: _skillManager,
     );
+
+    // 初始化设备配置存储
+    _deviceConfigStore = DeviceConfigStore();
   }
 
   // ===== 只读属性 =====
@@ -573,8 +580,8 @@ class DeviceClientImpl implements DeviceClient {
     }
     _localProxies.clear();
 
-    for (final proxy in _remoteProxies.values) {
-      await proxy.dispose();
+    for (final cachedProxy in _remoteProxies.values) {
+      await cachedProxy.dispose();
     }
     _remoteProxies.clear();
 
@@ -591,7 +598,7 @@ class DeviceClientImpl implements DeviceClient {
   // ===== AgentProxy 管理 =====
 
   @override
-  Future<AgentProxy> getOrCreateAgentProxy({
+  Future<CachedAgentProxy> getOrCreateAgentProxy({
     required String employeeId,
     String? deviceId,
   }) async {
@@ -621,8 +628,8 @@ class DeviceClientImpl implements DeviceClient {
     // 4. 判断本地还是远程
     if (targetDeviceId == this.deviceId) {
       // ===== 本地会话 =====
-      var proxy = _localProxies[employeeId];
-      if (proxy != null) return proxy;
+      var cachedProxy = _localProxies[employeeId];
+      if (cachedProxy != null) return cachedProxy;
 
       // 创建本地 Agent 和 Proxy
       final agent = await _getOrCreateLocalAgent(
@@ -630,34 +637,54 @@ class DeviceClientImpl implements DeviceClient {
         employee,
         session,
       );
-      proxy = AgentProxy.local(
+      final proxy = AgentProxy.local(
         employeeId: employeeId,
         deviceId: targetDeviceId,
         localAgent: agent,
       );
+      
+      // 包装为 CachedAgentProxy（本地模式不启用缓存）
+      cachedProxy = CachedAgentProxy(
+        proxy: proxy,
+        messageStore: _messageStoreService,
+        deviceId: targetDeviceId,
+        employeeId: employeeId,
+      );
+      
+      await cachedProxy.initialize();
       proxy.attach();
-      _localProxies[employeeId] = proxy;
+      _localProxies[employeeId] = cachedProxy;
 
       // 订阅 Agent 事件
       _subscribeAgentEvents(employeeId, agent);
 
-      return proxy;
+      return cachedProxy;
     }
 
     // ===== 远程会话 =====
     final key = '$targetDeviceId:$employeeId';
-    var proxy = _remoteProxies[key];
-    if (proxy != null) return proxy;
+    var cachedProxy = _remoteProxies[key];
+    if (cachedProxy != null) return cachedProxy;
 
-    proxy = AgentProxy.remote(
+    final proxy = AgentProxy.remote(
       employeeId: employeeId,
       deviceId: targetDeviceId,
       rpcCall: (method, params) =>
           _invokeRemote(targetDeviceId, method, params),
       remoteEventStream: _eventController.stream,
     );
-    _remoteProxies[key] = proxy;
-    return proxy;
+    
+    // 包装为 CachedAgentProxy（远程模式启用缓存）
+    cachedProxy = CachedAgentProxy(
+      proxy: proxy,
+      messageStore: _messageStoreService,
+      deviceId: targetDeviceId,
+      employeeId: employeeId,
+    );
+    
+    await cachedProxy.initialize();
+    _remoteProxies[key] = cachedProxy;
+    return cachedProxy;
   }
 
   /// 获取或创建本地 Agent
@@ -858,6 +885,10 @@ class DeviceClientImpl implements DeviceClient {
         msgType = LanMessageType.agentStatusChanged;
       case 'messageStatusChanged':
         msgType = LanMessageType.agentMessageStatusChanged;
+      case 'toolCallStart':
+        msgType = LanMessageType.toolCallStart;
+      case 'toolCallResult':
+        msgType = LanMessageType.toolCallResult;
       default:
         return;
     }
@@ -896,13 +927,36 @@ class DeviceClientImpl implements DeviceClient {
   }
 
   @override
-  AgentProxy? getAgentProxy(String employeeId) {
-    return _localProxies[employeeId];
+  CachedAgentProxy? getAgentProxy(String employeeId) {
+    // 先从本地代理查找
+    final localProxy = _localProxies[employeeId];
+    if (localProxy != null) {
+      return localProxy;
+    }
+    
+    // 如果本地没有，从远程代理查找
+    for (final entry in _remoteProxies.entries) {
+      if (entry.key.endsWith(':$employeeId')) {
+        return entry.value;
+      }
+    }
+    
+    return null;
   }
 
   @override
-  List<AgentProxy> getLocalAgentProxies() {
+  List<CachedAgentProxy> getLocalAgentProxies() {
     return _localProxies.values.toList();
+  }
+  
+  @override
+  List<CachedAgentProxy> getRemoteAgentProxies() {
+    return _remoteProxies.values.toList();
+  }
+  
+  @override
+  List<CachedAgentProxy> getAllAgentProxies() {
+    return [..._localProxies.values, ..._remoteProxies.values];
   }
 
   // ===== 设备管理 =====
@@ -991,6 +1045,38 @@ class DeviceClientImpl implements DeviceClient {
     }
 
     return result;
+  }
+
+  // ===== 设备配置 =====
+
+  @override
+  Future<DeviceConfigEntity> getDeviceConfig() async {
+    return await _deviceConfigStore.getOrCreate(deviceId);
+  }
+
+  @override
+  Future<void> updateDeviceInfo(DeviceInfoConfig deviceInfo) async {
+    await _deviceConfigStore.updateDeviceInfo(deviceId, deviceInfo);
+  }
+
+  @override
+  Future<void> updateEnvironmentVariables(
+    Map<String, String> environmentVariables,
+  ) async {
+    await _deviceConfigStore.updateEnvironmentVariables(
+      deviceId,
+      environmentVariables,
+    );
+  }
+
+  @override
+  Future<void> setEnvironmentVariable(String key, String value) async {
+    await _deviceConfigStore.setEnvironmentVariable(deviceId, key, value);
+  }
+
+  @override
+  Future<void> deleteEnvironmentVariable(String key) async {
+    await _deviceConfigStore.deleteEnvironmentVariable(deviceId, key);
   }
 
   // ===== Service 属性 =====
@@ -1260,6 +1346,8 @@ class DeviceClientImpl implements DeviceClient {
         _handleStreamEnd(msg);
       case LanMessageType.agentStatusChanged:
       case LanMessageType.agentMessageStatusChanged:
+      case LanMessageType.toolCallStart:
+      case LanMessageType.toolCallResult:
         _handleAgentEvent(msg);
       case LanMessageType.system:
         _handleSystemMessage(msg);

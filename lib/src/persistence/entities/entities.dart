@@ -4,3 +4,4 @@ export 'session_entity.dart';
 export 'message_entity.dart';
 export 'skill_entity.dart';
 export 'mcp_server_config.dart';
+export 'device_config_entity.dart';

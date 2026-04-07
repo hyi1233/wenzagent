@@ -36,6 +36,12 @@ enum LanMessageType {
   /// Agent 消息状态变更
   agentMessageStatusChanged,
 
+  /// Agent 工具调用开始
+  toolCallStart,
+
+  /// Agent 工具调用结果
+  toolCallResult,
+
   /// Agent 权限请求变更
   agentPermissionChanged,
 

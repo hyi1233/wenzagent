@@ -1,8 +1,9 @@
 ﻿import 'dart:async';
 
-import '../agent/client/agent_proxy.dart';
+import '../agent/client/cached_agent_proxy.dart';
 import '../entity/lan_device_info.dart';
 import '../entity/lan_message.dart';
+import '../persistence/entities/device_config_entity.dart';
 import '../service/service.dart';
 
 /// 设备连接状态
@@ -122,8 +123,12 @@ abstract class DeviceClient {
   /// - 如果员工在本设备上线，创建本地AgentProxy（直接调用Agent）
   /// - 如果员工在其他设备上线，创建远程AgentProxy（通过RPC调用）
   ///
+  /// 返回的 CachedAgentProxy 会自动判断：
+  /// - 本地模式：直接透传，不缓存（本地Agent已有持久化）
+  /// - 远程模式：启用缓存，支持离线查看
+  ///
   /// 每个 AgentProxy 代表一个员工会话窗口
-  Future<AgentProxy> getOrCreateAgentProxy({
+  Future<CachedAgentProxy> getOrCreateAgentProxy({
     required String employeeId,
     String? deviceId,
   });
@@ -134,10 +139,18 @@ abstract class DeviceClient {
   Future<void> destroyAgentProxy(String employeeId);
 
   /// 获取已创建的 AgentProxy
-  AgentProxy? getAgentProxy(String employeeId);
+  ///
+  /// 会依次查找本地代理和远程代理
+  CachedAgentProxy? getAgentProxy(String employeeId);
 
   /// 获取所有本地 AgentProxy
-  List<AgentProxy> getLocalAgentProxies();
+  List<CachedAgentProxy> getLocalAgentProxies();
+  
+  /// 获取所有远程 AgentProxy
+  List<CachedAgentProxy> getRemoteAgentProxies();
+  
+  /// 获取所有 AgentProxy（本地 + 远程）
+  List<CachedAgentProxy> getAllAgentProxies();
 
   // ===== 设备管理 =====
 
@@ -146,6 +159,34 @@ abstract class DeviceClient {
 
   /// 获取在线设备列表（带员工信息）
   Future<List<DeviceWithEmployeesInfo>> getOnlineDevicesWithEmployees();
+
+  // ===== 设备配置 =====
+
+  /// 获取设备配置
+  ///
+  /// 如果配置不存在，会自动创建一个默认配置
+  Future<DeviceConfigEntity> getDeviceConfig();
+
+  /// 更新设备信息配置
+  ///
+  /// [deviceInfo] 设备信息配置对象
+  Future<void> updateDeviceInfo(DeviceInfoConfig deviceInfo);
+
+  /// 更新设备环境变量
+  ///
+  /// [environmentVariables] 环境变量映射表
+  Future<void> updateEnvironmentVariables(Map<String, String> environmentVariables);
+
+  /// 设置单个环境变量
+  ///
+  /// [key] 环境变量名
+  /// [value] 环境变量值
+  Future<void> setEnvironmentVariable(String key, String value);
+
+  /// 删除单个环境变量
+  ///
+  /// [key] 环境变量名
+  Future<void> deleteEnvironmentVariable(String key);
 
   // ===== 数据同步（内部LAN RPC实现） =====
 
