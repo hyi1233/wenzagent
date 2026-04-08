@@ -982,25 +982,48 @@ class DeviceClientImpl implements DeviceClient {
   void _subscribeAgentEvents(String employeeId, IAgent agent) {
     final subscription = agent.onEvent.listen((event) {
       _broadcastAgentEvent(employeeId, event);
-      // 直接路径：无论 LAN 是否连接，都将本地完成的消息通知到 notificationHub
+
       final type = event['type'] as String?;
+      final data = event['data'] as Map<String, dynamic>? ?? {};
+
+      // LAN 未连接时，直接将 agent 事件推送到 onAgentEvent 流
+      // LAN 已连接时，事件会通过 LAN 回环路径到达 _handleAgentEvent 推送
+      final lanClient = _lanClient;
+      if (lanClient == null || !lanClient.isConnected) {
+        _eventController.add({
+          'type': type,
+          'data': data,
+          'employeeId': employeeId,
+          'fromId': deviceId,
+          'fromDeviceId': deviceId,
+        });
+      }
+
+      // 直接路径：completed 时从 agent 会话获取最新 AI 回复通知到 notificationHub
       if (type == 'messageStatusChanged') {
-        final data = event['data'] as Map<String, dynamic>? ?? {};
         final status = data['status'] as String?;
-        final messageId = data['messageId'] as String?;
-        if (status == 'completed' && messageId != null) {
-          _notificationHub.onLocalMessage(
-            message: AgentMessage(
-              id: messageId,
-              role: data['role'] as String? ?? 'assistant',
-              type: data['type'] as String? ?? 'text',
-              content: data['content'] as String?,
-              createdAt: DateTime.now(),
-              status: status,
-              metadata: Map<String, dynamic>.from(data)..['deviceId'] = deviceId,
-            ),
-            employeeId: employeeId,
-          );
+        if (status == 'completed') {
+          // 异步获取最新 AI 回复内容
+          agent.getSessionMessages().then((messages) {
+            if (messages.isEmpty) return;
+            // 找最后一条 AI 消息
+            final lastAssistant = messages.lastWhere(
+              (m) => m.role == 'assistant',
+              orElse: () => messages.last,
+            );
+            _notificationHub.onLocalMessage(
+              message: AgentMessage(
+                id: lastAssistant.id,
+                role: lastAssistant.role,
+                type: lastAssistant.type ?? 'text',
+                content: lastAssistant.content,
+                createdAt: lastAssistant.createdAt,
+                status: status,
+                metadata: Map<String, dynamic>.from(data)..['deviceId'] = deviceId,
+              ),
+              employeeId: employeeId,
+            );
+          }).catchError((_) {});
         }
       }
     });
@@ -1725,21 +1748,7 @@ class DeviceClientImpl implements DeviceClient {
 
           if (status == 'completed' && messageId != null) {
             final isLocal = fromDeviceId == deviceId;
-            if (isLocal) {
-              // 本地 Agent 消息：通过 onLocalMessage 通知（不标记未读）
-              _notificationHub.onLocalMessage(
-                message: AgentMessage(
-                  id: messageId,
-                  role: data['role'] as String? ?? 'assistant',
-                  type: data['type'] as String? ?? 'text',
-                  content: data['content'] as String?,
-                  createdAt: DateTime.now(),
-                  status: status,
-                  metadata: Map<String, dynamic>.from(data)..['deviceId'] = deviceId,
-                ),
-                employeeId: employeeId,
-              );
-            } else {
+            if (!isLocal) {
               // 远程 Agent 消息：通过 onRemoteMessage 通知（自动标记未读）
               _notificationHub.onRemoteMessage(
                 message: AgentMessage(
@@ -1756,6 +1765,8 @@ class DeviceClientImpl implements DeviceClient {
                 employeeId: employeeId,
               );
             }
+            // 本地 Agent completed 事件由 _subscribeAgentEvents 的直接路径处理，
+            // 从 agent.getSessionMessages() 获取完整 AI 回复内容后通知 notificationHub
           }
         }
 

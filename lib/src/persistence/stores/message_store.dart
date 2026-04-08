@@ -34,11 +34,18 @@ class MessageStore {
     List<dynamic> messageUuids = indexBox.get(indexKey) ?? [];
 
     // 应用偏移和限制
+    // UUID 列表按添加顺序排列（旧的在前，新的在后）
+    // 当只有 limit 没有 offset 时（如会话列表预览），取最后 N 条（最新的消息）
+    // 当有 offset 时（如分页查询），从前往后取（保持分页语义）
     if (offset != null && offset > 0) {
       messageUuids = messageUuids.skip(offset).toList();
-    }
-    if (limit != null && limit > 0) {
-      messageUuids = messageUuids.take(limit).toList();
+      if (limit != null && limit > 0) {
+        messageUuids = messageUuids.take(limit).toList();
+      }
+    } else if (limit != null && limit > 0) {
+      if (messageUuids.length > limit) {
+        messageUuids = messageUuids.sublist(messageUuids.length - limit);
+      }
     }
 
     // 获取消息实体（从 JSON 字符串解码）
