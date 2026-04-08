@@ -187,18 +187,16 @@ class AgentImpl implements IAgent {
 
     // 监听消息处理状态变更
     _processor!.onMessageStatusChanged = (messageId, msgStatus, {error}) async {
-      // completed 时附带消息完整数据，供通知中心构建预览卡片
+      // 附带消息完整数据，供通知中心构建预览卡片
       Map<String, dynamic> extraData = {};
-      if (msgStatus == AgentMessageStatus.completed) {
-        final tracked = _processor!.allTrackedMessages
-            .where((m) => m.messageId == messageId)
-            .firstOrNull;
-        if (tracked != null) {
-          final msgMap = tracked.messageData;
-          extraData['role'] = msgMap['role'] ?? 'assistant';
-          extraData['type'] = msgMap['type'] ?? 'text';
-          extraData['content'] = msgMap['content'];
-        }
+      final tracked = _processor!.allTrackedMessages
+          .where((m) => m.messageId == messageId)
+          .firstOrNull;
+      if (tracked != null) {
+        final msgMap = tracked.messageData;
+        extraData['role'] = msgMap['role'] ?? 'user';
+        extraData['type'] = msgMap['type'] ?? 'text';
+        extraData['content'] = msgMap['content'];
       }
       _broadcasterBroadcastMessageStatusChange(
         messageId: messageId,

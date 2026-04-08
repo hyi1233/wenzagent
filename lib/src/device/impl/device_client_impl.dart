@@ -999,32 +999,50 @@ class DeviceClientImpl implements DeviceClient {
         });
       }
 
-      // 直接路径：completed 时从 agent 会话获取最新 AI 回复通知到 notificationHub
-      if (type == 'messageStatusChanged') {
-        final status = data['status'] as String?;
-        if (status == 'completed') {
-          // 异步获取最新 AI 回复内容
-          agent.getSessionMessages().then((messages) {
-            if (messages.isEmpty) return;
-            // 找最后一条 AI 消息
-            final lastAssistant = messages.lastWhere(
-              (m) => m.role == 'assistant',
-              orElse: () => messages.last,
-            );
-            _notificationHub.onLocalMessage(
-              message: AgentMessage(
-                id: lastAssistant.id,
-                role: lastAssistant.role,
-                type: lastAssistant.type ?? 'text',
-                content: lastAssistant.content,
-                createdAt: lastAssistant.createdAt,
-                status: status,
-                metadata: Map<String, dynamic>.from(data)..['deviceId'] = deviceId,
-              ),
-              employeeId: employeeId,
-            );
-          }).catchError((_) {});
+      if (type != 'messageStatusChanged') return;
+      final status = data['status'] as String?;
+      final messageId = data['messageId'] as String?;
+
+      // queued：立即推送用户消息到会话列表（同步，无延迟，解决空白期问题）
+      if (status == 'queued' && messageId != null) {
+        final content = data['content'] as String?;
+        if (content != null && content.isNotEmpty) {
+          _notificationHub.onLocalMessage(
+            message: AgentMessage(
+              id: messageId,
+              role: data['role'] as String? ?? 'user',
+              type: data['type'] as String? ?? 'text',
+              content: content,
+              createdAt: DateTime.now(),
+              status: status,
+              metadata: Map<String, dynamic>.from(data)..['deviceId'] = deviceId,
+            ),
+            employeeId: employeeId,
+          );
         }
+      }
+
+      // completed：异步获取最新 AI 回复并推送
+      if (status == 'completed') {
+        agent.getSessionMessages().then((messages) {
+          if (messages.isEmpty) return;
+          final lastAssistant = messages.lastWhere(
+            (m) => m.role == 'assistant',
+            orElse: () => messages.last,
+          );
+          _notificationHub.onLocalMessage(
+            message: AgentMessage(
+              id: lastAssistant.id,
+              role: lastAssistant.role,
+              type: lastAssistant.type ?? 'text',
+              content: lastAssistant.content,
+              createdAt: lastAssistant.createdAt,
+              status: status,
+              metadata: Map<String, dynamic>.from(data)..['deviceId'] = deviceId,
+            ),
+            employeeId: employeeId,
+          );
+        }).catchError((_) {});
       }
     });
     _agentEventSubscriptions[employeeId] = subscription;
