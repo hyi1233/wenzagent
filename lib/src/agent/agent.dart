@@ -11,3 +11,5 @@ export 'processor/processor.dart';
 export 'adapter/adapter.dart';
 export 'tool/tool.dart';
 export 'entity/entity.dart';
+export 'notification/agent_notification_hub.dart';
+export 'notification/agent_notification_event.dart';

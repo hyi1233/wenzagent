@@ -41,6 +41,12 @@ class CachedAgentProxy {
   final MessageStoreService _messageStore;
   final String _deviceId;
   final String _employeeId;
+
+  /// 标记已读回调（由 DeviceClient 注入）
+  ///
+  /// 当用户通过 CachedAgentProxy.markMessagesAsRead() 标记已读时，
+  /// 回调通知 DeviceClient 执行本地标记 + 跨设备广播
+  final void Function(String employeeId, String? fromDeviceId)? onMarkAsRead;
   
   /// 是否需要缓存（仅远程模式需要）
   late final bool _needCache;
@@ -76,6 +82,7 @@ class CachedAgentProxy {
     required MessageStoreService messageStore,
     required String deviceId,
     required String employeeId,
+    this.onMarkAsRead,
   }) : _proxy = proxy,
        _messageStore = messageStore,
        _deviceId = deviceId,
@@ -336,6 +343,11 @@ class CachedAgentProxy {
     // 更新本地缓存中的消息状态（包含错误信息）
     _updateMessageStatus(messageId, status, error: error);
     
+    // 如果是失败状态且有错误信息，创建一条错误消息返回给客户端
+    if (status == 'failed' && error != null) {
+      _createErrorMessage(messageId, error);
+    }
+    
     // 如果是完成或失败状态，触发消息列表查询
     if (status == 'completed' || status == 'failed' || status == 'interrupted') {
       // 延迟查询，确保远程消息已持久化
@@ -343,6 +355,38 @@ class CachedAgentProxy {
         _syncMessagesFromRemote();
       });
     }
+  }
+  
+  /// 创建错误消息（当消息处理失败时，生成一条 assistant 类型的错误消息给客户端可见）
+  void _createErrorMessage(String originalMessageId, String errorContent) {
+    // 截断过长的错误信息，避免存储和显示问题
+    final displayError = errorContent.length > 500
+        ? '${errorContent.substring(0, 500)}...'
+        : errorContent;
+    
+    final errorMessage = AgentMessage(
+      id: 'error_${originalMessageId}',
+      role: 'assistant',
+      type: 'error',
+      content: '处理失败: $displayError',
+      createdAt: DateTime.now(),
+      status: 'failed',
+      metadata: {
+        'error': true,
+        'originalMessageId': originalMessageId,
+        'updateTime': DateTime.now().toIso8601String(),
+      },
+    );
+    
+    // 添加到缓存
+    _addMessageToCache(errorMessage);
+    
+    // 保存到数据库（仅远程模式）
+    if (_needCache) {
+      _saveMessageToDatabase(errorMessage);
+    }
+    
+    print('[CachedAgentProxy] 已创建错误消息: ${errorMessage.id}');
   }
   
   /// 处理Agent状态变更事件
@@ -1259,6 +1303,17 @@ class CachedAgentProxy {
   bool get isAlive => _proxy.isAlive;
   bool get isSending => _proxy.isSending;
   Stream<AgentStateSnapshot> get onStateChanged => _proxy.onStateChanged;
+  
+  // ===== 消息已读标记 =====
+  
+  /// 标记当前会话的所有消息为已读
+  ///
+  /// 用户打开会话窗口时调用此方法，会：
+  /// 1. 通过 [onMarkAsRead] 回调通知 DeviceClient
+  /// 2. DeviceClient 执行本地标记 + 跨设备广播
+  void markMessagesAsRead() {
+    onMarkAsRead?.call(_employeeId, _deviceId);
+  }
   
   // ===== 缓存相关属性（仅远程模式有效） =====
   

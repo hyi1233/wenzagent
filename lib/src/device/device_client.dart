@@ -1,9 +1,11 @@
 ﻿import 'dart:async';
 
 import '../agent/client/cached_agent_proxy.dart';
+import '../agent/notification/agent_notification_hub.dart';
 import '../entity/lan_device_info.dart';
 import '../entity/lan_message.dart';
 import '../persistence/entities/device_config_entity.dart';
+import '../persistence/entities/message_entity.dart';
 import '../service/service.dart';
 
 /// 设备连接状态
@@ -239,6 +241,39 @@ abstract class DeviceClient {
 
   /// 获取LAN消息流
   Stream<LanMessage> get onLanMessage;
+
+  // ===== 消息通知中心 =====
+
+  /// Agent 消息通知中心
+  ///
+  /// 提供统一的 Stream 订阅入口，用于监听其他设备 Agent 返回消息。
+  /// - 收到消息自动标记未读
+  /// - 提供 markAsRead / markAllAsRead 方法
+  AgentNotificationHub get notificationHub;
+
+  /// 获取指定员工的未读消息数量
+  int getUnreadCount({required String employeeId, String? fromDeviceId});
+
+  /// 获取所有未读消息总数
+  int getTotalUnreadCount();
+
+  /// 标记指定员工的所有消息为已读
+  void markAllMessagesAsRead({required String employeeId, String? fromDeviceId});
+
+  /// 标记所有消息为已读
+  void markAllMessagesAsReadGlobal();
+
+  /// 获取指定员工在指定设备上的最新消息
+  ///
+  /// 用于会话列表实时更新消息预览，避免全量刷新。
+  /// [employeeId] 员工UUID
+  /// [deviceId] 消息所在设备ID
+  /// [limit] 返回消息数量，默认2条
+  Future<List<AiEmployeeMessageEntity>> getLatestMessages({
+    required String employeeId,
+    required String deviceId,
+    int limit = 2,
+  });
 
   // ===== 文件传输 =====
 

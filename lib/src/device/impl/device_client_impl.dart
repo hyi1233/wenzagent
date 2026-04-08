@@ -6,9 +6,11 @@ import '../../agent/adapter/persistent_chat_adapter.dart';
 import '../../agent/agent_state.dart';
 import '../../agent/client/agent_proxy.dart';
 import '../../agent/client/cached_agent_proxy.dart';
+import '../../agent/entity/agent_message.dart';
 import '../../agent/entity/entity.dart';
 import '../../agent/i_agent.dart';
 import '../../agent/impl/agent_impl.dart';
+import '../../agent/notification/agent_notification_hub.dart';
 import '../../agent/rpc/agent_rpc_config.dart';
 import '../../entity/host_rpc_request.dart';
 import '../../entity/lan_device_info.dart';
@@ -117,6 +119,9 @@ class DeviceClientImpl implements DeviceClient {
   /// 连接操作锁，防止并发连接/断开/重连导致的问题
   final _connectionLock = _AsyncLock();
 
+  /// Agent 消息通知中心
+  late final AgentNotificationHub _notificationHub;
+
   // ===== 服务层成员 =====
 
   /// 员工管理器
@@ -159,6 +164,9 @@ class DeviceClientImpl implements DeviceClient {
 
     // 初始化设备配置存储
     _deviceConfigStore = DeviceConfigStore();
+
+    // 初始化通知中心
+    _notificationHub = AgentNotificationHub();
   }
 
   // ===== 只读属性 =====
@@ -672,6 +680,9 @@ class DeviceClientImpl implements DeviceClient {
     }
     _localAgents.clear();
 
+    // 释放通知中心
+    _notificationHub.dispose();
+
     await _stateController.close();
     await _eventController.close();
     await _lanMessageController.close();
@@ -733,6 +744,10 @@ class DeviceClientImpl implements DeviceClient {
         messageStore: _messageStoreService,
         deviceId: targetDeviceId,
         employeeId: employeeId,
+        onMarkAsRead: (empId, fromDevId) {
+          _notificationHub.markAllAsRead(employeeId: empId, fromDeviceId: fromDevId);
+          _broadcastReadStatus(employeeId: empId, fromDeviceId: fromDevId);
+        },
       );
       
       await cachedProxy.initialize();
@@ -764,6 +779,10 @@ class DeviceClientImpl implements DeviceClient {
       messageStore: _messageStoreService,
       deviceId: targetDeviceId,
       employeeId: employeeId,
+      onMarkAsRead: (empId, fromDevId) {
+        _notificationHub.markAllAsRead(employeeId: empId, fromDeviceId: fromDevId);
+        _broadcastReadStatus(employeeId: empId, fromDeviceId: fromDevId);
+      },
     );
     
     await cachedProxy.initialize();
@@ -1175,6 +1194,70 @@ class DeviceClientImpl implements DeviceClient {
   @override
   EmployeeConfigService get configService => _configService;
 
+  // ===== 消息通知中心 =====
+
+  @override
+  AgentNotificationHub get notificationHub => _notificationHub;
+
+  @override
+  int getUnreadCount({required String employeeId, String? fromDeviceId}) {
+    return _notificationHub.getUnreadCount(
+      employeeId: employeeId,
+      fromDeviceId: fromDeviceId,
+    );
+  }
+
+  @override
+  int getTotalUnreadCount() => _notificationHub.getTotalUnreadCount();
+
+  @override
+  void markAllMessagesAsRead({required String employeeId, String? fromDeviceId}) {
+    _notificationHub.markAllAsRead(employeeId: employeeId, fromDeviceId: fromDeviceId);
+    _broadcastReadStatus(employeeId: employeeId, fromDeviceId: fromDeviceId);
+    // 异步更新数据库中的已读标记
+    _markMessagesAsReadInDb(employeeId, fromDeviceId);
+  }
+
+  /// 异步更新数据库消息为已读（fire-and-forget）
+  void _markMessagesAsReadInDb(String employeeId, String? fromDeviceId) {
+    _messageStoreService.getMessagesWithDeviceId(fromDeviceId, employeeId).then((messages) {
+      for (final m in messages) {
+        if (m.role == 'assistant' && m.isRead == 0) {
+          _messageStoreService.updateMessage(m.copyWith(isRead: 1, jsonData: null));
+        }
+      }
+    }).catchError((_) {});
+  }
+
+  /// 异步更新数据库中所有有未读消息的员工的消息为已读（fire-and-forget）
+  void _markAllMessagesAsReadInDbGlobal() {
+    final employeeIds = _notificationHub.unreadEmployeeIds;
+    for (final employeeId in employeeIds) {
+      _markMessagesAsReadInDb(employeeId, null);
+    }
+  }
+
+  @override
+  void markAllMessagesAsReadGlobal() {
+    _notificationHub.markAllAsReadGlobal();
+    _broadcastReadStatusGlobal();
+    // 异步更新数据库中所有消息为已读
+    _markAllMessagesAsReadInDbGlobal();
+  }
+
+  @override
+  Future<List<AiEmployeeMessageEntity>> getLatestMessages({
+    required String employeeId,
+    required String deviceId,
+    int limit = 2,
+  }) {
+    return _messageStoreService.getMessagesWithDeviceId(
+      deviceId,
+      employeeId,
+      limit: limit,
+    );
+  }
+
   // ===== 数据同步 =====
 
   @override
@@ -1449,6 +1532,8 @@ class DeviceClientImpl implements DeviceClient {
       case LanMessageType.toolCallStart:
       case LanMessageType.toolCallResult:
         _handleAgentEvent(msg);
+      case LanMessageType.agentMessageReadStatus:
+        _handleRemoteReadStatus(msg);
       case LanMessageType.system:
         _handleSystemMessage(msg);
       case LanMessageType.deviceOnline:
@@ -1517,6 +1602,7 @@ class DeviceClientImpl implements DeviceClient {
       final type = content['type'] as String?;
       final data = content['data'] as Map<String, dynamic>? ?? {};
       final employeeId = content['employeeId'] as String?;
+      final fromDeviceId = msg.fromId;
 
       _eventController.add({
         'type': type,
@@ -1525,6 +1611,66 @@ class DeviceClientImpl implements DeviceClient {
         'fromId': msg.fromId,
         'fromDeviceId': msg.fromId,
       });
+
+      // 接入通知中心：只处理来自其他设备的事件
+      if (employeeId != null && fromDeviceId != null && fromDeviceId != deviceId) {
+        if (type == 'messageStatusChanged') {
+          final status = data['status'] as String?;
+          final messageId = data['messageId'] as String?;
+
+          if (status == 'completed' && messageId != null) {
+            _notificationHub.onRemoteMessage(
+              message: AgentMessage(
+                id: messageId,
+                role: data['role'] as String? ?? 'assistant',
+                type: data['type'] as String? ?? 'text',
+                content: data['content'] as String?,
+                createdAt: DateTime.now(),
+                status: status,
+                metadata: Map<String, dynamic>.from(data),
+              ),
+              fromDeviceId: fromDeviceId,
+              toDeviceId: deviceId,
+              employeeId: employeeId,
+            );
+          }
+        }
+
+        if (type == 'agentStatusChanged') {
+          final status = data['status'] as String?;
+          if (status != null) {
+            _notificationHub.onAgentStatusChanged(
+              employeeId: employeeId,
+              fromDeviceId: fromDeviceId,
+              status: status,
+            );
+
+            // 权限请求消息也统计未读数量
+            if (status == 'waitingPermission') {
+              final requestId = data['requestId'] as String?;
+              final permMessageId = requestId != null
+                  ? 'perm_$requestId'
+                  : 'perm_${DateTime.now().millisecondsSinceEpoch}';
+              _notificationHub.onRemoteMessage(
+                message: AgentMessage(
+                  id: permMessageId,
+                  role: 'assistant',
+                  type: 'permission',
+                  content: data['description'] as String? ?? '等待权限确认',
+                  createdAt: DateTime.now(),
+                  metadata: {
+                    'isPermissionRequest': true,
+                    'permissionRequest': data,
+                  },
+                ),
+                fromDeviceId: fromDeviceId,
+                toDeviceId: deviceId,
+                employeeId: employeeId,
+              );
+            }
+          }
+        }
+      }
     } catch (_) {}
   }
 
@@ -1693,5 +1839,81 @@ class DeviceClientImpl implements DeviceClient {
     }
 
     return _rpcManager!.invoke(method, params, toDeviceId: toDeviceId);
+  }
+
+  /// 广播已读状态到其他设备
+  ///
+  /// 当本设备用户查看了某个员工的会话消息后，
+  /// 通过 LAN 广播通知其他设备清除对应消息的未读计数。
+  void _broadcastReadStatus({
+    required String employeeId,
+    String? fromDeviceId,
+  }) {
+    final lanClient = _lanClient;
+    if (lanClient == null || !lanClient.isConnected) return;
+
+    final msg = LanMessage(
+      type: LanMessageType.agentMessageReadStatus,
+      fromId: deviceId,
+      content: jsonEncode({
+        'employeeId': employeeId,
+        'fromDeviceId': fromDeviceId,
+        'readerDeviceId': deviceId,
+      }),
+      topic: topic,
+    );
+
+    lanClient.sendLanMessage(msg);
+  }
+
+  /// 处理远程设备的已读状态通知
+  ///
+  /// 当其他设备的用户查看了某个员工的会话消息后，
+  /// 本设备收到通知后清除对应消息的未读计数。
+  void _handleRemoteReadStatus(LanMessage msg) {
+    try {
+      final content = jsonDecode(msg.content ?? '{}') as Map<String, dynamic>;
+      final employeeId = content['employeeId'] as String?;
+      final fromDeviceId = content['fromDeviceId'] as String?;
+      final readerDeviceId = content['readerDeviceId'] as String?;
+      final global = content['global'] as bool? ?? false;
+
+      // 只处理来自其他设备的已读通知
+      if (readerDeviceId == deviceId) return;
+
+      if (global) {
+        // 全局已读：清除所有未读
+        _notificationHub.markAllAsReadGlobal();
+        // 同步更新本地数据库
+        _markAllMessagesAsReadInDbGlobal();
+      } else {
+        if (employeeId == null) return;
+        // 清除本设备上对应员工（和来源设备）的未读计数
+        _notificationHub.markAllAsRead(
+          employeeId: employeeId,
+          fromDeviceId: fromDeviceId,
+        );
+        // 同步更新本地数据库
+        _markMessagesAsReadInDb(employeeId, fromDeviceId);
+      }
+    } catch (_) {}
+  }
+
+  /// 广播全局已读状态到其他设备
+  void _broadcastReadStatusGlobal() {
+    final lanClient = _lanClient;
+    if (lanClient == null || !lanClient.isConnected) return;
+
+    final msg = LanMessage(
+      type: LanMessageType.agentMessageReadStatus,
+      fromId: deviceId,
+      content: jsonEncode({
+        'global': true,
+        'readerDeviceId': deviceId,
+      }),
+      topic: topic,
+    );
+
+    lanClient.sendLanMessage(msg);
   }
 }

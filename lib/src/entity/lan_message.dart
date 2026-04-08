@@ -47,6 +47,9 @@ enum LanMessageType {
   /// Agent 权限请求变更
   agentPermissionChanged,
 
+  /// Agent 消息已读状态变更（跨设备同步）
+  agentMessageReadStatus,
+
   // ===== AI Employee 消息类型 =====
 
   /// AI 聊天请求
