@@ -368,6 +368,47 @@ class AgentProxy {
     await _rpcUtil!.markMessagesAsReceived(request);
   }
 
+  /// 标记消息为已读
+  ///
+  /// 当用户打开会话查看消息时，通知 Agent 消息已读
+  Future<void> markMessagesAsRead({
+    required String readerDeviceId,
+    List<String>? messageIds,
+  }) async {
+    if (isLocalMode && _localAgent != null) {
+      return _localAgent.markMessagesAsRead(
+        readerDeviceId: readerDeviceId,
+        employeeId: employeeId,
+        messageIds: messageIds,
+      );
+    }
+    final request = MarkMessagesAsReadRequest(
+      employeeId: employeeId,
+      readerDeviceId: readerDeviceId,
+      messageIds: messageIds,
+    );
+    await _rpcUtil!.markMessagesAsRead(request);
+  }
+
+  /// 查询消息已读状态
+  ///
+  /// 设备重新打开时从 Agent 查询哪些消息已读
+  Future<Map<String, dynamic>> getMessagesReadStatus({
+    required String deviceId,
+  }) async {
+    if (isLocalMode && _localAgent != null) {
+      return _localAgent.getMessagesReadStatus(
+        deviceId: deviceId,
+        employeeId: employeeId,
+      );
+    }
+    final request = GetMessagesReadStatusRequest(
+      employeeId: employeeId,
+      deviceId: deviceId,
+    );
+    return _rpcUtil!.getMessagesReadStatus(request);
+  }
+
   /// 清空当前会话
   Future<void> clearCurrentSession() async {
     if (isLocalMode && _localAgent != null) {

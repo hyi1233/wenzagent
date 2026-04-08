@@ -54,6 +54,11 @@ class AgentImpl implements IAgent {
   /// 当消息状态更新时，清除接收状态，让设备可以重新接收
   final Map<String, Map<String, DateTime>> _messageReceiveStatus = {};
 
+  /// 消息已读状态跟踪
+  /// Map<messageId, Map<readerDeviceId, readTime>>
+  /// 当某个设备上的用户查看了消息后，记录已读状态
+  final Map<String, Map<String, DateTime>> _messageReadStatus = {};
+
   // ===== 内部状态 =====
 
   /// 当前 Agent 状态
@@ -416,6 +421,69 @@ class AgentImpl implements IAgent {
     print('[AgentImpl] 已标记设备 $receiverDeviceId 接收 ${messageReceiveList.length} 条消息');
   }
 
+  @override
+  Future<void> markMessagesAsRead({
+    required String readerDeviceId,
+    required String employeeId,
+    List<String>? messageIds,
+  }) async {
+    _touch();
+
+    // 如果未指定消息ID列表，则标记该员工的所有消息为已读
+    final ids = messageIds;
+    if (ids != null && ids.isNotEmpty) {
+      for (final messageId in ids) {
+        _messageReadStatus[messageId] ??= {};
+        _messageReadStatus[messageId]![readerDeviceId] = DateTime.now();
+      }
+      print('[AgentImpl] 已标记设备 $readerDeviceId 对 ${ids.length} 条消息的已读状态');
+    } else {
+      // 获取所有消息并标记已读
+      final allMessages = await _chatAdapter.getSessionMessages(employeeId);
+      for (final message in allMessages) {
+        _messageReadStatus[message.id] ??= {};
+        _messageReadStatus[message.id]![readerDeviceId] = DateTime.now();
+      }
+      print('[AgentImpl] 已标记设备 $readerDeviceId 对员工 $employeeId 所有消息的已读状态');
+    }
+
+    // 广播已读状态变更事件
+    _eventController.add({
+      'type': 'messageReadStatusChanged',
+      'data': {
+        'employeeId': employeeId,
+        'readerDeviceId': readerDeviceId,
+        'messageIds': ids,
+      },
+      'employeeId': employeeId,
+    });
+  }
+
+  @override
+  Future<Map<String, dynamic>> getMessagesReadStatus({
+    required String deviceId,
+    required String employeeId,
+  }) async {
+    // 获取该员工的所有消息
+    final allMessages = await _chatAdapter.getSessionMessages(employeeId);
+
+    final readStatus = <String, dynamic>{};
+    for (final message in allMessages) {
+      final messageReadMap = _messageReadStatus[message.id];
+      if (messageReadMap != null && messageReadMap.containsKey(deviceId)) {
+        readStatus[message.id] = true;
+      } else {
+        readStatus[message.id] = false;
+      }
+    }
+
+    return {
+      'employeeId': employeeId,
+      'deviceId': deviceId,
+      'readStatus': readStatus,
+    };
+  }
+
   /// 获取消息的更新时间
   DateTime _getMessageUpdateTime(AgentMessage message) {
     // 优先使用metadata中的updateTime
@@ -436,6 +504,12 @@ class AgentImpl implements IAgent {
   void _clearMessageReceiveStatus(String messageId) {
     _messageReceiveStatus.remove(messageId);
     print('[AgentImpl] 已清除消息 $messageId 的接收状态');
+  }
+
+  /// 清除消息的已读状态（当消息更新时调用）
+  void _clearMessageReadStatus(String messageId) {
+    _messageReadStatus.remove(messageId);
+    print('[AgentImpl] 已清除消息 $messageId 的已读状态');
   }
 
   @override

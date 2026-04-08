@@ -378,6 +378,38 @@ class DeviceClientImpl implements DeviceClient {
       return {'success': true};
     });
 
+    // 标记消息为已读
+    _rpcServer!.register(AgentRpcConfig.methodMarkMessagesAsRead, (
+      params,
+    ) async {
+      final request = MarkMessagesAsReadRequest.fromMap(params);
+      final agent = _localAgents[request.employeeId];
+      if (agent == null) {
+        throw Exception('Agent not found: ${request.employeeId}');
+      }
+      await agent.markMessagesAsRead(
+        readerDeviceId: request.readerDeviceId,
+        employeeId: request.employeeId,
+        messageIds: request.messageIds,
+      );
+      return {'success': true};
+    });
+
+    // 查询消息已读状态
+    _rpcServer!.register(AgentRpcConfig.methodGetMessagesReadStatus, (
+      params,
+    ) async {
+      final request = GetMessagesReadStatusRequest.fromMap(params);
+      final agent = _localAgents[request.employeeId];
+      if (agent == null) {
+        throw Exception('Agent not found: ${request.employeeId}');
+      }
+      return agent.getMessagesReadStatus(
+        deviceId: request.deviceId,
+        employeeId: request.employeeId,
+      );
+    });
+
     _rpcServer!.register(AgentRpcConfig.methodGetState, (params) async {
       final request = GetStateRequest.fromMap(params);
       final agent = _localAgents[request.employeeId];
@@ -950,6 +982,27 @@ class DeviceClientImpl implements DeviceClient {
   void _subscribeAgentEvents(String employeeId, IAgent agent) {
     final subscription = agent.onEvent.listen((event) {
       _broadcastAgentEvent(employeeId, event);
+      // 直接路径：无论 LAN 是否连接，都将本地完成的消息通知到 notificationHub
+      final type = event['type'] as String?;
+      if (type == 'messageStatusChanged') {
+        final data = event['data'] as Map<String, dynamic>? ?? {};
+        final status = data['status'] as String?;
+        final messageId = data['messageId'] as String?;
+        if (status == 'completed' && messageId != null) {
+          _notificationHub.onLocalMessage(
+            message: AgentMessage(
+              id: messageId,
+              role: data['role'] as String? ?? 'assistant',
+              type: data['type'] as String? ?? 'text',
+              content: data['content'] as String?,
+              createdAt: DateTime.now(),
+              status: status,
+              metadata: Map<String, dynamic>.from(data)..['deviceId'] = deviceId,
+            ),
+            employeeId: employeeId,
+          );
+        }
+      }
     });
     _agentEventSubscriptions[employeeId] = subscription;
   }
@@ -968,6 +1021,8 @@ class DeviceClientImpl implements DeviceClient {
         msgType = LanMessageType.agentStatusChanged;
       case 'messageStatusChanged':
         msgType = LanMessageType.agentMessageStatusChanged;
+      case 'messageReadStatusChanged':
+        msgType = LanMessageType.agentMessageReadStatusChanged;
       case 'toolCallStart':
         msgType = LanMessageType.toolCallStart;
       case 'toolCallResult':
@@ -1216,6 +1271,18 @@ class DeviceClientImpl implements DeviceClient {
     _broadcastReadStatus(employeeId: employeeId, fromDeviceId: fromDeviceId);
     // 异步更新数据库中的已读标记
     _markMessagesAsReadInDb(employeeId, fromDeviceId);
+    // 通知本地 Agent 记录已读状态（Agent 会广播给所有设备）
+    _notifyAgentReadStatus(employeeId: employeeId, fromDeviceId: fromDeviceId);
+  }
+
+  /// 通知本地 Agent 消息已读（fire-and-forget）
+  void _notifyAgentReadStatus({required String employeeId, String? fromDeviceId}) {
+    final agent = _localAgents[employeeId];
+    if (agent == null) return;
+    agent.markMessagesAsRead(
+      readerDeviceId: deviceId,
+      employeeId: employeeId,
+    ).catchError((_) {});
   }
 
   /// 异步更新数据库消息为已读（fire-and-forget）
@@ -1243,6 +1310,43 @@ class DeviceClientImpl implements DeviceClient {
     _broadcastReadStatusGlobal();
     // 异步更新数据库中所有消息为已读
     _markAllMessagesAsReadInDbGlobal();
+  }
+
+  @override
+  Future<void> syncReadStatusFromAgent({required String employeeId}) async {
+    // 1. 查找该员工的 AgentProxy（本地或远程）
+    final proxy = getAgentProxy(employeeId);
+    if (proxy == null) return;
+
+    try {
+      // 2. 通过 proxy 向 Agent 查询已读状态
+      final result = await proxy.getMessagesReadStatus(deviceId: deviceId);
+      final readStatus = result['readStatus'] as Map<String, dynamic>? ?? {};
+
+      // 3. 遍历已读状态，更新本地数据库中对应消息的 isRead 字段
+      for (final entry in readStatus.entries) {
+        final messageId = entry.key;
+        final isRead = entry.value as bool? ?? false;
+        if (isRead) {
+          // 通过 uuid 获取消息，更新 isRead 标记
+          _messageStoreService.getMessage(messageId).then((message) {
+            if (message != null && message.isRead == 0) {
+              _messageStoreService.updateMessage(
+                message.copyWith(isRead: 1, jsonData: null),
+              );
+            }
+          }).catchError((_) {});
+        }
+      }
+
+      // 4. 如果有已读消息，清除 notificationHub 中的未读计数
+      final hasRead = readStatus.values.any((v) => v == true);
+      if (hasRead) {
+        _notificationHub.markAllAsRead(employeeId: employeeId);
+      }
+    } catch (_) {
+      // 查询失败静默处理，不影响主流程
+    }
   }
 
   @override
@@ -1529,6 +1633,7 @@ class DeviceClientImpl implements DeviceClient {
         _handleStreamEnd(msg);
       case LanMessageType.agentStatusChanged:
       case LanMessageType.agentMessageStatusChanged:
+      case LanMessageType.agentMessageReadStatusChanged:
       case LanMessageType.toolCallStart:
       case LanMessageType.toolCallResult:
         _handleAgentEvent(msg);
@@ -1612,27 +1717,45 @@ class DeviceClientImpl implements DeviceClient {
         'fromDeviceId': msg.fromId,
       });
 
-      // 接入通知中心：只处理来自其他设备的事件
-      if (employeeId != null && fromDeviceId != null && fromDeviceId != deviceId) {
+      // 接入通知中心
+      if (employeeId != null && fromDeviceId != null) {
         if (type == 'messageStatusChanged') {
           final status = data['status'] as String?;
           final messageId = data['messageId'] as String?;
 
           if (status == 'completed' && messageId != null) {
-            _notificationHub.onRemoteMessage(
-              message: AgentMessage(
-                id: messageId,
-                role: data['role'] as String? ?? 'assistant',
-                type: data['type'] as String? ?? 'text',
-                content: data['content'] as String?,
-                createdAt: DateTime.now(),
-                status: status,
-                metadata: Map<String, dynamic>.from(data),
-              ),
-              fromDeviceId: fromDeviceId,
-              toDeviceId: deviceId,
-              employeeId: employeeId,
-            );
+            final isLocal = fromDeviceId == deviceId;
+            if (isLocal) {
+              // 本地 Agent 消息：通过 onLocalMessage 通知（不标记未读）
+              _notificationHub.onLocalMessage(
+                message: AgentMessage(
+                  id: messageId,
+                  role: data['role'] as String? ?? 'assistant',
+                  type: data['type'] as String? ?? 'text',
+                  content: data['content'] as String?,
+                  createdAt: DateTime.now(),
+                  status: status,
+                  metadata: Map<String, dynamic>.from(data)..['deviceId'] = deviceId,
+                ),
+                employeeId: employeeId,
+              );
+            } else {
+              // 远程 Agent 消息：通过 onRemoteMessage 通知（自动标记未读）
+              _notificationHub.onRemoteMessage(
+                message: AgentMessage(
+                  id: messageId,
+                  role: data['role'] as String? ?? 'assistant',
+                  type: data['type'] as String? ?? 'text',
+                  content: data['content'] as String?,
+                  createdAt: DateTime.now(),
+                  status: status,
+                  metadata: Map<String, dynamic>.from(data),
+                ),
+                fromDeviceId: fromDeviceId,
+                toDeviceId: deviceId,
+                employeeId: employeeId,
+              );
+            }
           }
         }
 
@@ -1668,6 +1791,19 @@ class DeviceClientImpl implements DeviceClient {
                 employeeId: employeeId,
               );
             }
+          }
+        }
+
+        // 处理从 Agent 广播来的已读状态变更
+        if (type == 'messageReadStatusChanged') {
+          final readerDeviceId = data['readerDeviceId'] as String?;
+          if (readerDeviceId != null && readerDeviceId != deviceId) {
+            // 其他设备的用户标记了已读，更新本设备的 notificationHub 和 DB
+            _notificationHub.markAllAsRead(
+              employeeId: employeeId,
+              fromDeviceId: fromDeviceId,
+            );
+            _markMessagesAsReadInDb(employeeId, fromDeviceId);
           }
         }
       }

@@ -1309,10 +1309,23 @@ class CachedAgentProxy {
   /// 标记当前会话的所有消息为已读
   ///
   /// 用户打开会话窗口时调用此方法，会：
-  /// 1. 通过 [onMarkAsRead] 回调通知 DeviceClient
-  /// 2. DeviceClient 执行本地标记 + 跨设备广播
+  /// 1. 通过 [onMarkAsRead] 回调通知 DeviceClient（本地标记 + 跨设备广播）
+  /// 2. 通过 [_proxy] RPC 通知远程 Agent 记录已读状态（Agent 会广播给所有设备）
   void markMessagesAsRead() {
     onMarkAsRead?.call(_employeeId, _deviceId);
+    // 通知远程 Agent 记录已读状态（fire-and-forget）
+    _proxy.markMessagesAsRead(
+      readerDeviceId: _deviceId,
+    ).catchError((_) {});
+  }
+
+  /// 查询消息已读状态
+  ///
+  /// 设备重新打开时从 Agent 查询哪些消息已读
+  Future<Map<String, dynamic>> getMessagesReadStatus({
+    required String deviceId,
+  }) {
+    return _proxy.getMessagesReadStatus(deviceId: deviceId);
   }
   
   // ===== 缓存相关属性（仅远程模式有效） =====

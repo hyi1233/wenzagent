@@ -67,6 +67,20 @@ class AgentRpcUtil {
     return _rpcCall(AgentRpcConfig.methodMarkMessagesAsReceived, request.toMap());
   }
 
+  /// 标记消息为已读
+  Future<Map<String, dynamic>> markMessagesAsRead(
+    MarkMessagesAsReadRequest request,
+  ) async {
+    return _rpcCall(AgentRpcConfig.methodMarkMessagesAsRead, request.toMap());
+  }
+
+  /// 查询消息已读状态
+  Future<Map<String, dynamic>> getMessagesReadStatus(
+    GetMessagesReadStatusRequest request,
+  ) async {
+    return _rpcCall(AgentRpcConfig.methodGetMessagesReadStatus, request.toMap());
+  }
+
   /// 清空当前会话
   Future<Map<String, dynamic>> clearSession(ClearSessionRequest request) async {
     return _rpcCall(AgentRpcConfig.methodClearSession, request.toMap());

@@ -22,6 +22,8 @@ class AgentRpcConfig {
   static const String methodGetSessionMessagesPaged = 'agentGetSessionMessagesPaged';
   static const String methodGetUnreceivedMessages = 'agentGetUnreceivedMessages';
   static const String methodMarkMessagesAsReceived = 'agentMarkMessagesAsReceived';
+  static const String methodMarkMessagesAsRead = 'agentMarkMessagesAsRead';
+  static const String methodGetMessagesReadStatus = 'agentGetMessagesReadStatus';
   static const String methodCreateSession = 'agentCreateSession';
   static const String methodSwitchSession = 'agentSwitchSession';
   static const String methodClearSession = 'agentClearSession';

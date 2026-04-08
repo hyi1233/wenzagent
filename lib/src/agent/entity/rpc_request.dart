@@ -518,3 +518,67 @@ class GetOrCreateAgentRequest {
   }
 }
 
+/// 标记消息为已读请求
+///
+/// 当用户打开会话查看消息时，设备通过此方法通知 Agent 消息已读
+class MarkMessagesAsReadRequest {
+  final String employeeId;
+
+  /// 已读设备ID
+  final String readerDeviceId;
+
+  /// 指定消息ID列表，为 null 则标记该员工所有消息
+  final List<String>? messageIds;
+
+  const MarkMessagesAsReadRequest({
+    required this.employeeId,
+    required this.readerDeviceId,
+    this.messageIds,
+  });
+
+  Map<String, dynamic> toMap() {
+    return {
+      'employeeId': employeeId,
+      'readerDeviceId': readerDeviceId,
+      if (messageIds != null) 'messageIds': messageIds,
+    };
+  }
+
+  factory MarkMessagesAsReadRequest.fromMap(Map<String, dynamic> map) {
+    return MarkMessagesAsReadRequest(
+      employeeId: map['employeeId'] as String,
+      readerDeviceId: map['readerDeviceId'] as String,
+      messageIds: (map['messageIds'] as List?)?.cast<String>(),
+    );
+  }
+}
+
+/// 查询消息已读状态请求
+///
+/// 设备重新打开时可通过此方法从 Agent 查询哪些消息已读
+class GetMessagesReadStatusRequest {
+  final String employeeId;
+
+  /// 查询设备ID
+  final String deviceId;
+
+  const GetMessagesReadStatusRequest({
+    required this.employeeId,
+    required this.deviceId,
+  });
+
+  Map<String, dynamic> toMap() {
+    return {
+      'employeeId': employeeId,
+      'deviceId': deviceId,
+    };
+  }
+
+  factory GetMessagesReadStatusRequest.fromMap(Map<String, dynamic> map) {
+    return GetMessagesReadStatusRequest(
+      employeeId: map['employeeId'] as String,
+      deviceId: map['deviceId'] as String,
+    );
+  }
+}
+

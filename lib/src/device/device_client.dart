@@ -263,6 +263,13 @@ abstract class DeviceClient {
   /// 标记所有消息为已读
   void markAllMessagesAsReadGlobal();
 
+  /// 从 Agent 同步已读状态
+  ///
+  /// 设备重新打开 app 时调用，向 Agent 查询本设备的消息已读状态，
+  /// 然后更新本地 notificationHub 和数据库。
+  /// [employeeId] 员工UUID
+  Future<void> syncReadStatusFromAgent({required String employeeId});
+
   /// 获取指定员工在指定设备上的最新消息
   ///
   /// 用于会话列表实时更新消息预览，避免全量刷新。

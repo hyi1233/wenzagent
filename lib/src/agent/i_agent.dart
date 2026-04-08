@@ -120,6 +120,31 @@ abstract class IAgent {
     required List<MessageReceiveInfo> messageReceiveList,
   });
 
+  /// 标记消息为已读
+  ///
+  /// 当用户打开会话查看消息时，设备通过此方法通知 Agent 消息已读
+  /// Agent 记录已读状态后广播给所有设备
+  ///
+  /// [readerDeviceId] 已读设备ID
+  /// [employeeId] 员工ID
+  /// [messageIds] 指定消息ID列表，为 null 则标记该员工所有消息
+  Future<void> markMessagesAsRead({
+    required String readerDeviceId,
+    required String employeeId,
+    List<String>? messageIds,
+  });
+
+  /// 查询消息已读状态
+  ///
+  /// 设备重新打开时可通过此方法从 Agent 查询哪些消息已读
+  ///
+  /// [deviceId] 查询设备ID
+  /// [employeeId] 员工ID
+  Future<Map<String, dynamic>> getMessagesReadStatus({
+    required String deviceId,
+    required String employeeId,
+  });
+
   /// 获取会话消息列表（返回 Map，向后兼容）
   @Deprecated('Use getSessionMessages() instead')
   Future<List<Map<String, dynamic>>> getSessionMessagesAsMap() async {
