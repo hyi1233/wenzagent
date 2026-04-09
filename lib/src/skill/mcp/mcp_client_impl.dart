@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:mcp_dart/mcp_dart.dart' as mcp_sdk;
@@ -11,16 +12,86 @@ import 'mcp_client.dart';
 /// - **stdio**：通过子进程标准输入输出通信（本地 MCP 服务器）
 /// - **sse**：通过 Server-Sent Events 通信（远程 MCP 服务器，旧版协议）
 /// - **http**：通过 Streamable HTTP 通信（远程 MCP 服务器，新版协议）
+///
+/// 内置重试和自动重连机制：
+/// - `connect()` 支持指数退避重试（由 [McpRetryConfig] 控制）
+/// - 传输层断开时自动触发后台重连
+/// - `callTool()` / `listTools()` 在连接断开时尝试自动重连后重试一次
 class McpClientImpl implements McpClient {
   final McpServerConfig _config;
   mcp_sdk.McpClient? _client;
   mcp_sdk.Transport? _transport;
   bool _connected = false;
+  bool _disposed = false;
+
+  /// 重连锁，防止并发重连
+  final _reconnectLock = _AsyncLock();
+
+  /// 是否正在重连中
+  bool _reconnecting = false;
+
+  /// 重连事件控制器
+  final _reconnectController = StreamController<McpReconnectEvent>.broadcast();
+
+  /// 重连状态变更事件流
+  @override
+  Stream<McpReconnectEvent> get onReconnect => _reconnectController.stream;
+
+  /// 是否正在重连
+  @override
+  bool get isReconnecting => _reconnecting;
+
+  /// 服务器配置
+  McpServerConfig get config => _config;
 
   McpClientImpl(this._config);
 
+  McpRetryConfig get _retryConfig =>
+      _config.retryConfig ?? const McpRetryConfig();
+
   @override
   Future<void> connect() async {
+    await _connectWithRetry();
+  }
+
+  /// 带重试的连接
+  Future<void> _connectWithRetry() async {
+    // 参数校验在重试循环之前完成，校验错误直接抛出不重试
+    _validateTransportConfig(_config);
+
+    final retry = _retryConfig;
+    Exception? lastError;
+
+    for (int attempt = 0; attempt <= retry.maxRetries; attempt++) {
+      if (attempt > 0) {
+        final delay = retry.exponentialBackoff
+            ? retry.retryDelay * (1 << (attempt - 1))
+            : retry.retryDelay;
+        stderr.writeln(
+          '[McpClient] 连接重试 $attempt/${retry.maxRetries}，'
+          '等待 ${delay}ms...',
+        );
+        await Future.delayed(Duration(milliseconds: delay));
+      }
+
+      try {
+        await _connectOnce();
+        return;
+      } catch (e) {
+        lastError = e is Exception ? e : Exception(e.toString());
+        stderr.writeln(
+          '[McpClient] 连接失败 (尝试 $attempt/${retry.maxRetries}): $e',
+        );
+      }
+    }
+
+    throw lastError ?? Exception('MCP 连接失败');
+  }
+
+  /// 单次连接（无重试）
+  Future<void> _connectOnce() async {
+    await _disconnectInternal();
+
     _transport = _createTransport(_config);
 
     _client = mcp_sdk.McpClient(
@@ -28,7 +99,11 @@ class McpClientImpl implements McpClient {
     );
 
     _transport!.onclose = () {
-      _connected = false;
+      if (_connected && !_disposed) {
+        _connected = false;
+        stderr.writeln('[McpClient] 传输层断开，触发自动重连');
+        _scheduleReconnect();
+      }
     };
     _transport!.onerror = (error) {
       stderr.writeln('[McpClient] transport error: $error');
@@ -40,27 +115,56 @@ class McpClientImpl implements McpClient {
 
   @override
   Future<void> disconnect() async {
+    _disposed = true;
+    await _disconnectInternal();
+  }
+
+  /// 内部断开（不修改 _disposed 状态）
+  Future<void> _disconnectInternal() async {
     if (_client != null) {
-      await _client!.close();
+      try {
+        await _client!.close();
+      } catch (_) {}
     }
+    _client = null;
+    _transport = null;
     _connected = false;
   }
 
   @override
   Future<List<McpToolDefinition>> listTools() async {
+    return _withCallRetry(
+      action: 'listTools',
+      call: () => _doListTools(),
+    );
+  }
+
+  /// 执行一次 listTools 调用（无重试）
+  Future<List<McpToolDefinition>> _doListTools() async {
     if (_client == null || !_connected) {
       throw StateError('MCP 客户端未连接');
     }
     final result = await _client!.listTools();
     return result.tools.map((tool) => McpToolDefinition(
-      name: tool.name,
-      description: tool.description ?? '',
-      inputSchema: tool.inputSchema.toJson(),
-    )).toList();
+          name: tool.name,
+          description: tool.description ?? '',
+          inputSchema: tool.inputSchema.toJson(),
+        )).toList();
   }
 
   @override
   Future<McpToolCallResult> callTool(
+    String name,
+    Map<String, dynamic> arguments,
+  ) async {
+    return _withCallRetry(
+      action: 'callTool($name)',
+      call: () => _doCallTool(name, arguments),
+    );
+  }
+
+  /// 执行一次 callTool 调用（无重试）
+  Future<McpToolCallResult> _doCallTool(
     String name,
     Map<String, dynamic> arguments,
   ) async {
@@ -99,12 +203,182 @@ class McpClientImpl implements McpClient {
     }
   }
 
+  /// 确保连接可用，如果断开则尝试重连（重试一次）
+  ///
+  /// 用于 callTool/listTools 调用前的自动恢复。
+  Future<void> _ensureConnected() async {
+    if (_connected) return;
+
+    stderr.writeln('[McpClient] 调用时检测到连接断开，尝试恢复...');
+    try {
+      await _connectWithRetry();
+      stderr.writeln('[McpClient] 连接恢复成功');
+    } catch (e) {
+      stderr.writeln('[McpClient] 连接恢复失败: $e');
+      rethrow;
+    }
+  }
+
+  /// 带重试 + 重连的调用包装
+  ///
+  /// 流程：
+  /// 1. 尝试调用，失败则重试最多 [McpRetryConfig.maxRetries] 次
+  /// 2. 重试全部失败后，标记连接断开并触发重连
+  /// 3. 重连成功后再尝试调用一次
+  Future<T> _withCallRetry<T>({
+    required String action,
+    required Future<T> Function() call,
+  }) async {
+    final retry = _retryConfig;
+    Object? lastError;
+
+    for (int attempt = 0; attempt <= retry.maxRetries; attempt++) {
+      if (!_connected) {
+        await _ensureConnected();
+      }
+      try {
+        return await call();
+      } catch (e) {
+        lastError = e;
+        if (attempt < retry.maxRetries) {
+          final delay = retry.exponentialBackoff
+              ? retry.retryDelay * (1 << attempt)
+              : retry.retryDelay;
+          stderr.writeln(
+            '[McpClient] $action 调用失败 '
+            '(尝试 ${attempt + 1}/${retry.maxRetries + 1})，'
+            '${retry.maxRetries - attempt} 次重试后重连，等待 ${delay}ms...',
+          );
+          await Future.delayed(Duration(milliseconds: delay));
+        } else {
+          stderr.writeln(
+            '[McpClient] $action 调用失败，'
+            '所有重试已耗尽，尝试重连...',
+          );
+        }
+      }
+    }
+
+    // 所有调用重试均失败，尝试重连后再调用一次
+    _connected = false;
+    try {
+      await reconnect();
+      stderr.writeln('[McpClient] 重连成功，重新调用 $action');
+      return await call();
+    } catch (reconnectError) {
+      stderr.writeln('[McpClient] 重连后调用 $action 仍失败: $reconnectError');
+      throw lastError ?? reconnectError;
+    }
+  }
+
+  /// 调度后台自动重连
+  ///
+  /// 由 transport onclose 触发，在后台以指数退避策略尝试重连。
+  /// 重连成功或所有重试耗尽后停止。
+  void _scheduleReconnect() {
+    if (_disposed || _reconnecting) return;
+
+    _doReconnectLoop();
+  }
+
+  Future<void> _doReconnectLoop() async {
+    await _reconnectLock.synchronized(() async {
+      if (_disposed || _connected || _reconnecting) return;
+
+      _reconnecting = true;
+      _reconnectController.add(McpReconnectEvent('reconnecting'));
+
+      final retry = _retryConfig;
+
+      for (int attempt = 1; attempt <= retry.maxRetries; attempt++) {
+        if (_disposed || _connected) break;
+
+        final delay = retry.exponentialBackoff
+            ? retry.retryDelay * (1 << (attempt - 1))
+            : retry.retryDelay;
+        stderr.writeln(
+          '[McpClient] 自动重连 $attempt/${retry.maxRetries}，'
+          '等待 ${delay}ms...',
+        );
+        await Future.delayed(Duration(milliseconds: delay));
+
+        if (_disposed || _connected) break;
+
+        try {
+          await _connectOnce();
+          _reconnecting = false;
+          _reconnectController.add(McpReconnectEvent('reconnected'));
+          stderr.writeln('[McpClient] 自动重连成功');
+          return;
+        } catch (e) {
+          stderr.writeln(
+            '[McpClient] 自动重连失败 (尝试 $attempt/${retry.maxRetries}): $e',
+          );
+        }
+      }
+
+      _reconnecting = false;
+      if (!_connected) {
+        _reconnectController.add(McpReconnectEvent('reconnect_failed'));
+        stderr.writeln('[McpClient] 自动重连失败，所有重试已耗尽');
+      }
+    });
+  }
+
+  /// 手动触发重连
+  @override
+  Future<void> reconnect() async {
+    if (_disposed) {
+      throw StateError('MCP 客户端已释放');
+    }
+
+    stderr.writeln('[McpClient] 手动触发重连...');
+    await _reconnectLock.synchronized(() async {
+      _reconnecting = true;
+      _reconnectController.add(McpReconnectEvent('reconnecting'));
+
+      try {
+        await _connectWithRetry();
+        _reconnecting = false;
+        _reconnectController.add(McpReconnectEvent('reconnected'));
+        stderr.writeln('[McpClient] 手动重连成功');
+      } catch (e) {
+        _reconnecting = false;
+        _reconnectController.add(McpReconnectEvent('reconnect_failed'));
+        stderr.writeln('[McpClient] 手动重连失败: $e');
+        rethrow;
+      }
+    });
+  }
+
   /// 根据 [McpServerConfig.transportType] 创建对应的传输层
   ///
   /// 支持三种类型：
   /// - `stdio`：本地子进程通信
   /// - `sse`：Server-Sent Events（旧版远程协议）
   /// - `http`：Streamable HTTP（新版远程协议，支持 SSE 流式响应）
+  static void _validateTransportConfig(McpServerConfig config) {
+    switch (config.transportType) {
+      case 'stdio':
+        if (config.command == null || config.command!.isEmpty) {
+          throw ArgumentError('stdio 传输类型需要配置 command');
+        }
+      case 'sse':
+        if (config.url == null || config.url!.isEmpty) {
+          throw ArgumentError('SSE 传输类型需要配置 url');
+        }
+      case 'http':
+        if (config.url == null || config.url!.isEmpty) {
+          throw ArgumentError('HTTP 传输类型需要配置 url');
+        }
+      default:
+        throw ArgumentError(
+          '不支持的传输类型: ${config.transportType}，'
+          '支持的类型: stdio, sse, http',
+        );
+    }
+  }
+
   static mcp_sdk.Transport _createTransport(McpServerConfig config) {
     switch (config.transportType) {
       case 'stdio':
@@ -156,5 +430,27 @@ class McpClientImpl implements McpClient {
         'headers': config.headers!,
       },
     );
+  }
+}
+
+/// 简单的异步锁，防止并发执行同一段代码
+class _AsyncLock {
+  Completer<void>? _completer;
+
+  Future<T> synchronized<T>(Future<T> Function() fn) async {
+    while (_completer != null) {
+      await _completer!.future;
+    }
+    if (_completer != null) {
+      return synchronized(fn);
+    }
+    _completer = Completer<void>();
+    try {
+      return await fn();
+    } finally {
+      final c = _completer!;
+      _completer = null;
+      c.complete();
+    }
   }
 }

@@ -59,7 +59,11 @@ class McpSkill implements Skill {
   Future<void> initialize() async {
     _status = SkillStatus.initializing;
     try {
-      _client = clientFactory!(_serverConfig);
+      final factory = clientFactory;
+      if (factory == null) {
+        throw UnsupportedError('McpSkill.clientFactory 未设置');
+      }
+      _client = factory(_serverConfig);
       await _client!.connect();
       final mcpTools = await _client!.listTools();
       _tools = mcpTools

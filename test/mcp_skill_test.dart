@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:test/test.dart';
@@ -9,6 +10,9 @@ class MockMcpClient extends McpClient {
   final List<McpToolDefinition> mockTools;
   final Map<String, String> mockResults;
   bool shouldFail = false;
+  bool _reconnecting = false;
+  final _reconnectController =
+      StreamController<McpReconnectEvent>.broadcast();
 
   MockMcpClient({
     this.mockTools = const [],
@@ -43,6 +47,19 @@ class MockMcpClient extends McpClient {
 
   @override
   Future<bool> ping() async => connected;
+
+  @override
+  bool get isReconnecting => _reconnecting;
+
+  @override
+  Future<void> reconnect() async {
+    _reconnecting = true;
+    await connect();
+    _reconnecting = false;
+  }
+
+  @override
+  Stream<McpReconnectEvent> get onReconnect => _reconnectController.stream;
 }
 
 /// 返回 isError 的客户端
@@ -66,6 +83,16 @@ class _ErrorMcpClient extends McpClient {
 
   @override
   Future<bool> ping() async => true;
+
+  @override
+  bool get isReconnecting => false;
+
+  @override
+  Future<void> reconnect() async {}
+
+  @override
+  Stream<McpReconnectEvent> get onReconnect =>
+      const Stream.empty();
 }
 
 /// 抛异常的客户端
@@ -89,6 +116,16 @@ class _ExceptionMcpClient extends McpClient {
 
   @override
   Future<bool> ping() async => false;
+
+  @override
+  bool get isReconnecting => false;
+
+  @override
+  Future<void> reconnect() async {}
+
+  @override
+  Stream<McpReconnectEvent> get onReconnect =>
+      const Stream.empty();
 }
 
 void main() {

@@ -59,35 +59,30 @@ void main() {
   // McpClientImpl — 未连接时的错误处理
   // ============================================================
   group('McpClientImpl 未连接状态', () {
-    final stdioConfig = McpServerConfig.stdio(
+    // 使用 maxRetries=0 配置避免重连时耗时太长
+    final noRetryConfig = McpServerConfig(
       name: 'test',
-      command: 'echo',
+      transportType: 'stdio',
+      command: 'nonexistent_command_for_test',
+      retryConfig: const McpRetryConfig(maxRetries: 0),
     );
     late McpClientImpl client;
 
     setUp(() {
-      client = McpClientImpl(stdioConfig);
+      client = McpClientImpl(noRetryConfig);
     });
 
-    test('listTools 未连接时抛 StateError', () async {
+    test('listTools 未连接时抛异常', () async {
       expect(
         () => client.listTools(),
-        throwsA(isA<StateError>().having(
-          (e) => e.message,
-          'message',
-          contains('未连接'),
-        )),
+        throwsA(isA<Exception>()),
       );
     });
 
-    test('callTool 未连接时抛 StateError', () async {
+    test('callTool 未连接时抛异常', () async {
       expect(
         () => client.callTool('tool', {}),
-        throwsA(isA<StateError>().having(
-          (e) => e.message,
-          'message',
-          contains('未连接'),
-        )),
+        throwsA(isA<Exception>()),
       );
     });
 
@@ -186,6 +181,7 @@ void main() {
         name: 'filesystem',
         command: 'npx',
         args: ['-y', '@anthropic/mcp-filesystem-server', Directory.systemTemp.path],
+        retryConfig: const McpRetryConfig(maxRetries: 1, retryDelay: 500),
       );
       client = McpClientImpl(config);
 
@@ -487,5 +483,129 @@ void main() {
         reason: 'POST 请求应包含 X-Request-Id header',
       );
     }, timeout: Timeout(Duration(seconds: 15)));
+  });
+
+  // ============================================================
+  // McpClientImpl — 重试与重连机制
+  // ============================================================
+  group('McpClientImpl 重试与重连', () {
+    test('McpRetryConfig 默认值', () {
+      final retry = const McpRetryConfig();
+      expect(retry.maxRetries, 3);
+      expect(retry.retryDelay, 1000);
+      expect(retry.exponentialBackoff, true);
+    });
+
+    test('McpRetryConfig fromMap', () {
+      final retry = McpRetryConfig.fromMap({
+        'maxRetries': 5,
+        'retryDelay': 2000,
+        'exponentialBackoff': false,
+      });
+      expect(retry.maxRetries, 5);
+      expect(retry.retryDelay, 2000);
+      expect(retry.exponentialBackoff, false);
+    });
+
+    test('McpRetryConfig fromMap 缺失字段使用默认值', () {
+      final retry = McpRetryConfig.fromMap({});
+      expect(retry.maxRetries, 3);
+      expect(retry.retryDelay, 1000);
+      expect(retry.exponentialBackoff, true);
+    });
+
+    test('McpRetryConfig toMap 往返', () {
+      final retry = const McpRetryConfig(
+        maxRetries: 2,
+        retryDelay: 500,
+        exponentialBackoff: false,
+      );
+      final map = retry.toMap();
+      final restored = McpRetryConfig.fromMap(map);
+      expect(restored.maxRetries, 2);
+      expect(restored.retryDelay, 500);
+      expect(restored.exponentialBackoff, false);
+    });
+
+    test('McpRetryConfig copyWith', () {
+      final retry = const McpRetryConfig().copyWith(maxRetries: 5);
+      expect(retry.maxRetries, 5);
+      expect(retry.retryDelay, 1000); // 保持默认值
+      expect(retry.exponentialBackoff, true); // 保持默认值
+    });
+
+    test('McpRetryConfig 相等性', () {
+      final a = const McpRetryConfig(maxRetries: 2, retryDelay: 500);
+      final b = const McpRetryConfig(maxRetries: 2, retryDelay: 500);
+      expect(a, equals(b));
+      expect(a.hashCode, equals(b.hashCode));
+    });
+
+    test('McpReconnectEvent 创建', () {
+      final event = McpReconnectEvent('reconnecting');
+      expect(event.type, 'reconnecting');
+    });
+
+    test('McpClientImpl 初始状态 — 未重连', () {
+      final config = McpServerConfig.stdio(
+        name: 'test-retry',
+        command: 'echo',
+      );
+      final client = McpClientImpl(config);
+      expect(client.isReconnecting, false);
+    });
+
+    test('McpClientImpl disconnect 后可安全调用', () async {
+      final config = McpServerConfig.stdio(
+        name: 'test-disconnect',
+        command: 'echo',
+      );
+      final client = McpClientImpl(config);
+      await client.disconnect();
+      expect(client.isReconnecting, false);
+    });
+
+    test('McpServerConfig 包含 retryConfig', () {
+      final config = McpServerConfig.http(
+        name: 'retry-test',
+        url: 'http://localhost:9999/mcp',
+        retryConfig: const McpRetryConfig(
+          maxRetries: 5,
+          retryDelay: 200,
+          exponentialBackoff: false,
+        ),
+      );
+      expect(config.retryConfig!.maxRetries, 5);
+      expect(config.retryConfig!.retryDelay, 200);
+      expect(config.retryConfig!.exponentialBackoff, false);
+    });
+
+    test('McpServerConfig retryConfig 序列化/反序列化', () {
+      final config = McpServerConfig.http(
+        name: 'serialize-test',
+        url: 'http://localhost:9999/mcp',
+        retryConfig: const McpRetryConfig(maxRetries: 2, retryDelay: 300),
+      );
+      final map = config.toMap();
+      final restored = McpServerConfig.fromMap(map);
+      expect(restored.retryConfig!.maxRetries, 2);
+      expect(restored.retryConfig!.retryDelay, 300);
+      expect(restored.retryConfig!.exponentialBackoff, true);
+    });
+
+    test('McpClientImpl onReconnect 事件流可监听', () async {
+      final config = McpServerConfig.stdio(
+        name: 'event-test',
+        command: 'echo',
+      );
+      final client = McpClientImpl(config);
+      final events = <McpReconnectEvent>[];
+      final sub = client.onReconnect.listen(events.add);
+      // 未连接状态下不应有事件
+      await Future.delayed(Duration(milliseconds: 100));
+      expect(events, isEmpty);
+      await sub.cancel();
+      await client.disconnect();
+    });
   });
 }
