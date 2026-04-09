@@ -463,6 +463,25 @@ class GetProjectUuidRequest {
   }
 }
 
+/// 检查路径是否存在请求
+class CheckPathExistsRequest {
+  final String employeeId;
+  final String path;
+
+  const CheckPathExistsRequest({required this.employeeId, required this.path});
+
+  Map<String, dynamic> toMap() {
+    return {'employeeId': employeeId, 'path': path};
+  }
+
+  factory CheckPathExistsRequest.fromMap(Map<String, dynamic> map) {
+    return CheckPathExistsRequest(
+      employeeId: map['employeeId'] as String,
+      path: map['path'] as String,
+    );
+  }
+}
+
 /// 获取已注册工具请求
 class GetRegisteredToolsRequest {
   final String employeeId;

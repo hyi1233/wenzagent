@@ -35,7 +35,6 @@ abstract class SessionManager {
   Future<void> updateDeviceConfig(
     String employeeId,
     String deviceId, {
-    String? projectUuid,
     String? providerConfig,
     String? systemPromptOverride,
   });
@@ -98,7 +97,6 @@ class SessionManagerImpl implements SessionManager {
   Future<void> updateDeviceConfig(
     String employeeId,
     String deviceId, {
-    String? projectUuid,
     String? providerConfig,
     String? systemPromptOverride,
   }) async {
@@ -106,7 +104,6 @@ class SessionManagerImpl implements SessionManager {
     final deviceConfig = session.getOrCreateConfig(deviceId);
 
     final updatedConfig = deviceConfig.copyWith(
-      projectUuid: projectUuid ?? deviceConfig.projectUuid,
       providerConfig: providerConfig ?? deviceConfig.providerConfig,
       systemPromptOverride:
           systemPromptOverride ?? deviceConfig.systemPromptOverride,

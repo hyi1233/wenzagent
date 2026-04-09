@@ -117,6 +117,11 @@ class AgentRpcUtil {
     return _rpcCall(AgentRpcConfig.methodGetProjectUuid, request.toMap());
   }
 
+  /// 检查路径是否存在
+  Future<Map<String, dynamic>> checkPathExists(CheckPathExistsRequest request) async {
+    return _rpcCall(AgentRpcConfig.methodCheckPathExists, request.toMap());
+  }
+
   // ===== Agent 权限管理 =====
 
   /// 响应权限请求

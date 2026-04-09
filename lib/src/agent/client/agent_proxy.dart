@@ -1,4 +1,5 @@
 ﻿import 'dart:async';
+import 'dart:io';
 
 import 'package:uuid/uuid.dart';
 
@@ -478,6 +479,7 @@ class AgentProxy {
   // ===== 项目管理 =====
 
   Future<void> setProject(ProjectData? projectData) async {
+    print('[AgentProxy] setProject called: employeeId=$employeeId, projectUuid=${projectData?.projectUuid}, projectName=${projectData?.projectName}, isLocalMode=$isLocalMode');
     if (isLocalMode && _localAgent != null) {
       return _localAgent.setProject(projectData);
     }
@@ -487,6 +489,7 @@ class AgentProxy {
     );
     await _rpcUtil!.setProject(request);
     _remoteCache.projectUuid = projectData?.projectUuid;
+    print('[AgentProxy] setProject completed: cached projectUuid=${_remoteCache.projectUuid}');
   }
 
   String? getCurrentProjectUuid() {
@@ -506,6 +509,20 @@ class AgentProxy {
     final uuid = result['projectUuid'] as String?;
     _remoteCache.projectUuid = uuid;
     return uuid;
+  }
+
+  /// 检查路径是否存在于目标设备上（异步版本，支持远程 RPC）
+  ///
+  /// [path] 文件系统绝对路径
+  /// 返回 { 'exists': bool, 'isDirectory': bool?, 'error': String? }
+  Future<Map<String, dynamic>> checkPathExists(String path) async {
+    if (isLocalMode) {
+      final dir = await Directory(path).exists();
+      final file = !dir ? await File(path).exists() : false;
+      return {'exists': dir || file, 'isDirectory': dir};
+    }
+    final request = CheckPathExistsRequest(employeeId: employeeId, path: path);
+    return _rpcUtil!.checkPathExists(request);
   }
 
   // ===== 工具管理 =====

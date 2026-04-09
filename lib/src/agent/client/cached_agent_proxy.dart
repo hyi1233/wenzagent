@@ -1310,6 +1310,10 @@ class CachedAgentProxy {
   /// 获取当前项目UUID（异步版本，支持远程 RPC）
   Future<String?> getCurrentProjectUuidAsync() =>
       _proxy.getCurrentProjectUuidAsync();
+
+  /// 检查路径是否存在于目标设备上（异步版本，支持远程 RPC）
+  Future<Map<String, dynamic>> checkPathExists(String path) =>
+      _proxy.checkPathExists(path);
   
   /// 注册工具
   void registerTool(AgentTool tool) => _proxy.registerTool(tool);

@@ -612,21 +612,57 @@ class LangChainChatAdapter implements IChatAdapter {
   // ===== 内部方法 =====
 
   /// 构建系统提示词
+  ///
+  /// 将系统提示词与项目上下文组装为完整的系统提示，
+  /// 确保Agent明确知道当前工作项目和工作路径，并围绕该项目展开工作。
   String? _buildSystemPrompt() {
     if (_context == null) return null;
 
     final parts = <String>[];
 
+    // 1. 基础系统提示词（Employee配置或设备覆盖）
     final systemPrompt = _context!['systemPrompt'] as String?;
     if (systemPrompt != null && systemPrompt.isNotEmpty) {
       parts.add(systemPrompt);
     }
 
+    // 2. 项目上下文 —— 明确告诉Agent当前工作项目
+    final projectName = _context!['projectName'] as String?;
     final projectContext = _context!['projectContext'];
-    if (projectContext != null) {
-      parts.add('项目上下文:\n$projectContext');
+    final projectUuid = _context!['projectUuid'] as String?;
+    final workPath = _context!['workPath'] as String?;
+
+    final hasProject = (projectName != null && projectName.isNotEmpty) ||
+        projectContext != null ||
+        (projectUuid != null && projectUuid.isNotEmpty) ||
+        (workPath != null && workPath.isNotEmpty);
+
+    if (hasProject) {
+      final projectLines = <String>[];
+
+      if (projectName != null && projectName.isNotEmpty) {
+        projectLines.add('当前工作项目: $projectName');
+      }
+      if (projectUuid != null && projectUuid.isNotEmpty) {
+        projectLines.add('项目ID: $projectUuid');
+      }
+      if (workPath != null && workPath.isNotEmpty) {
+        projectLines.add('项目工作路径: $workPath');
+      }
+      if (projectContext != null) {
+        projectLines.add('项目上下文:\n$projectContext');
+      }
+
+      parts.add(
+        '## 当前工作项目\n'
+        '${projectLines.join('\n')}\n\n'
+        '请基于以上项目信息进行工作。所有操作和回答都应围绕此项目展开，'
+        '如果用户没有特别指定，默认在当前项目范围内执行任务。'
+        '${workPath != null && workPath.isNotEmpty ? '\n读写文件时请优先使用工作路径 $workPath 作为根目录。' : ''}',
+      );
     }
 
+    // 3. 补充信息
     final additionalInfo = _context!['additionalInfo'];
     if (additionalInfo != null) {
       parts.add('补充信息:\n$additionalInfo');

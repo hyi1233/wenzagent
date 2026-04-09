@@ -565,11 +565,24 @@ class DeviceClientImpl implements DeviceClient {
     // 项目管理
     _rpcServer!.register(AgentRpcConfig.methodSetProject, (params) async {
       final request = SetProjectRequest.fromMap(params);
+      print('[DeviceClient] agentSetProject RPC: employeeId=${request.employeeId}, projectData=${request.projectData}');
       final agent = await _ensureLocalAgentForRpc(request.employeeId);
       final projectData = request.projectData != null 
           ? ProjectData.fromMap(request.projectData!) 
           : null;
+      print('[DeviceClient] agentSetProject: parsed projectUuid=${projectData?.projectUuid}, projectName=${projectData?.projectName}');
       await agent.setProject(projectData);
+
+      // 同步更新 Employee 实体的 projectUuid（项目是员工级别配置）
+      final projectUuid = projectData?.projectUuid;
+      final employee = await _employeeManager.getEmployee(request.employeeId);
+      if (employee != null && employee.projectUuid != projectUuid) {
+        await _employeeManager.updateEmployee(
+          employee.copyWith(projectUuid: projectUuid),
+        );
+        print('[DeviceClient] agentSetProject: Employee projectUuid synced: ${employee.projectUuid} -> $projectUuid');
+      }
+
       return {};
     });
 
@@ -577,6 +590,22 @@ class DeviceClientImpl implements DeviceClient {
       final request = GetProjectUuidRequest.fromMap(params);
       final agent = await _ensureLocalAgentForRpc(request.employeeId);
       return {'projectUuid': agent.getCurrentProjectUuid()};
+    });
+
+    // 检查路径是否存在
+    _rpcServer!.register(AgentRpcConfig.methodCheckPathExists, (params) async {
+      final request = CheckPathExistsRequest.fromMap(params);
+      final path = request.path;
+      try {
+        final dir = await Directory(path).exists();
+        if (dir) {
+          return {'exists': true, 'isDirectory': true};
+        }
+        final file = await File(path).exists();
+        return {'exists': file, 'isDirectory': false};
+      } catch (e) {
+        return {'exists': false, 'error': e.toString()};
+      }
     });
 
     // 工具管理
@@ -944,6 +973,11 @@ class DeviceClientImpl implements DeviceClient {
       await agent.setContext({'systemPrompt': systemPrompt});
     }
 
+    // 设置项目（从Employee实体读取，项目是员工级别的配置）
+    if (employee.projectUuid != null && employee.projectUuid!.isNotEmpty) {
+      await agent.setProject(ProjectData(projectUuid: employee.projectUuid));
+    }
+
     _localAgents[employeeId] = agent;
     return agent;
   }
@@ -970,21 +1004,17 @@ class DeviceClientImpl implements DeviceClient {
         await _sessionManager.save(existingSession);
       }
 
-      // 更新设备配置
+      // 更新设备配置（projectUuid 已移到 Employee 实体，不再保存到设备配置）
       final providerConfig = session['providerConfig'];
-      final projectUuid = session['projectUuid'] as String?;
       final contextData = session['contextData'];
 
-      if (providerConfig != null ||
-          projectUuid != null ||
-          contextData != null) {
+      if (providerConfig != null || contextData != null) {
         await _sessionManager.updateDeviceConfig(
           employeeId,
           deviceId,
           providerConfig: providerConfig != null
               ? jsonEncode(providerConfig)
               : null,
-          projectUuid: projectUuid,
           systemPromptOverride: null, // 不在这里更新
         );
       }
@@ -1004,6 +1034,9 @@ class DeviceClientImpl implements DeviceClient {
       final session = await _sessionManager.getSession(employeeId);
       if (session == null) return null;
 
+      // projectUuid 从 Employee 实体读取（项目是员工级别的配置）
+      final employee = await _employeeManager.getEmployee(employeeId);
+
       final deviceConfig = session.getConfig(deviceId);
       return {
         'uuid': employeeId, // 兼容旧格式
@@ -1012,7 +1045,7 @@ class DeviceClientImpl implements DeviceClient {
         'providerConfig': deviceConfig?.providerConfig != null
             ? jsonDecode(deviceConfig!.providerConfig!)
             : null,
-        'projectUuid': deviceConfig?.projectUuid,
+        'projectUuid': employee?.projectUuid,
         'contextData': deviceConfig?.contextData != null
             ? jsonDecode(deviceConfig!.contextData!)
             : null,

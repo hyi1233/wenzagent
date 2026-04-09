@@ -43,6 +43,7 @@ class AgentRpcConfig {
 
   static const String methodSetProject = 'agentSetProject';
   static const String methodGetProjectUuid = 'agentGetProjectUuid';
+  static const String methodCheckPathExists = 'agentCheckPathExists';
 
   // ===== Agent 工具管理 =====
 

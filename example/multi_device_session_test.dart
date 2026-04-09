@@ -249,19 +249,17 @@ class MultiDeviceSessionTest {
     await deviceA.sessionManager.updateDeviceConfig(
       employeeAliceId,
       deviceAId,
-      projectUuid: 'project-alpha',
       providerConfig: '{"provider":"openai","model":"gpt-4"}',
     );
-    print('  ✓ Device-A 设置配置: project=project-alpha, model=gpt-4');
+    print('  ✓ Device-A 设置配置: model=gpt-4');
 
     // Device-B 设置自己的配置（独立于 Device-A）
     await deviceB.sessionManager.updateDeviceConfig(
       employeeAliceId,
       deviceBId,
-      projectUuid: 'project-beta',
       providerConfig: '{"provider":"anthropic","model":"claude-3"}',
     );
-    print('  ✓ Device-B 设置配置: project=project-beta, model=claude-3');
+    print('  ✓ Device-B 设置配置: model=claude-3');
   }
 
   /// 验证配置隔离
@@ -275,17 +273,12 @@ class MultiDeviceSessionTest {
     final configB = sessionA!.getConfig(deviceBId);
     
     print('  Device-A 配置:');
-    print('    projectUuid: ${configA?.projectUuid}');
     print('    providerConfig: ${configA?.providerConfig}');
     
     print('  Device-B 配置:');
-    print('    projectUuid: ${configB?.projectUuid}');
     print('    providerConfig: ${configB?.providerConfig}');
-
-    // 验证配置独立
-    assert(configA?.projectUuid == 'project-alpha', 'Device-A projectUuid 应该是 project-alpha');
-    assert(configB?.projectUuid == 'project-beta', 'Device-B projectUuid 应该是 project-beta');
     
+    // 验证各设备 Provider 配置独立
     assert(configA?.providerConfig?.contains('gpt-4') ?? false, 
            'Device-A 应该使用 gpt-4');
     assert(configB?.providerConfig?.contains('claude-3') ?? false, 

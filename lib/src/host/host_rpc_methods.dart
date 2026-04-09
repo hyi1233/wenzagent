@@ -116,14 +116,14 @@ void registerHostRpcMethods({
     return {'session': session.toMap()};
   });
 
-  // 更新设备配置
+  // 更新设备配置（仅设备级别：providerConfig、systemPromptOverride）
   rpcServer.register(HostRpcConfig.methodUpdateDeviceConfig, (params) async {
     final employeeId = params['employeeId'] as String;
     final deviceId = params['deviceId'] as String;
+
     await sessionManager.updateDeviceConfig(
       employeeId,
       deviceId,
-      projectUuid: params['projectUuid'] as String?,
       providerConfig: params['providerConfig'] as String?,
       systemPromptOverride: params['systemPromptOverride'] as String?,
     );

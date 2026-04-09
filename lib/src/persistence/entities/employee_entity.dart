@@ -41,6 +41,9 @@ class AiEmployeeEntity {
   /// 模型配置 (JSON)
   String? modelConfig;
 
+  /// 项目UUID（员工绑定的工作项目）
+  String? projectUuid;
+
   /// 是否启用工具
   int enableTools;
 
@@ -99,6 +102,7 @@ class AiEmployeeEntity {
     this.modelConfig,
     this.enableTools = 1,
     this.enableMcp = 0,
+    this.projectUuid,
     this.mcpConfig,
     this.permissionConfig,
     this.deviceId,
@@ -130,6 +134,7 @@ class AiEmployeeEntity {
       modelConfig: map['modelConfig'] as String?,
       enableTools: map['enableTools'] as int? ?? 1,
       enableMcp: map['enableMcp'] as int? ?? 0,
+      projectUuid: map['projectUuid'] as String?,
       mcpConfig: map['mcpConfig'] as String?,
       permissionConfig: map['permissionConfig'] as String?,
       deviceId: map['deviceId'] as String?,
@@ -170,6 +175,7 @@ class AiEmployeeEntity {
       'modelConfig': modelConfig,
       'enableTools': enableTools,
       'enableMcp': enableMcp,
+      'projectUuid': projectUuid,
       'mcpConfig': mcpConfig,
       'permissionConfig': permissionConfig,
       'deviceId': deviceId,
@@ -201,6 +207,7 @@ class AiEmployeeEntity {
     String? modelConfig,
     int? enableTools,
     int? enableMcp,
+    String? projectUuid,
     String? mcpConfig,
     String? permissionConfig,
     String? deviceId,
@@ -229,6 +236,7 @@ class AiEmployeeEntity {
       modelConfig: modelConfig ?? this.modelConfig,
       enableTools: enableTools ?? this.enableTools,
       enableMcp: enableMcp ?? this.enableMcp,
+      projectUuid: projectUuid ?? this.projectUuid,
       mcpConfig: mcpConfig ?? this.mcpConfig,
       permissionConfig: permissionConfig ?? this.permissionConfig,
       deviceId: deviceId ?? this.deviceId,

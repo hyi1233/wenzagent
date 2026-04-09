@@ -2,7 +2,8 @@
 ///
 /// 存储某个设备上的Agent配置
 class DeviceSessionConfig {
-  /// 项目UUID
+  /// 项目UUID（已废弃，项目现在配置在 Employee 实体上，保留此字段用于向后兼容）
+  @Deprecated('项目已移到 AiEmployeeEntity.projectUuid，此字段仅用于向后兼容')
   String? projectUuid;
 
   /// AI模型配置 (JSON)
@@ -92,7 +93,8 @@ class DeviceSessionConfig {
 ///
 /// 主键：employeeId（一个员工只有一个会话）
 /// 不存储deviceId（由Employee.currentDeviceId管理）
-/// config存储各设备的配置：config[deviceId].projectUuid
+/// config存储各设备的配置：config[deviceId].providerConfig
+/// 注意：projectUuid 已移到 AiEmployeeEntity，不再存储在设备配置中
 class AiEmployeeSessionEntity {
   // ===== 主键 =====
 
@@ -103,10 +105,9 @@ class AiEmployeeSessionEntity {
 
   /// 设备配置映射
   /// Key: deviceId
-  /// Value: 该设备的配置（projectUuid, providerConfig等）
+  /// Value: 该设备的配置（providerConfig, systemPromptOverride等）
   ///
   /// 访问方式：
-  /// - session.config[deviceId].projectUuid
   /// - session.config[deviceId].providerConfig
   Map<String, DeviceSessionConfig> config;
 

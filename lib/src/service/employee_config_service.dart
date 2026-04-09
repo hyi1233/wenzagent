@@ -12,6 +12,7 @@ enum EmployeeConfigChangeType {
   permission,
   mcp,
   mcpEnabled,
+  project,
 }
 
 /// 员工配置变更事件
@@ -83,6 +84,9 @@ abstract class EmployeeConfigService {
 
   /// 设置MCP总开关
   Future<void> setMcpEnabled(String employeeId, bool enabled);
+
+  /// 更新员工关联的项目
+  Future<void> updateEmployeeProject(String employeeId, String? projectUuid);
 
   /// 配置变更通知流
   Stream<EmployeeConfigChangeEvent> get onConfigChanged;
@@ -265,6 +269,24 @@ class EmployeeConfigServiceImpl implements EmployeeConfigService {
       EmployeeConfigChangeType.mcpEnabled,
       employeeId,
       data: enabled,
+    );
+  }
+
+  @override
+  Future<void> updateEmployeeProject(
+    String employeeId,
+    String? projectUuid,
+  ) async {
+    final employee = await _employeeManager.getEmployee(employeeId);
+    if (employee == null) {
+      throw StateError('Employee not found: $employeeId');
+    }
+    final updated = employee.copyWith(projectUuid: projectUuid);
+    await _employeeManager.updateEmployee(updated);
+    _notifyChange(
+      EmployeeConfigChangeType.project,
+      employeeId,
+      data: projectUuid,
     );
   }
 
