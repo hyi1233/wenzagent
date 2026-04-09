@@ -17,7 +17,7 @@ import 'context_compressor.dart';
 import 'session_memory_manager.dart';
 
 /// Tool calling 循环最大迭代次数
-const int _maxToolCallIterations = 25;
+const int _maxToolCallIterations = 100;
 
 /// 基于 LangChain 的聊天适配器实现
 ///
