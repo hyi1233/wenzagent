@@ -43,6 +43,9 @@ class FileWriteTool extends AgentTool {
   String get permissionType => 'file_write';
 
   @override
+  String get permissionArgKey => 'path';
+
+  @override
   Future<ToolResult> execute(Map<String, dynamic> arguments) async {
     final path = arguments['path'] as String?;
     if (path == null || path.isEmpty) {

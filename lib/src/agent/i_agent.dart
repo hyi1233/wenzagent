@@ -234,8 +234,16 @@ abstract class IAgent {
   ///
   /// [requestId] 权限请求ID
   /// [decision] 用户的权限决策
-  Future<void> respondToPermission(String requestId,
-      PermissionDecision decision,);
+  /// [scope] 授权范围（默认仅本次），决定是否持久化授权规则：
+  ///   - [PermissionApprovalScope.once] 仅本次允许
+  ///   - [PermissionApprovalScope.exact] 持久化精确匹配规则
+  ///   - [PermissionApprovalScope.pattern] 持久化正则模式规则
+  ///   - [PermissionApprovalScope.all] 该权限类型全部允许
+  Future<void> respondToPermission(
+    String requestId,
+    PermissionDecision decision, {
+    PermissionApprovalScope scope = PermissionApprovalScope.once,
+  });
 
   /// 获取当前权限请求（如果有）
   ///

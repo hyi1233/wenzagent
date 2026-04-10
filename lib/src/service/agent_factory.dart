@@ -9,6 +9,7 @@ import '../agent/i_agent.dart';
 import '../agent/impl/agent_impl.dart';
 import '../agent/agent_state.dart';
 import '../agent/tool/builtin/schedule_task_tool.dart';
+import '../agent/tool/permission_rule.dart';
 import '../persistence/persistence.dart';
 import 'employee_manager.dart';
 import 'session_manager.dart';
@@ -150,6 +151,9 @@ class AgentFactoryImpl implements AgentFactory {
     // 注入 ScheduleTaskTool 回调
     _injectScheduleTaskCallbacks(agent, employeeId);
 
+    // 注入权限配置（从员工实体的 permissionConfig 字段）
+    _injectPermissionConfig(agent, employee);
+
     _agents[employeeId] = agent;
     _notifyLifecycle(AgentLifecycleType.created, agent);
 
@@ -224,6 +228,39 @@ class AgentFactoryImpl implements AgentFactory {
     };
 
     print('[AgentFactory] ScheduleTaskTool callbacks injected for $agentEmployeeId');
+  }
+
+  /// 注入权限配置到 Agent 的 PermissionManager
+  void _injectPermissionConfig(IAgent agent, AiEmployeeEntity employee) {
+    final impl = agent as AgentImpl;
+    final manager = impl.permissionManager;
+
+    // 从员工实体的 permissionConfig JSON 解析并注入
+    if (employee.permissionConfig != null &&
+        employee.permissionConfig!.isNotEmpty) {
+      final config =
+          PermissionConfig.fromJsonString(employee.permissionConfig!);
+      manager.configure(config);
+      print('[AgentFactory] Permission config injected for ${employee.uuid}'
+          ' (${config.whitelist.length} whitelist, ${config.blacklist.length} blacklist rules)');
+    }
+
+    // 监听配置变更，自动持久化回员工实体
+    manager.onConfigChanged = (newConfig) async {
+      try {
+        final updatedEmployee = await _employeeManager.getEmployee(employee.uuid);
+        if (updatedEmployee != null) {
+          final saved = updatedEmployee.copyWith(
+            permissionConfig: newConfig.toJsonString(),
+            updateTime: DateTime.now(),
+          );
+          await _employeeManager.updateEmployee(saved);
+          print('[AgentFactory] Permission config saved for ${employee.uuid}');
+        }
+      } catch (e) {
+        print('[AgentFactory] Failed to save permission config: $e');
+      }
+    };
   }
 
   void _setupPersistCallbacks(

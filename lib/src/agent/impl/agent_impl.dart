@@ -3,12 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:uuid/uuid.dart';
-
-import '../../../wenzagent.dart';
-import '../tool/agent_tool.dart';
-import '../tool/builtin/builtin_tools.dart';
-import '../tool/permission_manager.dart';
-import '../tool/tool_registry.dart';
+import 'package:wenzagent/wenzagent.dart';
 
 /// Agent 主体实现类（纯 Dart）
 ///
@@ -42,6 +37,9 @@ class AgentImpl implements IAgent {
 
   /// 权限管理器
   final ToolPermissionManager _permissionManager = ToolPermissionManager();
+
+  /// 获取权限管理器（供 AgentFactory 注入配置使用）
+  ToolPermissionManager get permissionManager => _permissionManager;
 
   /// 待处理的权限请求 Completer
   final Map<String, Completer<PermissionDecision>> _pendingPermissions = {};
@@ -952,19 +950,83 @@ class AgentImpl implements IAgent {
   @override
   Future<void> respondToPermission(
     String requestId,
-    PermissionDecision decision,
-  ) async {
+    PermissionDecision decision, {
+    PermissionApprovalScope scope = PermissionApprovalScope.once,
+  }) async {
     final completer = _pendingPermissions[requestId];
+    final request = _pendingPermissionRequests[requestId];
     if (completer != null && !completer.isCompleted) {
       completer.complete(decision);
+
+      // 处理持久化授权（scope > once 时将规则写入权限配置）
+      if ((decision == PermissionDecision.allow ||
+              decision == PermissionDecision.allowAlways) &&
+          scope != PermissionApprovalScope.once &&
+          request != null) {
+        _persistApproval(request, scope);
+      }
+      // 兼容旧的 allowAlways 调用（无 scope 参数时等同 all）
+      if (decision == PermissionDecision.allowAlways && request != null) {
+        _persistApproval(request, PermissionApprovalScope.all);
+      }
 
       // 广播权限响应事件
       _eventController.add({
         'type': 'toolPermissionResponse',
-        'data': {'requestId': requestId, 'decision': decision.name},
+        'data': {
+          'requestId': requestId,
+          'decision': decision.name,
+          'scope': scope.name,
+        },
         'employeeId': employeeId,
       });
     }
+  }
+
+  /// 根据审批范围持久化授权规则到权限配置
+  void _persistApproval(
+      AgentPermissionRequest request, PermissionApprovalScope scope) {
+    final toolName = request.permissionType ?? request.functionName;
+    final argKey = request.permissionArgKey;
+    final argValue = request.permissionArgValue;
+    final now = DateTime.now();
+
+    if (scope == PermissionApprovalScope.once) return; // 不持久化
+
+    final PermissionRule rule = switch (scope) {
+      PermissionApprovalScope.exact => PermissionRule(
+          tool: toolName,
+          arg: argKey,
+          pattern: argValue ?? '',
+          mode: PermissionMatchMode.exact,
+          createTime: now,
+        ),
+      PermissionApprovalScope.pattern => PermissionRule(
+          tool: toolName,
+          arg: argKey,
+          pattern: request.suggestedPattern ??
+              (argValue != null
+                  ? PermissionRule.derivePattern(argValue)
+                  : '.*'),
+          mode: PermissionMatchMode.regex,
+          createTime: now,
+        ),
+      PermissionApprovalScope.all => PermissionRule(
+          tool: toolName,
+          pattern: '*',
+          mode: PermissionMatchMode.all,
+          createTime: now,
+        ),
+      PermissionApprovalScope.once => PermissionRule(
+          tool: toolName,
+          pattern: '',
+          mode: PermissionMatchMode.exact,
+          createTime: now,
+        ),
+    };
+
+    _permissionManager.addApproval(rule);
+    print('[AgentImpl] 权限规则已添加: $rule');
   }
 
   // ===== IAgent: 状态查询 =====

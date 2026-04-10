@@ -64,6 +64,12 @@ abstract class AgentTool {
   /// 权限类型分类标识（用于权限分组）
   String get permissionType => name;
 
+  /// 权限检查时要匹配的参数 key（如 "path", "command"）
+  ///
+  /// 仅对需要权限的工具有意义。用于白名单/黑名单规则匹配具体参数值。
+  /// 返回 null 表示不检查参数，仅匹配工具名/权限类型。
+  String? get permissionArgKey => null;
+
   /// 执行工具
   ///
   /// [arguments] 为 LLM 传递的参数（已解析的 JSON Map）
@@ -94,6 +100,7 @@ abstract class AgentTool {
       'inputJsonSchema': inputJsonSchema,
       'requiresPermission': requiresPermission,
       'permissionType': permissionType,
+      if (permissionArgKey != null) 'permissionArgKey': permissionArgKey,
     };
   }
 }

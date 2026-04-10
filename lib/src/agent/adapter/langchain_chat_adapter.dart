@@ -90,9 +90,7 @@ class LangChainChatAdapter implements IChatAdapter {
   // ===== IChatAdapter 方法实现 =====
 
   @override
-  Future<void> initSession({
-    required String employeeId,
-  }) async {
+  Future<void> initSession({required String employeeId}) async {
     currentEmployeeUuid = employeeId;
     memoryManager.getOrCreateSession(employeeId);
   }
@@ -191,9 +189,9 @@ class LangChainChatAdapter implements IChatAdapter {
         if (_compressor != null) {
           final session = memoryManager.getSession(currentEmployeeUuid!);
           // ✅ 从 MessageWrapper 列表中提取 ChatMessage
-          final chatMessages = session?.allMessages
-              .map((wrapper) => wrapper.message)
-              .toList() ?? [];
+          final chatMessages =
+              session?.allMessages.map((wrapper) => wrapper.message).toList() ??
+              [];
           messages = _compressor!.buildCompressedMessages(
             employeeId: currentEmployeeUuid!,
             allMessages: chatMessages,
@@ -220,7 +218,9 @@ class LangChainChatAdapter implements IChatAdapter {
             print('[LangChainChatAdapter]   - $toolName');
           }
         }
-        print('[LangChainChatAdapter] calling LLM, messages count: ${messages.length}, hasTools: $hasTools');
+        print(
+          '[LangChainChatAdapter] calling LLM, messages count: ${messages.length}, hasTools: $hasTools',
+        );
 
         // 调用 LLM 流式接口并累积完整响应
         ChatResult? accumulatedResult;
@@ -276,7 +276,9 @@ class LangChainChatAdapter implements IChatAdapter {
         final aiMessage = accumulatedResult.output;
         final toolCalls = aiMessage.toolCalls;
 
-        print('[LangChainChatAdapter] LLM response: content="${aiContentBuffer.toString()}", toolCalls=${toolCalls.length}');
+        print(
+          '[LangChainChatAdapter] LLM response: content="${aiContentBuffer.toString()}", toolCalls=${toolCalls.length}',
+        );
 
         if (toolCalls.isEmpty || !hasTools) {
           // 没有工具调用 → 将 AI 文本加入历史，结束循环
@@ -313,8 +315,8 @@ class LangChainChatAdapter implements IChatAdapter {
           Map<String, dynamic> toolArguments = toolCall.arguments;
           if (toolArguments.isEmpty && toolCall.argumentsRaw.isNotEmpty) {
             try {
-              toolArguments = jsonDecode(toolCall.argumentsRaw)
-                  as Map<String, dynamic>;
+              toolArguments =
+                  jsonDecode(toolCall.argumentsRaw) as Map<String, dynamic>;
             } catch (_) {
               // JSON 解析失败时保留原始空 Map
             }
@@ -372,12 +374,20 @@ class LangChainChatAdapter implements IChatAdapter {
             );
 
             if (decision == PermissionDecision.deny) {
-              final denyResult = '权限被拒绝: 用户拒绝了工具 "$toolName" 的执行';
+              // 区分黑名单拒绝和用户拒绝
+              final denyResult =
+                  _permissionManager!.lastDenyMessage ??
+                  '权限被拒绝: 用户拒绝了工具 "$toolName" 的执行';
               memoryManager.addMessage(
                 currentEmployeeUuid!,
                 deviceId ?? 'default',
                 ToolChatMessage(toolCallId: toolCallId, content: denyResult),
-                metadata: {'toolName': toolName},
+                metadata: {
+                  'toolName': toolName,
+                  'denyReason': _permissionManager!.lastDenyMessage != null
+                      ? 'blacklist'
+                      : 'user',
+                },
               );
               yield StreamResponse.toolCallResult(
                 toolCallId: toolCallId,
@@ -392,6 +402,9 @@ class LangChainChatAdapter implements IChatAdapter {
                   'toolName': toolName,
                   'result': denyResult,
                   'isError': true,
+                  'denyReason': _permissionManager!.lastDenyMessage != null
+                      ? 'blacklist'
+                      : 'user',
                 },
               });
               continue;
@@ -401,8 +414,10 @@ class LangChainChatAdapter implements IChatAdapter {
           // 执行工具
           final stopwatch = Stopwatch()..start();
           ToolResult result;
-          _currentTool = tool;  // 记录当前工具用于取消
-          print('[LangChainChatAdapter] 执行工具: $toolName, arguments: $toolArguments');
+          _currentTool = tool; // 记录当前工具用于取消
+          print(
+            '[LangChainChatAdapter] 执行工具: $toolName, arguments: $toolArguments',
+          );
           try {
             // 使用可取消的执行器（cancellationToken 为 null 时用默认值）
             final token = cancellationToken ?? CancellationToken();
@@ -414,11 +429,13 @@ class LangChainChatAdapter implements IChatAdapter {
           } catch (e) {
             result = ToolResult.error('工具执行异常: $e');
           } finally {
-            _currentTool = null;  // 清除当前工具
+            _currentTool = null; // 清除当前工具
           }
           stopwatch.stop();
-          print('[LangChainChatAdapter] 工具执行完成: $toolName, isError=${result.isError}, '
-              'duration=${stopwatch.elapsedMilliseconds}ms, result=${result.content}');
+          print(
+            '[LangChainChatAdapter] 工具执行完成: $toolName, isError=${result.isError}, '
+            'duration=${stopwatch.elapsedMilliseconds}ms, result=${result.content}',
+          );
 
           // 将工具结果加入历史
           memoryManager.addMessage(
@@ -449,7 +466,8 @@ class LangChainChatAdapter implements IChatAdapter {
 
           // 工具调用出错时，yield 提示给用户看到
           if (result.isError) {
-            final userHint = '\n⚠️ 工具 $toolName 执行失败: ${result.content.split('\n').first}';
+            final userHint =
+                '\n⚠️ 工具 $toolName 执行失败: ${result.content.split('\n').first}';
             yield StreamResponse.chunk(userHint);
           }
         }
@@ -459,7 +477,8 @@ class LangChainChatAdapter implements IChatAdapter {
 
       // 达到最大迭代次数限制
       if (!completedNormally) {
-        final errorMsg = '已达到最大工具调用轮次（$_maxToolCallIterations 次），请尝试简化您的需求或拆分为多个问题';
+        final errorMsg =
+            '已达到最大工具调用轮次（$_maxToolCallIterations 次），请尝试简化您的需求或拆分为多个问题';
         yield StreamResponse.error(errorMsg);
         return;
       }
@@ -476,7 +495,7 @@ class LangChainChatAdapter implements IChatAdapter {
   @override
   Future<void> stopStreaming() async {
     _isStreaming = false;
-    
+
     // 取消正在执行的工具
     if (_currentTool != null) {
       _currentTool!.cancel();
@@ -485,9 +504,7 @@ class LangChainChatAdapter implements IChatAdapter {
   }
 
   @override
-  Future<List<AgentMessage>> getSessionMessages(
-    String employeeId,
-  ) async {
+  Future<List<AgentMessage>> getSessionMessages(String employeeId) async {
     // employeeId 实际上就是 employeeId
     final session = memoryManager.getSession(employeeId);
     if (session == null) return [];
@@ -520,16 +537,20 @@ class LangChainChatAdapter implements IChatAdapter {
   /// 返回是否成功删除
   bool removeMessageFromMemory(String messageId) {
     if (currentEmployeeUuid == null) {
-      print('[LangChainChatAdapter] removeMessageFromMemory: currentEmployeeUuid is null');
+      print(
+        '[LangChainChatAdapter] removeMessageFromMemory: currentEmployeeUuid is null',
+      );
       return false;
     }
-    
+
     final session = memoryManager.getSession(currentEmployeeUuid!);
     if (session == null) {
-      print('[LangChainChatAdapter] removeMessageFromMemory: session not found');
+      print(
+        '[LangChainChatAdapter] removeMessageFromMemory: session not found',
+      );
       return false;
     }
-    
+
     return session.removeMessage(messageId);
   }
 
@@ -537,7 +558,9 @@ class LangChainChatAdapter implements IChatAdapter {
   Future<void> updateProvider(Map<String, dynamic> providerConfig) async {
     print('[LangChainChatAdapter] updateProvider called with: $providerConfig');
     final config = ProviderConfig.fromMap(providerConfig);
-    print('[LangChainChatAdapter] parsed config: provider=${config.provider}, model=${config.model}, baseUrl=${config.baseUrl}');
+    print(
+      '[LangChainChatAdapter] parsed config: provider=${config.provider}, model=${config.model}, baseUrl=${config.baseUrl}',
+    );
     config.validate();
     print('[LangChainChatAdapter] config validated successfully');
 
@@ -652,7 +675,8 @@ class LangChainChatAdapter implements IChatAdapter {
     final projectUuid = _context!['projectUuid'] as String?;
     final workPath = _context!['workPath'] as String?;
 
-    final hasProject = (projectName != null && projectName.isNotEmpty) ||
+    final hasProject =
+        (projectName != null && projectName.isNotEmpty) ||
         projectContext != null ||
         (projectUuid != null && projectUuid.isNotEmpty) ||
         (workPath != null && workPath.isNotEmpty);

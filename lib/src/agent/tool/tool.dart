@@ -6,6 +6,7 @@ library;
 export 'agent_tool.dart';
 export 'tool_registry.dart';
 export 'permission_manager.dart';
+export 'permission_rule.dart';
 export 'builtin/builtin_tools.dart';
 export 'builtin/file_read_tool.dart';
 export 'builtin/file_write_tool.dart';

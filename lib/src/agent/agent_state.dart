@@ -148,6 +148,15 @@ class AgentPermissionRequest {
   /// 创建时间
   final DateTime createTime;
 
+  /// 权限检查的参数 key（如 "path", "command"）
+  final String? permissionArgKey;
+
+  /// 权限检查的参数值（如 "/path/to/file", "git commit"）
+  final String? permissionArgValue;
+
+  /// 自动推导的模式（用于展示"同意 xx.*"选项）
+  final String? suggestedPattern;
+
   AgentPermissionRequest({
     required this.requestId,
     required this.type,
@@ -157,6 +166,9 @@ class AgentPermissionRequest {
     this.permissionType,
     this.data,
     DateTime? createTime,
+    this.permissionArgKey,
+    this.permissionArgValue,
+    this.suggestedPattern,
   }) : createTime = createTime ?? DateTime.now();
 
   Map<String, dynamic> toMap() {
@@ -169,6 +181,9 @@ class AgentPermissionRequest {
       'permissionType': permissionType,
       'data': data,
       'createTime': createTime.toIso8601String(),
+      if (permissionArgKey != null) 'permissionArgKey': permissionArgKey,
+      if (permissionArgValue != null) 'permissionArgValue': permissionArgValue,
+      if (suggestedPattern != null) 'suggestedPattern': suggestedPattern,
     };
   }
 
@@ -184,6 +199,9 @@ class AgentPermissionRequest {
       createTime: map['createTime'] != null
           ? DateTime.parse(map['createTime'] as String)
           : DateTime.now(),
+      permissionArgKey: map['permissionArgKey'] as String?,
+      permissionArgValue: map['permissionArgValue'] as String?,
+      suggestedPattern: map['suggestedPattern'] as String?,
     );
   }
 }
@@ -203,6 +221,34 @@ enum PermissionDecision {
     return PermissionDecision.values.firstWhere(
       (e) => e.name == value,
       orElse: () => PermissionDecision.deny,
+    );
+  }
+}
+
+/// 权限审批范围
+///
+/// 当用户确认权限请求时，选择授权的范围：
+/// - [once] 仅本次允许
+/// - [exact] 精确匹配该参数值（持久化 exact 规则）
+/// - [pattern] 匹配该参数的正则模式（持久化 regex 规则）
+/// - [all] 该权限类型全部允许（持久化 all 规则）
+enum PermissionApprovalScope {
+  /// 仅本次允许
+  once,
+
+  /// 精确匹配该参数值
+  exact,
+
+  /// 匹配该参数的正则模式
+  pattern,
+
+  /// 该权限类型全部允许
+  all;
+
+  static PermissionApprovalScope fromString(String value) {
+    return PermissionApprovalScope.values.firstWhere(
+      (e) => e.name == value,
+      orElse: () => PermissionApprovalScope.once,
     );
   }
 }

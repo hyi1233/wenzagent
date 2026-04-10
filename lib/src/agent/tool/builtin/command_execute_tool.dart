@@ -51,6 +51,9 @@ class CommandExecuteTool extends AgentTool {
   String get permissionType => 'command_execute';
 
   @override
+  String get permissionArgKey => 'command';
+
+  @override
   Future<ToolResult> execute(Map<String, dynamic> arguments) async {
     final command = arguments['command'] as String?;
     if (command == null || command.isEmpty) {
