@@ -52,7 +52,13 @@ class FileReadTool extends AgentTool {
       };
 
   @override
-  bool get requiresPermission => false;
+  bool get requiresPermission => true;
+
+  @override
+  String get permissionType => 'file_read';
+
+  @override
+  String get permissionArgKey => 'path';
 
   @override
   Future<ToolResult> execute(Map<String, dynamic> arguments) async {

@@ -97,6 +97,30 @@ class PersistentChatAdapter extends LangChainChatAdapter {
             // 忽略模型加载失败
           }
         }
+
+        // 恢复项目上下文（如果 _context 中还没有项目信息）
+        final projectUuid = sessionData['projectUuid'] as String?;
+        if (projectUuid != null && projectUuid.isNotEmpty) {
+          final currentProjectUuid = currentContext?['projectUuid'] as String?;
+          if (currentProjectUuid == null || currentProjectUuid.isEmpty) {
+            final projectData = <String, dynamic>{
+              'projectUuid': projectUuid,
+            };
+            if (sessionData['projectName'] != null) {
+              projectData['projectName'] = sessionData['projectName'];
+            }
+            if (sessionData['projectContext'] != null) {
+              projectData['projectContext'] = sessionData['projectContext'];
+            }
+            if (sessionData['workPath'] != null) {
+              projectData['workPath'] = sessionData['workPath'];
+            }
+            if (sessionData['additionalInfo'] != null) {
+              projectData['additionalInfo'] = sessionData['additionalInfo'];
+            }
+            await updateProjectContext(projectData);
+          }
+        }
       }
     }
 
@@ -406,6 +430,10 @@ class PersistentChatAdapter extends LangChainChatAdapter {
       'contextData': context['contextData'],
       'providerConfig': getProviderConfig(),
       'projectUuid': context['projectUuid'],
+      'projectName': context['projectName'],
+      'projectContext': context['projectContext'],
+      'workPath': context['workPath'],
+      'additionalInfo': context['additionalInfo'],
       'updateTime': DateTime.now().millisecondsSinceEpoch,
     };
   }

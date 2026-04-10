@@ -44,6 +44,15 @@ class AiEmployeeEntity {
   /// 项目UUID（员工绑定的工作项目）
   String? projectUuid;
 
+  /// 项目名称
+  String? projectName;
+
+  /// 项目上下文
+  String? projectContext;
+
+  /// 项目工作路径
+  String? workPath;
+
   /// 是否启用工具
   int enableTools;
 
@@ -103,6 +112,9 @@ class AiEmployeeEntity {
     this.enableTools = 1,
     this.enableMcp = 0,
     this.projectUuid,
+    this.projectName,
+    this.projectContext,
+    this.workPath,
     this.mcpConfig,
     this.permissionConfig,
     this.deviceId,
@@ -135,6 +147,9 @@ class AiEmployeeEntity {
       enableTools: map['enableTools'] as int? ?? 1,
       enableMcp: map['enableMcp'] as int? ?? 0,
       projectUuid: map['projectUuid'] as String?,
+      projectName: map['projectName'] as String?,
+      projectContext: map['projectContext'] as String?,
+      workPath: map['workPath'] as String?,
       mcpConfig: map['mcpConfig'] as String?,
       permissionConfig: map['permissionConfig'] as String?,
       deviceId: map['deviceId'] as String?,
@@ -176,6 +191,9 @@ class AiEmployeeEntity {
       'enableTools': enableTools,
       'enableMcp': enableMcp,
       'projectUuid': projectUuid,
+      'projectName': projectName,
+      'projectContext': projectContext,
+      'workPath': workPath,
       'mcpConfig': mcpConfig,
       'permissionConfig': permissionConfig,
       'deviceId': deviceId,
@@ -208,6 +226,9 @@ class AiEmployeeEntity {
     int? enableTools,
     int? enableMcp,
     String? projectUuid,
+    String? projectName,
+    String? projectContext,
+    String? workPath,
     String? mcpConfig,
     String? permissionConfig,
     String? deviceId,
@@ -237,6 +258,9 @@ class AiEmployeeEntity {
       enableTools: enableTools ?? this.enableTools,
       enableMcp: enableMcp ?? this.enableMcp,
       projectUuid: projectUuid ?? this.projectUuid,
+      projectName: projectName ?? this.projectName,
+      projectContext: projectContext ?? this.projectContext,
+      workPath: workPath ?? this.workPath,
       mcpConfig: mcpConfig ?? this.mcpConfig,
       permissionConfig: permissionConfig ?? this.permissionConfig,
       deviceId: deviceId ?? this.deviceId,

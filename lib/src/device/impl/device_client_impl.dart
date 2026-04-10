@@ -496,6 +496,30 @@ class DeviceClientImpl implements DeviceClient {
       final agent = await _ensureLocalAgentForRpc(request.employeeId);
       final providerConfig = ProviderConfig.fromMap(request.providerConfig);
       await agent.setProvider(providerConfig);
+
+      // 同步更新 Employee 实体的 provider 信息（模型配置是员工级别配置）
+      final employee = await _employeeManager.getEmployee(request.employeeId);
+      if (employee != null) {
+        final newProvider = providerConfig.provider.name;
+        final newModel = providerConfig.model;
+        final newApiKey = providerConfig.apiKey;
+        final newBaseUrl = providerConfig.baseUrl;
+        if (employee.provider != newProvider ||
+            employee.model != newModel ||
+            employee.apiKey != newApiKey ||
+            employee.apiBaseUrl != newBaseUrl) {
+          await _employeeManager.updateEmployee(
+            employee.copyWith(
+              provider: newProvider,
+              model: newModel,
+              apiKey: newApiKey,
+              apiBaseUrl: newBaseUrl,
+            ),
+          );
+          print('[DeviceClient] methodSetProvider: Employee provider synced: provider=$newProvider, model=$newModel');
+        }
+      }
+
       return {};
     });
 
@@ -616,14 +640,19 @@ class DeviceClientImpl implements DeviceClient {
       print('[DeviceClient] agentSetProject: parsed projectUuid=${projectData?.projectUuid}, projectName=${projectData?.projectName}');
       await agent.setProject(projectData);
 
-      // 同步更新 Employee 实体的 projectUuid（项目是员工级别配置）
+      // 同步更新 Employee 实体的项目信息（项目是员工级别配置）
       final projectUuid = projectData?.projectUuid;
       final employee = await _employeeManager.getEmployee(request.employeeId);
       if (employee != null && employee.projectUuid != projectUuid) {
         await _employeeManager.updateEmployee(
-          employee.copyWith(projectUuid: projectUuid),
+          employee.copyWith(
+            projectUuid: projectUuid,
+            projectName: projectData?.projectName,
+            projectContext: projectData?.projectContext,
+            workPath: projectData?.workPath,
+          ),
         );
-        print('[DeviceClient] agentSetProject: Employee projectUuid synced: ${employee.projectUuid} -> $projectUuid');
+        print('[DeviceClient] agentSetProject: Employee project synced: uuid=${employee.projectUuid} -> $projectUuid, name=${projectData?.projectName}');
       }
 
       return {};
@@ -1156,7 +1185,12 @@ class DeviceClientImpl implements DeviceClient {
 
     // 设置项目（从Employee实体读取，项目是员工级别的配置）
     if (employee.projectUuid != null && employee.projectUuid!.isNotEmpty) {
-      await agent.setProject(ProjectData(projectUuid: employee.projectUuid));
+      await agent.setProject(ProjectData(
+        projectUuid: employee.projectUuid,
+        projectName: employee.projectName,
+        projectContext: employee.projectContext,
+        workPath: employee.workPath,
+      ));
     }
 
     // 注入权限配置（从员工实体的 permissionConfig 字段）
@@ -1353,6 +1387,9 @@ class DeviceClientImpl implements DeviceClient {
             ? jsonDecode(deviceConfig!.providerConfig!)
             : null,
         'projectUuid': employee?.projectUuid,
+        'projectName': employee?.projectName,
+        'projectContext': employee?.projectContext,
+        'workPath': employee?.workPath,
         'contextData': deviceConfig?.contextData != null
             ? jsonDecode(deviceConfig!.contextData!)
             : null,

@@ -35,7 +35,7 @@ class DirectoryCreateTool extends AgentTool {
   bool get requiresPermission => true;
 
   @override
-  String get permissionType => 'file_write';
+  String get permissionType => 'directory_create';
 
   @override
   String get permissionArgKey => 'path';
