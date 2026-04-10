@@ -67,6 +67,7 @@ class ChatModelFactory {
   static ChatAnthropic _createAnthropic(ProviderConfig config) {
     return ChatAnthropic(
       apiKey: config.apiKey!,
+      baseUrl: config.baseUrl ?? 'https://api.anthropic.com/v1',
       defaultOptions: ChatAnthropicOptions(
         model: config.model,
         temperature: config.options.temperature,

@@ -45,6 +45,24 @@ class AgentRpcConfig {
   static const String methodGetProjectUuid = 'agentGetProjectUuid';
   static const String methodCheckPathExists = 'agentCheckPathExists';
 
+  // ===== Agent 文件操作 =====
+
+  static const String methodListDirectory = 'agentListDirectory';
+  static const String methodGetFileInfo = 'agentGetFileInfo';
+  static const String methodCreateDirectory = 'agentCreateDirectory';
+  static const String methodDeleteFile = 'agentDeleteFile';
+  static const String methodRenameFile = 'agentRenameFile';
+
+  // ===== Agent 技能管理 =====
+
+  static const String methodSetSkills = 'agentSetSkills';
+  static const String methodGetSkills = 'agentGetSkills';
+
+  // ===== Agent MCP 管理 =====
+
+  static const String methodSetMcpConfigs = 'agentSetMcpConfigs';
+  static const String methodGetMcpConfigs = 'agentGetMcpConfigs';
+
   // ===== Agent 工具管理 =====
 
   static const String methodGetRegisteredTools = 'agentGetRegisteredTools';

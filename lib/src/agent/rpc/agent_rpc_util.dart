@@ -105,6 +105,30 @@ class AgentRpcUtil {
     return _rpcCall(AgentRpcConfig.methodGetProvider, request.toMap());
   }
 
+  // ===== Agent 技能管理 =====
+
+  /// 设置技能配置
+  Future<Map<String, dynamic>> setSkills(SetSkillsRequest request) async {
+    return _rpcCall(AgentRpcConfig.methodSetSkills, request.toMap());
+  }
+
+  /// 获取技能配置
+  Future<Map<String, dynamic>> getSkills(AgentGetSkillsRequest request) async {
+    return _rpcCall(AgentRpcConfig.methodGetSkills, request.toMap());
+  }
+
+  // ===== Agent MCP 管理 =====
+
+  /// 设置 MCP 配置
+  Future<Map<String, dynamic>> setMcpConfigs(SetMcpConfigsRequest request) async {
+    return _rpcCall(AgentRpcConfig.methodSetMcpConfigs, request.toMap());
+  }
+
+  /// 获取 MCP 配置
+  Future<Map<String, dynamic>> getMcpConfigs(GetMcpConfigsRequest request) async {
+    return _rpcCall(AgentRpcConfig.methodGetMcpConfigs, request.toMap());
+  }
+
   // ===== Agent 项目管理 =====
 
   /// 设置项目
@@ -120,6 +144,31 @@ class AgentRpcUtil {
   /// 检查路径是否存在
   Future<Map<String, dynamic>> checkPathExists(CheckPathExistsRequest request) async {
     return _rpcCall(AgentRpcConfig.methodCheckPathExists, request.toMap());
+  }
+
+  /// 列出目录内容
+  Future<Map<String, dynamic>> listDirectory(ListDirectoryRequest request) async {
+    return _rpcCall(AgentRpcConfig.methodListDirectory, request.toMap());
+  }
+
+  /// 获取文件/目录信息
+  Future<Map<String, dynamic>> getFileInfo(GetFileInfoRequest request) async {
+    return _rpcCall(AgentRpcConfig.methodGetFileInfo, request.toMap());
+  }
+
+  /// 创建目录
+  Future<Map<String, dynamic>> createDirectory(CreateDirectoryRequest request) async {
+    return _rpcCall(AgentRpcConfig.methodCreateDirectory, request.toMap());
+  }
+
+  /// 删除文件/目录
+  Future<Map<String, dynamic>> deleteFile(DeleteFileRequest request) async {
+    return _rpcCall(AgentRpcConfig.methodDeleteFile, request.toMap());
+  }
+
+  /// 重命名/移动文件
+  Future<Map<String, dynamic>> renameFile(RenameFileRequest request) async {
+    return _rpcCall(AgentRpcConfig.methodRenameFile, request.toMap());
   }
 
   // ===== Agent 权限管理 =====

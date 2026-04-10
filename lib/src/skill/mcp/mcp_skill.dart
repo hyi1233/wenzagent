@@ -52,6 +52,9 @@ class McpSkill implements Skill {
   @override
   SkillStatus get status => _status;
 
+  /// 获取 MCP 服务器配置
+  McpServerConfig get serverConfig => _serverConfig;
+
   @override
   List<AgentTool> get tools => _tools;
 
@@ -69,6 +72,10 @@ class McpSkill implements Skill {
       _tools = mcpTools
           .map((t) => McpToolAdapter(client: _client!, definition: t))
           .toList();
+      print('[McpSkill] 加载完成: $_name, 共 ${_tools.length} 个工具');
+      for (final tool in _tools) {
+        print('[McpSkill]   工具名称: "${tool.name}" (原始MCP名称: "${mcpTools[_tools.indexOf(tool)].name}")');
+      }
       _status = SkillStatus.active;
     } catch (e) {
       _status = SkillStatus.error;

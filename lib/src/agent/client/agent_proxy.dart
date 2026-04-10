@@ -476,6 +476,76 @@ class AgentProxy {
     return null;
   }
 
+  // ===== 技能管理 =====
+
+  /// 设置技能配置
+  Future<void> setSkills(List<Map<String, dynamic>> skillMaps) async {
+    if (isLocalMode && _localAgent != null) {
+      return _localAgent.setSkills(skillMaps);
+    }
+    final request = SetSkillsRequest(
+      employeeId: employeeId,
+      skills: skillMaps,
+    );
+    await _rpcUtil!.setSkills(request);
+    _remoteCache.skillsConfig = skillMaps;
+  }
+
+  /// 获取技能配置
+  List<Map<String, dynamic>> getSkillsConfig() {
+    if (isLocalMode && _localAgent != null) {
+      return _localAgent.getSkillsConfig();
+    }
+    return _remoteCache.skillsConfig ?? [];
+  }
+
+  /// 获取技能配置（异步版本，支持远程 RPC）
+  Future<List<Map<String, dynamic>>> getSkillsConfigAsync() async {
+    if (isLocalMode && _localAgent != null) {
+      return _localAgent.getSkillsConfig();
+    }
+    final request = AgentGetSkillsRequest(employeeId: employeeId);
+    final result = await _rpcUtil!.getSkills(request);
+    final skills = (result['skills'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+    _remoteCache.skillsConfig = skills;
+    return skills;
+  }
+
+  // ===== MCP 管理 =====
+
+  /// 设置 MCP 服务器配置
+  Future<void> setMcpConfigs(List<Map<String, dynamic>> mcpConfigMaps) async {
+    if (isLocalMode && _localAgent != null) {
+      return _localAgent.setMcpConfigs(mcpConfigMaps);
+    }
+    final request = SetMcpConfigsRequest(
+      employeeId: employeeId,
+      mcpConfigs: mcpConfigMaps,
+    );
+    await _rpcUtil!.setMcpConfigs(request);
+    _remoteCache.mcpConfigs = mcpConfigMaps;
+  }
+
+  /// 获取 MCP 服务器配置
+  List<Map<String, dynamic>> getMcpConfigs() {
+    if (isLocalMode && _localAgent != null) {
+      return _localAgent.getMcpConfigs();
+    }
+    return _remoteCache.mcpConfigs ?? [];
+  }
+
+  /// 获取 MCP 服务器配置（异步版本，支持远程 RPC）
+  Future<List<Map<String, dynamic>>> getMcpConfigsAsync() async {
+    if (isLocalMode && _localAgent != null) {
+      return _localAgent.getMcpConfigs();
+    }
+    final request = GetMcpConfigsRequest(employeeId: employeeId);
+    final result = await _rpcUtil!.getMcpConfigs(request);
+    final configs = (result['mcpConfigs'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+    _remoteCache.mcpConfigs = configs;
+    return configs;
+  }
+
   // ===== 项目管理 =====
 
   Future<void> setProject(ProjectData? projectData) async {
@@ -523,6 +593,163 @@ class AgentProxy {
     }
     final request = CheckPathExistsRequest(employeeId: employeeId, path: path);
     return _rpcUtil!.checkPathExists(request);
+  }
+
+  /// 列出目录内容
+  ///
+  /// [path] 目录路径
+  /// 返回 { 'items': List<Map>, 'error': String? }
+  /// 每个item: { 'name': String, 'path': String, 'isDirectory': bool, 'size': int?, 'modified': String? }
+  Future<Map<String, dynamic>> listDirectory(String path) async {
+    if (isLocalMode) {
+      final dir = Directory(path);
+      if (!await dir.exists()) {
+        return {'items': [], 'error': '目录不存在'};
+      }
+      final items = <Map<String, dynamic>>[];
+      try {
+        await for (final entity in dir.list(recursive: false, followLinks: false)) {
+          try {
+            final stat = await entity.stat();
+            final entityPath = entity.path;
+            final entityName = entityPath.split(Platform.pathSeparator).last;
+            if (entityName.isEmpty) continue;
+            items.add({
+              'name': entityName,
+              'path': entityPath,
+              'isDirectory': entity is Directory,
+              'size': stat.size,
+              'modified': stat.modified.toIso8601String(),
+            });
+          } catch (_) {
+            continue;
+          }
+        }
+        // 排序：文件夹在前，文件在后，按名称排序
+        items.sort((a, b) {
+          final aDir = a['isDirectory'] as bool;
+          final bDir = b['isDirectory'] as bool;
+          if (aDir && !bDir) return -1;
+          if (!aDir && bDir) return 1;
+          return (a['name'] as String).toLowerCase().compareTo((b['name'] as String).toLowerCase());
+        });
+        return {'items': items};
+      } catch (e) {
+        return {'items': [], 'error': e.toString()};
+      }
+    }
+    final request = ListDirectoryRequest(employeeId: employeeId, path: path);
+    return _rpcUtil!.listDirectory(request);
+  }
+
+  /// 获取文件/目录信息
+  ///
+  /// [path] 文件路径
+  /// 返回 { 'exists': bool, 'name': String?, 'path': String?, 'isDirectory': bool?, 'size': int?, 'modified': String?, 'error': String? }
+  Future<Map<String, dynamic>> getFileInfo(String path) async {
+    if (isLocalMode) {
+      final file = File(path);
+      if (await file.exists()) {
+        final stat = await file.stat();
+        final name = path.split(Platform.pathSeparator).last;
+        return {
+          'exists': true,
+          'name': name,
+          'path': path,
+          'isDirectory': false,
+          'size': stat.size,
+          'modified': stat.modified.toIso8601String(),
+        };
+      }
+      final dir = Directory(path);
+      if (await dir.exists()) {
+        final stat = await dir.stat();
+        final name = path.split(Platform.pathSeparator).last;
+        return {
+          'exists': true,
+          'name': name,
+          'path': path,
+          'isDirectory': true,
+          'size': stat.size,
+          'modified': stat.modified.toIso8601String(),
+        };
+      }
+      return {'exists': false};
+    }
+    final request = GetFileInfoRequest(employeeId: employeeId, path: path);
+    return _rpcUtil!.getFileInfo(request);
+  }
+
+  /// 创建目录
+  ///
+  /// [path] 目录路径
+  /// 返回 { 'success': bool, 'error': String? }
+  Future<Map<String, dynamic>> createDirectory(String path) async {
+    if (isLocalMode) {
+      try {
+        await Directory(path).create(recursive: true);
+        return {'success': true};
+      } catch (e) {
+        return {'success': false, 'error': e.toString()};
+      }
+    }
+    final request = CreateDirectoryRequest(employeeId: employeeId, path: path);
+    return _rpcUtil!.createDirectory(request);
+  }
+
+  /// 删除文件/目录
+  ///
+  /// [path] 文件/目录路径
+  /// 返回 { 'success': bool, 'error': String? }
+  Future<Map<String, dynamic>> deleteFile(String path) async {
+    if (isLocalMode) {
+      try {
+        final file = File(path);
+        if (await file.exists()) {
+          await file.delete();
+          return {'success': true};
+        }
+        final dir = Directory(path);
+        if (await dir.exists()) {
+          await dir.delete(recursive: true);
+          return {'success': true};
+        }
+        return {'success': false, 'error': '路径不存在'};
+      } catch (e) {
+        return {'success': false, 'error': e.toString()};
+      }
+    }
+    final request = DeleteFileRequest(employeeId: employeeId, path: path);
+    return _rpcUtil!.deleteFile(request);
+  }
+
+  /// 重命名/移动文件
+  ///
+  /// 返回 { 'success': bool, 'error': String? }
+  Future<Map<String, dynamic>> renameFile(String oldPath, String newPath) async {
+    if (isLocalMode) {
+      try {
+        final entity = File(oldPath);
+        if (await entity.exists()) {
+          await entity.rename(newPath);
+          return {'success': true};
+        }
+        final dir = Directory(oldPath);
+        if (await dir.exists()) {
+          await dir.rename(newPath);
+          return {'success': true};
+        }
+        return {'success': false, 'error': '路径不存在'};
+      } catch (e) {
+        return {'success': false, 'error': e.toString()};
+      }
+    }
+    final request = RenameFileRequest(
+      employeeId: employeeId,
+      oldPath: oldPath,
+      newPath: newPath,
+    );
+    return _rpcUtil!.renameFile(request);
   }
 
   // ===== 工具管理 =====
@@ -757,6 +984,8 @@ class _RemoteStateCache {
   Map<String, dynamic>? contextData;
   Map<String, dynamic>? providerConfig;
   String? projectUuid;
+  List<Map<String, dynamic>>? skillsConfig;
+  List<Map<String, dynamic>>? mcpConfigs;
 
   void clear() {
     status = AgentStatus.idle;
@@ -764,5 +993,7 @@ class _RemoteStateCache {
     contextData = null;
     providerConfig = null;
     projectUuid = null;
+    skillsConfig = null;
+    mcpConfigs = null;
   }
 }

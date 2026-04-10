@@ -782,6 +782,135 @@ class AgentImpl implements IAgent {
     return configMap != null ? ProviderConfig.fromMap(configMap) : null;
   }
 
+  // ===== IAgent: 技能管理 =====
+
+  @override
+  Future<void> setSkills(List<Map<String, dynamic>> skillMaps) async {
+    _touch();
+    await _withLock(() async {
+      final store = SkillStore();
+
+      // 1. 软删除当前员工的所有技能
+      final existingSkills = await store.findByEmployeeWithDeviceId(null, employeeId);
+      for (final skill in existingSkills) {
+        await store.delete(null, skill.uuid);
+      }
+
+      // 2. 保存新的技能列表
+      final entities = skillMaps
+          .map((m) => AiEmployeeSkillEntity.fromMap(m))
+          .toList();
+      for (final entity in entities) {
+        await store.save(entity);
+      }
+
+      // 3. 卸载当前运行时技能
+      if (_skillManager != null) {
+        final currentSkills = _skillManager!.skills.toList();
+        for (final skill in currentSkills) {
+          await _skillManager!.unloadSkill(skill.id);
+        }
+      }
+
+      // 4. 从持久化重新加载技能到运行时
+      await _loadPersistedSkills(employeeId);
+    });
+  }
+
+  @override
+  List<Map<String, dynamic>> getSkillsConfig() {
+    // 返回当前员工的完整技能实体列表（同步方法，从缓存或本地数据库读取）
+    // 注意：此处仅返回运行时已加载的技能信息，用于快速响应
+    // 完整列表可通过 getSkillsConfigAsync() 异步获取
+    if (_skillManager == null) return [];
+    return _skillManager!.skills.map((s) => {
+      'id': s.id,
+      'name': s.name,
+      'description': s.description,
+      'type': s.type.name,
+    }).toList();
+  }
+
+  // ===== IAgent: MCP 管理 =====
+
+  @override
+  Future<void> setMcpConfigs(List<Map<String, dynamic>> mcpConfigMaps) async {
+    _touch();
+    await _withLock(() async {
+      final employeeStore = EmployeeStore();
+      final skillStore = SkillStore();
+
+      // 1. 更新员工实体的 MCP 配置
+      final configs = mcpConfigMaps
+          .map((m) => McpServerConfig.fromMap(m))
+          .toList();
+
+      // 从 Hive 加载当前员工实体
+      final employees = await employeeStore.findAll(null);
+      final employee = employees.where((e) => e.uuid == employeeId).firstOrNull;
+      if (employee != null) {
+        final updated = employee.setMcpConfigs(configs);
+        await employeeStore.save(updated);
+      }
+
+      // 2. 同步 MCP 技能实体到 SkillStore
+      // 先删除旧的 MCP 类型技能
+      final existingSkills = await skillStore.findByEmployeeWithDeviceId(null, employeeId);
+      for (final skill in existingSkills) {
+        if (skill.skillType == 'mcp') {
+          await skillStore.delete(null, skill.uuid);
+        }
+      }
+      // 为每个 MCP 配置创建技能实体
+      for (final config in configs) {
+        final entity = AiEmployeeSkillEntity(
+          uuid: 'mcp_${config.name}_${const Uuid().v4()}',
+          employeeId: employeeId,
+          name: config.name,
+          description: config.description,
+          skillType: 'mcp',
+          config: jsonEncode(config.toMap()),
+          enabled: 1,
+          createTime: DateTime.now(),
+          updateTime: DateTime.now(),
+        );
+        await skillStore.save(entity);
+      }
+
+      // 3. 卸载旧的 MCP 技能并重新加载
+      if (_skillManager != null) {
+        final currentSkills = _skillManager!.skills.toList();
+        for (final skill in currentSkills) {
+          if (skill is McpSkill) {
+            await _skillManager!.unloadSkill(skill.id);
+          }
+        }
+      }
+
+      // 4. 重新加载所有持久化技能（仅 MCP 类型）
+      final allSkills = await skillStore.findByEmployeeWithDeviceId(null, employeeId);
+      for (final entity in allSkills) {
+        if (entity.skillType != 'mcp' || entity.enabled != 1) continue;
+        try {
+          final skill = McpSkill.fromEntity(entity);
+          await _skillManager?.loadSkill(skill);
+        } catch (e) {
+          print('[AgentImpl] 重新加载 MCP 技能失败: ${entity.name}, $e');
+        }
+      }
+    });
+  }
+
+  @override
+  List<Map<String, dynamic>> getMcpConfigs() {
+    // 从运行时已加载的 MCP 技能中提取配置
+    if (_skillManager == null) return [];
+    return _skillManager!.skills
+        .whereType<McpSkill>()
+        .map((s) => s.serverConfig.toMap())
+        .toList();
+  }
+
   // ===== IAgent: 项目管理 =====
 
   @override

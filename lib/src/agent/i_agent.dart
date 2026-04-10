@@ -180,6 +180,32 @@ abstract class IAgent {
   /// 获取当前模型配置
   ProviderConfig? getProviderConfig();
 
+  // ===== 技能管理 =====
+
+  /// 设置技能配置
+  ///
+  /// 同步技能实体列表，更新持久化并重载运行时。
+  /// [skillMaps] 技能实体的序列化 Map 列表
+  Future<void> setSkills(List<Map<String, dynamic>> skillMaps);
+
+  /// 获取当前技能配置
+  ///
+  /// 返回技能实体的序列化 Map 列表
+  List<Map<String, dynamic>> getSkillsConfig();
+
+  // ===== MCP 管理 =====
+
+  /// 设置 MCP 服务器配置
+  ///
+  /// 同步 MCP 服务器配置列表，更新持久化并重载 MCP 技能。
+  /// [mcpConfigMaps] MCP 服务器配置的序列化 Map 列表
+  Future<void> setMcpConfigs(List<Map<String, dynamic>> mcpConfigMaps);
+
+  /// 获取当前 MCP 服务器配置
+  ///
+  /// 返回 MCP 服务器配置的序列化 Map 列表
+  List<Map<String, dynamic>> getMcpConfigs();
+
   // ===== 项目管理 =====
 
   /// 绑定项目

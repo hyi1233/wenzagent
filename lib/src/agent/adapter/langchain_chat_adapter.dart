@@ -1,4 +1,5 @@
 ﻿import 'dart:async';
+import 'dart:convert';
 
 import 'package:langchain_core/chat_models.dart';
 import 'package:langchain_core/prompts.dart';
@@ -213,6 +214,12 @@ class LangChainChatAdapter implements IChatAdapter {
               )
             : null;
 
+        if (hasTools) {
+          print('[LangChainChatAdapter] 已注册工具列表 (${_toolRegistry!.length} 个):');
+          for (final toolName in _toolRegistry!.toolNames) {
+            print('[LangChainChatAdapter]   - $toolName');
+          }
+        }
         print('[LangChainChatAdapter] calling LLM, messages count: ${messages.length}, hasTools: $hasTools');
 
         // 调用 LLM 流式接口并累积完整响应
@@ -302,7 +309,16 @@ class LangChainChatAdapter implements IChatAdapter {
 
           final toolName = toolCall.name;
           final toolCallId = toolCall.id;
-          final toolArguments = toolCall.arguments;
+          // Anthropic 流式模式下 arguments 为空 Map，正确数据在 argumentsRaw 中
+          Map<String, dynamic> toolArguments = toolCall.arguments;
+          if (toolArguments.isEmpty && toolCall.argumentsRaw.isNotEmpty) {
+            try {
+              toolArguments = jsonDecode(toolCall.argumentsRaw)
+                  as Map<String, dynamic>;
+            } catch (_) {
+              // JSON 解析失败时保留原始空 Map
+            }
+          }
 
           // 广播工具调用开始事件
           yield StreamResponse.toolCallStart(

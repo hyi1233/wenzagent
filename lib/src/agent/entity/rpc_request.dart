@@ -482,6 +482,111 @@ class CheckPathExistsRequest {
   }
 }
 
+/// 列出目录内容请求
+class ListDirectoryRequest {
+  final String employeeId;
+  final String path;
+
+  const ListDirectoryRequest({required this.employeeId, required this.path});
+
+  Map<String, dynamic> toMap() {
+    return {'employeeId': employeeId, 'path': path};
+  }
+
+  factory ListDirectoryRequest.fromMap(Map<String, dynamic> map) {
+    return ListDirectoryRequest(
+      employeeId: map['employeeId'] as String,
+      path: map['path'] as String,
+    );
+  }
+}
+
+/// 获取文件/目录信息请求
+class GetFileInfoRequest {
+  final String employeeId;
+  final String path;
+
+  const GetFileInfoRequest({required this.employeeId, required this.path});
+
+  Map<String, dynamic> toMap() {
+    return {'employeeId': employeeId, 'path': path};
+  }
+
+  factory GetFileInfoRequest.fromMap(Map<String, dynamic> map) {
+    return GetFileInfoRequest(
+      employeeId: map['employeeId'] as String,
+      path: map['path'] as String,
+    );
+  }
+}
+
+/// 创建目录请求
+class CreateDirectoryRequest {
+  final String employeeId;
+  final String path;
+
+  const CreateDirectoryRequest({required this.employeeId, required this.path});
+
+  Map<String, dynamic> toMap() {
+    return {'employeeId': employeeId, 'path': path};
+  }
+
+  factory CreateDirectoryRequest.fromMap(Map<String, dynamic> map) {
+    return CreateDirectoryRequest(
+      employeeId: map['employeeId'] as String,
+      path: map['path'] as String,
+    );
+  }
+}
+
+/// 删除文件/目录请求
+class DeleteFileRequest {
+  final String employeeId;
+  final String path;
+
+  const DeleteFileRequest({required this.employeeId, required this.path});
+
+  Map<String, dynamic> toMap() {
+    return {'employeeId': employeeId, 'path': path};
+  }
+
+  factory DeleteFileRequest.fromMap(Map<String, dynamic> map) {
+    return DeleteFileRequest(
+      employeeId: map['employeeId'] as String,
+      path: map['path'] as String,
+    );
+  }
+}
+
+/// 重命名/移动文件请求
+class RenameFileRequest {
+  final String employeeId;
+  final String oldPath;
+  final String newPath;
+
+  const RenameFileRequest({
+    required this.employeeId,
+    required this.oldPath,
+    required this.newPath,
+  });
+
+  Map<String, dynamic> toMap() {
+    return {
+      'employeeId': employeeId,
+      'oldPath': oldPath,
+      'newPath': newPath,
+    };
+  }
+
+  factory RenameFileRequest.fromMap(Map<String, dynamic> map) {
+    return RenameFileRequest(
+      employeeId: map['employeeId'] as String,
+      oldPath: map['oldPath'] as String,
+      newPath: map['newPath'] as String,
+    );
+  }
+}
+
 /// 获取已注册工具请求
 class GetRegisteredToolsRequest {
   final String employeeId;
@@ -597,6 +702,102 @@ class GetMessagesReadStatusRequest {
     return GetMessagesReadStatusRequest(
       employeeId: map['employeeId'] as String,
       deviceId: map['deviceId'] as String,
+    );
+  }
+}
+
+/// 设置技能配置请求
+///
+/// 同步技能实体列表到远程 Agent，更新持久化并重载运行时
+class SetSkillsRequest {
+  final String employeeId;
+
+  /// 技能实体 Map 列表（AiEmployeeSkillEntity.toMap()）
+  final List<Map<String, dynamic>> skills;
+
+  const SetSkillsRequest({
+    required this.employeeId,
+    required this.skills,
+  });
+
+  Map<String, dynamic> toMap() {
+    return {
+      'employeeId': employeeId,
+      'skills': skills,
+    };
+  }
+
+  factory SetSkillsRequest.fromMap(Map<String, dynamic> map) {
+    return SetSkillsRequest(
+      employeeId: map['employeeId'] as String,
+      skills: (map['skills'] as List)
+          .map((s) => s as Map<String, dynamic>)
+          .toList(),
+    );
+  }
+}
+
+/// 获取技能配置请求
+class AgentGetSkillsRequest {
+  final String employeeId;
+
+  const AgentGetSkillsRequest({required this.employeeId});
+
+  Map<String, dynamic> toMap() {
+    return {'employeeId': employeeId};
+  }
+
+  factory AgentGetSkillsRequest.fromMap(Map<String, dynamic> map) {
+    return AgentGetSkillsRequest(
+      employeeId: map['employeeId'] as String,
+    );
+  }
+}
+
+/// 设置 MCP 配置请求
+///
+/// 同步 MCP 服务器配置列表到远程 Agent
+class SetMcpConfigsRequest {
+  final String employeeId;
+
+  /// MCP 服务器配置 Map 列表（McpServerConfig.toMap()）
+  final List<Map<String, dynamic>> mcpConfigs;
+
+  const SetMcpConfigsRequest({
+    required this.employeeId,
+    required this.mcpConfigs,
+  });
+
+  Map<String, dynamic> toMap() {
+    return {
+      'employeeId': employeeId,
+      'mcpConfigs': mcpConfigs,
+    };
+  }
+
+  factory SetMcpConfigsRequest.fromMap(Map<String, dynamic> map) {
+    return SetMcpConfigsRequest(
+      employeeId: map['employeeId'] as String,
+      mcpConfigs: (map['mcpConfigs'] as List)
+          .map((c) => c as Map<String, dynamic>)
+          .toList(),
+    );
+  }
+}
+
+/// 获取 MCP 配置请求
+class GetMcpConfigsRequest {
+  final String employeeId;
+
+  const GetMcpConfigsRequest({required this.employeeId});
+
+  Map<String, dynamic> toMap() {
+    return {'employeeId': employeeId};
+  }
+
+  factory GetMcpConfigsRequest.fromMap(Map<String, dynamic> map) {
+    return GetMcpConfigsRequest(
+      employeeId: map['employeeId'] as String,
     );
   }
 }

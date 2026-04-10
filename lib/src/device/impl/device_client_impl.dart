@@ -574,6 +574,36 @@ class DeviceClientImpl implements DeviceClient {
       return {'providerConfig': agent.getProviderConfig()?.toMap()};
     });
 
+    // 技能管理
+    _rpcServer!.register(AgentRpcConfig.methodSetSkills, (params) async {
+      final request = SetSkillsRequest.fromMap(params);
+      final agent = await _ensureLocalAgentForRpc(request.employeeId);
+      await agent.setSkills(request.skills);
+      return {};
+    });
+
+    _rpcServer!.register(AgentRpcConfig.methodGetSkills, (params) async {
+      final request = AgentGetSkillsRequest.fromMap(params);
+      // 从数据库查询完整的技能实体列表
+      final store = SkillStore();
+      final entities = await store.findByEmployeeWithDeviceId(null, request.employeeId);
+      return {'skills': entities.map((e) => e.toMap()).toList()};
+    });
+
+    // MCP 管理
+    _rpcServer!.register(AgentRpcConfig.methodSetMcpConfigs, (params) async {
+      final request = SetMcpConfigsRequest.fromMap(params);
+      final agent = await _ensureLocalAgentForRpc(request.employeeId);
+      await agent.setMcpConfigs(request.mcpConfigs);
+      return {};
+    });
+
+    _rpcServer!.register(AgentRpcConfig.methodGetMcpConfigs, (params) async {
+      final request = GetMcpConfigsRequest.fromMap(params);
+      final agent = await _ensureLocalAgentForRpc(request.employeeId);
+      return {'mcpConfigs': agent.getMcpConfigs()};
+    });
+
     // 项目管理
     _rpcServer!.register(AgentRpcConfig.methodSetProject, (params) async {
       final request = SetProjectRequest.fromMap(params);
@@ -617,6 +647,134 @@ class DeviceClientImpl implements DeviceClient {
         return {'exists': file, 'isDirectory': false};
       } catch (e) {
         return {'exists': false, 'error': e.toString()};
+      }
+    });
+
+    // 列出目录内容
+    _rpcServer!.register(AgentRpcConfig.methodListDirectory, (params) async {
+      final request = ListDirectoryRequest.fromMap(params);
+      final dir = Directory(request.path);
+      if (!await dir.exists()) {
+        return {'items': [], 'error': '目录不存在'};
+      }
+      final items = <Map<String, dynamic>>[];
+      try {
+        await for (final entity in dir.list(recursive: false, followLinks: false)) {
+          try {
+            final stat = await entity.stat();
+            final entityPath = entity.path;
+            final entityName = entityPath.split(Platform.pathSeparator).last;
+            if (entityName.isEmpty) continue;
+            items.add({
+              'name': entityName,
+              'path': entityPath,
+              'isDirectory': entity is Directory,
+              'size': stat.size,
+              'modified': stat.modified.toIso8601String(),
+            });
+          } catch (_) {
+            continue;
+          }
+        }
+        items.sort((a, b) {
+          final aDir = a['isDirectory'] as bool;
+          final bDir = b['isDirectory'] as bool;
+          if (aDir && !bDir) return -1;
+          if (!aDir && bDir) return 1;
+          return (a['name'] as String).toLowerCase().compareTo((b['name'] as String).toLowerCase());
+        });
+        return {'items': items};
+      } catch (e) {
+        return {'items': [], 'error': e.toString()};
+      }
+    });
+
+    // 获取文件/目录信息
+    _rpcServer!.register(AgentRpcConfig.methodGetFileInfo, (params) async {
+      final request = GetFileInfoRequest.fromMap(params);
+      final path = request.path;
+      try {
+        final file = File(path);
+        if (await file.exists()) {
+          final stat = await file.stat();
+          final name = path.split(Platform.pathSeparator).last;
+          return {
+            'exists': true,
+            'name': name,
+            'path': path,
+            'isDirectory': false,
+            'size': stat.size,
+            'modified': stat.modified.toIso8601String(),
+          };
+        }
+        final dir = Directory(path);
+        if (await dir.exists()) {
+          final stat = await dir.stat();
+          final name = path.split(Platform.pathSeparator).last;
+          return {
+            'exists': true,
+            'name': name,
+            'path': path,
+            'isDirectory': true,
+            'size': stat.size,
+            'modified': stat.modified.toIso8601String(),
+          };
+        }
+        return {'exists': false};
+      } catch (e) {
+        return {'exists': false, 'error': e.toString()};
+      }
+    });
+
+    // 创建目录
+    _rpcServer!.register(AgentRpcConfig.methodCreateDirectory, (params) async {
+      final request = CreateDirectoryRequest.fromMap(params);
+      try {
+        await Directory(request.path).create(recursive: true);
+        return {'success': true};
+      } catch (e) {
+        return {'success': false, 'error': e.toString()};
+      }
+    });
+
+    // 删除文件/目录
+    _rpcServer!.register(AgentRpcConfig.methodDeleteFile, (params) async {
+      final request = DeleteFileRequest.fromMap(params);
+      final path = request.path;
+      try {
+        final file = File(path);
+        if (await file.exists()) {
+          await file.delete();
+          return {'success': true};
+        }
+        final dir = Directory(path);
+        if (await dir.exists()) {
+          await dir.delete(recursive: true);
+          return {'success': true};
+        }
+        return {'success': false, 'error': '路径不存在'};
+      } catch (e) {
+        return {'success': false, 'error': e.toString()};
+      }
+    });
+
+    // 重命名/移动文件
+    _rpcServer!.register(AgentRpcConfig.methodRenameFile, (params) async {
+      final request = RenameFileRequest.fromMap(params);
+      try {
+        final entity = File(request.oldPath);
+        if (await entity.exists()) {
+          await entity.rename(request.newPath);
+          return {'success': true};
+        }
+        final dir = Directory(request.oldPath);
+        if (await dir.exists()) {
+          await dir.rename(request.newPath);
+          return {'success': true};
+        }
+        return {'success': false, 'error': '路径不存在'};
+      } catch (e) {
+        return {'success': false, 'error': e.toString()};
       }
     });
 

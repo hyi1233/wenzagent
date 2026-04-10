@@ -790,7 +790,23 @@ class CachedAgentProxy {
         print('[CachedAgentProxy] 同步远程项目 UUID 失败: $e');
       }
 
-      // 4. 如果正在等待权限，查询权限请求
+      // 4. 同步远程技能配置
+      try {
+        final skills = await _proxy.getSkillsConfigAsync();
+        print('[CachedAgentProxy] 远程技能配置: ${skills.length} 条');
+      } catch (e) {
+        print('[CachedAgentProxy] 同步远程技能配置失败: $e');
+      }
+
+      // 5. 同步远程 MCP 配置
+      try {
+        final mcpConfigs = await _proxy.getMcpConfigsAsync();
+        print('[CachedAgentProxy] 远程 MCP 配置: ${mcpConfigs.length} 条');
+      } catch (e) {
+        print('[CachedAgentProxy] 同步远程 MCP 配置失败: $e');
+      }
+
+      // 6. 如果正在等待权限，查询权限请求
       if (stateSnapshot.status == AgentStatus.waitingPermission) {
         print('[CachedAgentProxy] 检测到远程 Agent 正在等待权限，查询权限请求...');
         
@@ -1299,6 +1315,34 @@ class CachedAgentProxy {
   /// 获取Provider配置（异步版本，支持远程 RPC）
   Future<ProviderConfig?> getProviderConfigAsync() =>
       _proxy.getProviderConfigAsync();
+
+  // ===== 技能管理 =====
+
+  /// 设置技能配置
+  Future<void> setSkills(List<Map<String, dynamic>> skillMaps) =>
+      _proxy.setSkills(skillMaps);
+
+  /// 获取技能配置
+  List<Map<String, dynamic>> getSkillsConfig() =>
+      _proxy.getSkillsConfig();
+
+  /// 获取技能配置（异步版本，支持远程 RPC）
+  Future<List<Map<String, dynamic>>> getSkillsConfigAsync() =>
+      _proxy.getSkillsConfigAsync();
+
+  // ===== MCP 管理 =====
+
+  /// 设置 MCP 服务器配置
+  Future<void> setMcpConfigs(List<Map<String, dynamic>> mcpConfigMaps) =>
+      _proxy.setMcpConfigs(mcpConfigMaps);
+
+  /// 获取 MCP 服务器配置
+  List<Map<String, dynamic>> getMcpConfigs() =>
+      _proxy.getMcpConfigs();
+
+  /// 获取 MCP 服务器配置（异步版本，支持远程 RPC）
+  Future<List<Map<String, dynamic>>> getMcpConfigsAsync() =>
+      _proxy.getMcpConfigsAsync();
   
   /// 设置项目
   Future<void> setProject(ProjectData? projectData) =>
@@ -1314,7 +1358,27 @@ class CachedAgentProxy {
   /// 检查路径是否存在于目标设备上（异步版本，支持远程 RPC）
   Future<Map<String, dynamic>> checkPathExists(String path) =>
       _proxy.checkPathExists(path);
-  
+
+  /// 列出目录内容
+  Future<Map<String, dynamic>> listDirectory(String path) =>
+      _proxy.listDirectory(path);
+
+  /// 获取文件/目录信息
+  Future<Map<String, dynamic>> getFileInfo(String path) =>
+      _proxy.getFileInfo(path);
+
+  /// 创建目录
+  Future<Map<String, dynamic>> createDirectory(String path) =>
+      _proxy.createDirectory(path);
+
+  /// 删除文件/目录
+  Future<Map<String, dynamic>> deleteFile(String path) =>
+      _proxy.deleteFile(path);
+
+  /// 重命名/移动文件
+  Future<Map<String, dynamic>> renameFile(String oldPath, String newPath) =>
+      _proxy.renameFile(oldPath, newPath);
+
   /// 注册工具
   void registerTool(AgentTool tool) => _proxy.registerTool(tool);
   
