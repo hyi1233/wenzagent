@@ -344,9 +344,16 @@ class LangChainChatAdapter implements IChatAdapter {
         lastToolCallsSignature = currentSignature;
 
         // 逐个执行工具调用
+        int executedToolIndex = 0;
         for (final toolCall in toolCalls) {
           // 检查取消
           if (cancellationToken?.isCancelled == true) {
+            // 为未执行的 tool_call 补充 cancelled 的 tool_result，
+            // 避免 Anthropic API 因 dangling tool_use 报错
+            _fillCancelledToolResults(
+              toolCalls: toolCalls,
+              startIndex: executedToolIndex,
+            );
             yield StreamResponse.error('Cancelled');
             return;
           }
@@ -405,6 +412,7 @@ class LangChainChatAdapter implements IChatAdapter {
                 'isError': true,
               },
             });
+            executedToolIndex++;
             continue;
           }
 
@@ -449,6 +457,7 @@ class LangChainChatAdapter implements IChatAdapter {
                       : 'user',
                 },
               });
+              executedToolIndex++;
               continue;
             }
           }
@@ -466,6 +475,11 @@ class LangChainChatAdapter implements IChatAdapter {
             final executor = CancellableToolExecutor(tool, token);
             result = await executor.execute(toolArguments);
           } on ToolCancelledException {
+            // 为当前及后续未完成的 tool_call 补充 cancelled 的 tool_result
+            _fillCancelledToolResults(
+              toolCalls: toolCalls,
+              startIndex: executedToolIndex,
+            );
             yield StreamResponse.error('Cancelled');
             return;
           } catch (e) {
@@ -515,6 +529,9 @@ class LangChainChatAdapter implements IChatAdapter {
                 '\n⚠️ 工具 $toolName 执行失败: ${result.content.split('\n').first}';
             yield StreamResponse.chunk(userHint);
           }
+
+          // 标记当前 tool_call 已完成（result 已写入历史）
+          executedToolIndex++;
         }
 
         // 所有工具执行完毕，继续循环让 LLM 处理结果
@@ -700,6 +717,38 @@ class LangChainChatAdapter implements IChatAdapter {
   }
 
   // ===== 内部方法 =====
+
+  /// 为被取消的 tool_call 补充 cancelled 的 tool_result
+  ///
+  /// 当工具调用循环被中断（用户取消、流停止等）时，
+  /// 部分 tool_call 可能已经发出但 tool_result 还未写入历史。
+  /// Anthropic API 要求 tool_use 后必须紧跟 tool_result，
+  /// 否则会报 `tool call result does not follow tool call` 错误。
+  /// 此方法为 [startIndex] 开始的所有未完成 tool_call 补充取消结果。
+  void _fillCancelledToolResults({
+    required List<AIChatMessageToolCall> toolCalls,
+    required int startIndex,
+  }) {
+    if (startIndex >= toolCalls.length) return;
+
+    for (var i = startIndex; i < toolCalls.length; i++) {
+      final tc = toolCalls[i];
+      final cancelledContent = '工具调用已取消: ${tc.name}';
+      memoryManager.addMessage(
+        currentEmployeeUuid!,
+        deviceId ?? 'default',
+        ErrorToolChatMessage(
+          toolCallId: tc.id,
+          content: cancelledContent,
+          isError: true,
+        ),
+        metadata: {'toolName': tc.name, 'cancelled': true},
+      );
+      print(
+        '[LangChainChatAdapter] 补充取消的 tool_result: ${tc.name} (id=${tc.id})',
+      );
+    }
+  }
 
   /// 修复流式累积导致的 toolCall.arguments 丢失问题
   ///

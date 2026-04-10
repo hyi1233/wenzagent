@@ -163,15 +163,72 @@ class AnthropicErrorAwareChatModel extends BaseChatModel<ChatAnthropicOptions> {
   }
 
   /// 将 ChatMessage 列表映射为 Anthropic API 消息（支持 isError 传播）
+  ///
+  /// 包含消息序列合法性校验：
+  /// - 过滤掉没有前置 tool_use 的孤立 tool_result 消息
+  /// - 处理 dangling tool_use（有 tool_use 但没有后续 tool_result）：
+  ///   注入 synthetic cancelled tool_result，而非删除 tool_use，
+  ///   以兼容有状态代理（如 minimaxi.com）的服务端缓存
   List<a.Message> _mapMessages(final List<ChatMessage> messages) {
     final List<a.Message> result = [];
     final List<ToolChatMessage> consecutiveToolMessages = [];
 
+    /// 跟踪前一条 assistant 消息中的 tool_use IDs，
+    /// 用于校验 tool_result 是否有对应的 tool_use
+    Set<String> pendingToolUseIds = {};
+
+    /// 记录未匹配的 tool_use IDs 及其名称（用于注入 synthetic tool_result）
+    List<({String id, String name})> danglingToolUses = [];
+
     void flushToolMessages() {
-      if (consecutiveToolMessages.isNotEmpty) {
-        result.add(_mapToolMessages(consecutiveToolMessages));
-        consecutiveToolMessages.clear();
+      if (consecutiveToolMessages.isEmpty) return;
+
+      // 过滤掉没有前置 tool_use 的孤立 tool_result
+      final validToolMessages = consecutiveToolMessages
+          .where((msg) => pendingToolUseIds.contains(msg.toolCallId))
+          .toList();
+
+      if (validToolMessages.isNotEmpty) {
+        result.add(_mapToolMessages(validToolMessages));
+      } else if (consecutiveToolMessages.isNotEmpty) {
+        // 所有 tool_result 都是孤立的，打印警告但不中断
+        print(
+          '[AnthropicChatModel] WARNING: dropped ${consecutiveToolMessages.length} '
+          'orphaned tool_result(s) (no matching tool_use found)',
+        );
       }
+
+      consecutiveToolMessages.clear();
+    }
+
+    /// 为 dangling tool_use 注入 synthetic cancelled tool_result
+    ///
+    /// 保留原始 assistant 消息不变，在 user 消息之前插入
+    /// tool_result(is_error=true) 使消息序列对 Anthropic API 合法。
+    /// 同时兼容有状态代理（代理会记住上次的 tool_use 需要 tool_result）。
+    void injectSyntheticCancelledResults() {
+      if (danglingToolUses.isEmpty) return;
+
+      final blocks = danglingToolUses.map((tu) => a.Block.toolResult(
+        toolUseId: tu.id,
+        content: a.ToolResultBlockContent.text(
+          '工具调用已取消（会话中断未完成）: ${tu.name}',
+        ),
+        isError: true,
+      )).toList();
+
+      result.add(a.Message(
+        role: a.MessageRole.user,
+        content: a.MessageContent.blocks(blocks),
+      ));
+
+      print(
+        '[AnthropicChatModel] WARNING: injected ${danglingToolUses.length} '
+        'synthetic cancelled tool_result(s) for dangling tool_use(s): '
+        '${danglingToolUses.map((tu) => tu.name).join(', ')}',
+      );
+
+      danglingToolUses.clear();
     }
 
     for (final message in messages) {
@@ -180,10 +237,31 @@ class AnthropicErrorAwareChatModel extends BaseChatModel<ChatAnthropicOptions> {
           flushToolMessages();
           continue;
         case final HumanChatMessage msg:
-          flushToolMessages();
+          // 👇 关键：遇到新的 user 消息前，检查是否有 dangling tool_use
+          if (pendingToolUseIds.isNotEmpty) {
+            // 计算 dangling 的 tool_use：在 pendingToolUseIds 中但不在已处理的 tool_result 中
+            final matchedIds = consecutiveToolMessages
+                .where((m) => pendingToolUseIds.contains(m.toolCallId))
+                .map((m) => m.toolCallId)
+                .toSet();
+            final unmatchedIds = pendingToolUseIds.difference(matchedIds);
+            if (unmatchedIds.isNotEmpty) {
+              // 从已映射的消息中提取 tool_use 的 name 信息
+              danglingToolUses = _extractDanglingToolUses(
+                result, unmatchedIds,
+              );
+              injectSyntheticCancelledResults();
+            }
+            flushToolMessages();
+            pendingToolUseIds.clear();
+          } else {
+            flushToolMessages();
+          }
           result.add(_mapHumanMessage(msg));
         case final AIChatMessage msg:
           flushToolMessages();
+          // 记录当前 AI 消息中的 tool_use IDs
+          pendingToolUseIds = msg.toolCalls.map((tc) => tc.id).toSet();
           result.add(_mapAIMessage(msg));
         case final ToolChatMessage msg:
           consecutiveToolMessages.add(msg);
@@ -193,7 +271,53 @@ class AnthropicErrorAwareChatModel extends BaseChatModel<ChatAnthropicOptions> {
     }
 
     flushToolMessages();
+
+    // 消息列表末尾如果有 dangling tool_use（无后续 tool_result），注入 synthetic result
+    if (pendingToolUseIds.isNotEmpty && result.isNotEmpty) {
+      final lastAssistant = result.lastWhere(
+        (m) => m.role == a.MessageRole.assistant,
+        orElse: () => result.last,
+      );
+      if (lastAssistant.role == a.MessageRole.assistant) {
+        final unmatchedIds = pendingToolUseIds;
+        danglingToolUses = _extractDanglingToolUses(result, unmatchedIds);
+        injectSyntheticCancelledResults();
+      }
+    }
+
     return result;
+  }
+
+  /// 从已映射的 result 中提取 dangling tool_use 的 id 和 name
+  static List<({String id, String name})> _extractDanglingToolUses(
+    List<a.Message> result,
+    Set<String> danglingIds,
+  ) {
+    final dangling = <({String id, String name})>[];
+    // 从最后一条 assistant 消息中查找 tool_use blocks
+    for (var i = result.length - 1; i >= 0; i--) {
+      if (result[i].role == a.MessageRole.assistant) {
+        final content = result[i].content;
+        if (content is a.MessageContentBlocks) {
+          for (final block in content.value) {
+            if (block is a.ToolUseBlock && danglingIds.contains(block.id)) {
+              dangling.add((id: block.id, name: block.name));
+            }
+          }
+        }
+        break;
+      }
+    }
+    // 如果在 result 中没找到（可能被其他逻辑处理过），用 id 作为 name 回退
+    if (dangling.length < danglingIds.length) {
+      final foundIds = dangling.map((d) => d.id).toSet();
+      for (final id in danglingIds) {
+        if (!foundIds.contains(id)) {
+          dangling.add((id: id, name: id));
+        }
+      }
+    }
+    return dangling;
   }
 
   /// 映射工具结果消息（核心差异：支持 ErrorToolChatMessage 的 isError 传播）
@@ -271,19 +395,29 @@ class AnthropicErrorAwareChatModel extends BaseChatModel<ChatAnthropicOptions> {
         content: a.MessageContent.text(msg.content),
       );
     } else {
+      // 同时有 content（文本）和 toolCalls 时，需要生成 text block + tool_use blocks
+      // Anthropic API 要求 assistant 消息中 content blocks 按顺序排列
+      final blocks = <a.Block>[];
+
+      // 如果有文本内容，先添加 text block
+      if (msg.content.isNotEmpty) {
+        blocks.add(a.Block.text(text: msg.content));
+      }
+
+      // 添加 tool_use blocks
+      blocks.addAll(
+        msg.toolCalls.map(
+          (final toolCall) => a.Block.toolUse(
+            id: toolCall.id,
+            name: toolCall.name,
+            input: toolCall.arguments,
+          ),
+        ),
+      );
+
       return a.Message(
         role: a.MessageRole.assistant,
-        content: a.MessageContent.blocks(
-          msg.toolCalls
-              .map(
-                (final toolCall) => a.Block.toolUse(
-                  id: toolCall.id,
-                  name: toolCall.name,
-                  input: toolCall.arguments,
-                ),
-              )
-              .toList(growable: false),
-        ),
+        content: a.MessageContent.blocks(blocks),
       );
     }
   }
