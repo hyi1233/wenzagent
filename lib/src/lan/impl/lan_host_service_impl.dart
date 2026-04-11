@@ -11,6 +11,7 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 import '../../entity/lan_client.dart';
 import '../../entity/lan_device_info.dart';
 import '../../entity/lan_message.dart';
+import '../entity/host_info.dart';
 import 'lan_file_cache_service.dart';
 import '../lan_host_service.dart';
 
@@ -168,13 +169,13 @@ class LanHostServiceImpl implements LanHostService {
   }
 
   @override
-  Future<Map<String, dynamic>> getHostInfo() async {
-    return {
-      'isRunning': _isRunning,
-      'ip': _localIp,
-      'port': _port,
-      'clients': _clients.map((c) => c.toJson()).toList(),
-    };
+  Future<HostInfo> getHostInfo() async {
+    return HostInfo(
+      isRunning: _isRunning,
+      ip: _localIp,
+      port: _port,
+      clients: _clients.map((c) => c.toJson()).toList(),
+    );
   }
 
   // ==================== Private ====================

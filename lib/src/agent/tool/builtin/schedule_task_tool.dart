@@ -16,14 +16,14 @@ class ScheduleTaskTool extends AgentTool {
   /// 参数: {name, message, schedule}
   /// 返回: {taskId, name, schedule, nextExecutionAt}
   Future<Map<String, dynamic>> Function(Map<String, dynamic> task)?
-      onCreateTask;
+  onCreateTask;
 
   /// 取消任务回调
   Future<bool> Function(String taskId)? onCancelTask;
 
   /// 查询任务回调
-  Future<List<Map<String, dynamic>>> Function(
-      {String? employeeId})? onListTasks;
+  Future<List<Map<String, dynamic>>> Function({String? employeeId})?
+  onListTasks;
 
   @override
   String get name => 'schedule_task';
@@ -53,71 +53,70 @@ class ScheduleTaskTool extends AgentTool {
 
   @override
   Map<String, dynamic> get inputJsonSchema => {
-        'type': 'object',
-        'properties': {
-          'action': {
-            'type': 'string',
-            'enum': ['create', 'list', 'cancel', 'delete'],
-            'description':
-                'Action to perform: create a new task, list existing tasks, '
-                'cancel/delete a task (both remove the task permanently). '
-                'Use "delete" when the user wants to remove/stop a scheduled task.',
-          },
-          'message': {
-            'type': 'string',
-            'description':
-                'The task instruction to be executed when the schedule triggers. '
-                'This is NOT executed now — it will be sent to you as a message '
-                'at the future scheduled time. Write it as a clear, self-contained '
-                'instruction that your future self can understand and act on, '
-                'including which tools to use and what output to produce.',
-          },
-          'schedule': {
-            'type': 'string',
-            'description':
-                'Schedule expression.\n'
-                '- Cron: "0 9 * * 1-5" (weekdays 9am), "*/30 * * * *" (every 30 min)\n'
-                '- ISO 8601 duration: "PT1H" (every hour), "P1D" (every day), "PT30M" (every 30 min)',
-          },
-          'name': {
-            'type': 'string',
-            'description':
-                'A short name for the task, e.g. "Daily work report".',
-          },
-          'taskId': {
-            'type': 'string',
-            'description': 'Task ID (required for action=cancel or action=delete).',
-          },
-          'repeatType': {
-            'type': 'string',
-            'enum': ['once', 'recurring'],
-            'description':
-                'Execution strategy (only for action=create). '
-                'IMPORTANT: You MUST always explicitly set this field based on user intent. '
-                '"once" = execute only once then auto-disable. '
-                '"recurring" = repeat on schedule indefinitely. '
-                'If the user says "every X", "periodically", "daily", "weekly", '
-                'or any recurring pattern, use "recurring". '
-                'If the user wants a one-time reminder or action, use "once".',
-          },
-          'taskType': {
-            'type': 'string',
-            'enum': ['reminder', 'task'],
-            'description':
-                'Task type (only for action=create). '
-                '"reminder" = reminder notification. The message you write is the '
-                'final reminder content — it will be directly delivered to the user '
-                'as an assistant message when triggered. No LLM API call, no tool execution. '
-                '"task" = autonomous execution task. When triggered, your instructions '
-                '(the message) will be injected into the main agent via a queue as a '
-                'system message. The agent will then use its available tools to execute '
-                'the task. Write detailed instructions for your future self. '
-                'Default: "reminder". Use "task" ONLY when the scheduled action '
-                'requires tool usage (e.g. file operations, API calls, code execution).',
-          },
-        },
-        'required': ['action'],
-      };
+    'type': 'object',
+    'properties': {
+      'action': {
+        'type': 'string',
+        'enum': ['create', 'list', 'cancel', 'delete'],
+        'description':
+            'Action to perform: create a new task, list existing tasks, '
+            'cancel/delete a task (both remove the task permanently). '
+            'Use "delete" when the user wants to remove/stop a scheduled task.',
+      },
+      'message': {
+        'type': 'string',
+        'description':
+            'The task instruction to be executed when the schedule triggers. '
+            'This is NOT executed now — it will be sent to you as a message '
+            'at the future scheduled time. Write it as a clear, self-contained '
+            'instruction that your future self can understand and act on, '
+            'including which tools to use and what output to produce.',
+      },
+      'schedule': {
+        'type': 'string',
+        'description':
+            'Schedule expression.\n'
+            '- Cron: "0 9 * * 1-5" (weekdays 9am), "*/30 * * * *" (every 30 min)\n'
+            '- ISO 8601 duration: "PT1H" (every hour), "P1D" (every day), "PT30M" (every 30 min)',
+      },
+      'name': {
+        'type': 'string',
+        'description': 'A short name for the task, e.g. "Daily work report".',
+      },
+      'taskId': {
+        'type': 'string',
+        'description': 'Task ID (required for action=cancel or action=delete).',
+      },
+      'repeatType': {
+        'type': 'string',
+        'enum': ['once', 'recurring'],
+        'description':
+            'Execution strategy (only for action=create). '
+            'IMPORTANT: You MUST always explicitly set this field based on user intent. '
+            '"once" = execute only once then auto-disable. '
+            '"recurring" = repeat on schedule indefinitely. '
+            'If the user says "every X", "periodically", "daily", "weekly", '
+            'or any recurring pattern, use "recurring". '
+            'If the user wants a one-time reminder or action, use "once".',
+      },
+      'taskType': {
+        'type': 'string',
+        'enum': ['reminder', 'task'],
+        'description':
+            'Task type (only for action=create). '
+            '"reminder" = reminder notification. The message you write is the '
+            'final reminder content — it will be directly delivered to the user '
+            'as an assistant message when triggered. No LLM API call, no tool execution. '
+            '"task" = autonomous execution task. When triggered, your instructions '
+            '(the message) will be injected into the main agent via a queue as a '
+            'system message. The agent will then use its available tools to execute '
+            'the task. Write detailed instructions for your future self. '
+            'Default: "reminder". Use "task" ONLY when the scheduled action '
+            'requires tool usage (e.g. file operations, API calls, code execution).',
+      },
+    },
+    'required': ['action'],
+  };
 
   @override
   bool get requiresPermission => false;
@@ -126,13 +125,17 @@ class ScheduleTaskTool extends AgentTool {
   Future<ToolResult> execute(Map<String, dynamic> arguments) async {
     final action = arguments['action'] as String?;
     print('[ScheduleTaskTool] execute called, arguments: $arguments');
-    print('[ScheduleTaskTool] action=$action, '
-        'onCreateTask=${onCreateTask != null}, '
-        'onCancelTask=${onCancelTask != null}, '
-        'onListTasks=${onListTasks != null}');
+    print(
+      '[ScheduleTaskTool] action=$action, '
+      'onCreateTask=${onCreateTask != null}, '
+      'onCancelTask=${onCancelTask != null}, '
+      'onListTasks=${onListTasks != null}',
+    );
 
     if (action == null || action.isEmpty) {
-      return ToolResult.error('action is required. Use "create", "list", "cancel", or "delete".');
+      return ToolResult.error(
+        'action is required. Use "create", "list", "cancel", or "delete".',
+      );
     }
 
     switch (action) {
@@ -145,7 +148,8 @@ class ScheduleTaskTool extends AgentTool {
         return await _cancel(arguments);
       default:
         return ToolResult.error(
-            'Unknown action: $action. Use "create", "list", "cancel", or "delete".');
+          'Unknown action: $action. Use "create", "list", "cancel", or "delete".',
+        );
     }
   }
 
@@ -155,9 +159,15 @@ class ScheduleTaskTool extends AgentTool {
     final name = arguments['name'] as String?;
     final taskType = arguments['taskType'] as String? ?? 'reminder';
 
-    print('[ScheduleTaskTool] _create: name=$name, '
-        'message=${message != null ? "${message.length > 50 ? "${message.substring(0, 50)}..." : message}" : null}, '
-        'schedule=$schedule, taskType=$taskType');
+    print(
+      '[ScheduleTaskTool] _create: name=$name, '
+      'message=${message != null
+          ? message.length > 50
+                ? "${message.substring(0, 50)}..."
+                : message
+          : null}, '
+      'schedule=$schedule, taskType=$taskType',
+    );
 
     if (message == null || message.isEmpty) {
       print('[ScheduleTaskTool] _create failed: message is empty');
@@ -169,10 +179,13 @@ class ScheduleTaskTool extends AgentTool {
       return ToolResult.error('schedule is required');
     }
     if (onCreateTask == null) {
-      print('[ScheduleTaskTool] _create failed: onCreateTask callback is NOT injected! '
-          'ScheduledTaskManager may not be wired up.');
+      print(
+        '[ScheduleTaskTool] _create failed: onCreateTask callback is NOT injected! '
+        'ScheduledTaskManager may not be wired up.',
+      );
       return ToolResult.error(
-          'Scheduled task service is not available (onCreateTask is null)');
+        'Scheduled task service is not available (onCreateTask is null)',
+      );
     }
 
     try {
@@ -212,9 +225,10 @@ class ScheduleTaskTool extends AgentTool {
       final buffer = StringBuffer('📋 Scheduled tasks:\n');
       for (final t in tasks) {
         buffer.writeln(
-            '  • [${t['taskId']}] ${t['name']} | '
-            '${t['schedule']} | next: ${t['nextExecutionAt'] ?? 'N/A'} | '
-            'enabled: ${t['enabled']}');
+          '  • [${t['taskId']}] ${t['name']} | '
+          '${t['schedule']} | next: ${t['nextExecutionAt'] ?? 'N/A'} | '
+          'enabled: ${t['enabled']}',
+        );
       }
       return ToolResult.success(buffer.toString());
     } catch (e) {

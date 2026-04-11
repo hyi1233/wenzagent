@@ -183,7 +183,7 @@ class ToolCallPersistenceTest {
     // 打印所有消息
     for (var i = 0; i < messages.length; i++) {
       final msg = messages[i];
-      final role = msg.role ?? 'unknown';
+      final role = msg.role;
       final content = msg.content ?? '';
       final toolCalls = msg.toolCalls;
       final toolCallId = msg.toolCallId;

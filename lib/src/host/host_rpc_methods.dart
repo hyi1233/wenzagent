@@ -192,9 +192,49 @@ void registerHostRpcMethods({
     for (final employee in employees) {
       final existing = await employeeManager.getEmployee(employee.uuid);
       if (existing == null) {
-        await employeeManager.createEmployee(employee);
+        // 本地不存在 → 直接保存，保留原始 deviceId 和时间戳
+        await employeeManager.saveEmployee(employee);
       } else {
-        await employeeManager.updateEmployee(employee);
+        // 合并：deleteTime 独立比较，数据按 updateTime 合并
+        final localDT = existing.deletedTime;
+        final remoteDT = employee.deletedTime;
+        DateTime? mergedDeleteTime;
+        int mergedDeleted;
+
+        if (localDT == null && remoteDT == null) {
+          mergedDeleteTime = null;
+          mergedDeleted = 0;
+        } else if (localDT == null) {
+          // 远程有删除记录 → 保留远程删除状态
+          mergedDeleteTime = remoteDT;
+          mergedDeleted = employee.deleted;
+        } else if (remoteDT == null) {
+          // 本地有删除记录 → 保留本地删除状态
+          mergedDeleteTime = localDT;
+          mergedDeleted = existing.deleted;
+        } else {
+          // 双方都有删除记录 → 取 deleteTime 更大的决定 deleted
+          if (localDT.isAfter(remoteDT)) {
+            mergedDeleteTime = localDT;
+            mergedDeleted = existing.deleted;
+          } else {
+            mergedDeleteTime = remoteDT;
+            mergedDeleted = employee.deleted;
+          }
+        }
+
+        final shouldUpdateData =
+            employee.updateTime.isAfter(existing.updateTime);
+        final shouldUpdateDelete =
+            mergedDeleteTime != localDT || mergedDeleted != existing.deleted;
+
+        if (shouldUpdateData || shouldUpdateDelete) {
+          final base = shouldUpdateData ? employee : existing;
+          await employeeManager.updateEmployee(base.copyWith(
+            deleted: mergedDeleted,
+            deletedTime: mergedDeleteTime,
+          ));
+        }
       }
     }
     return {'count': employees.length};
@@ -209,8 +249,49 @@ void registerHostRpcMethods({
 
     for (final session in sessions) {
       final existing = await sessionManager.getSession(session.employeeId);
-      if (existing == null || session.updateTime.isAfter(existing.updateTime)) {
-        await sessionManager.save(session);
+      if (existing == null) {
+        // 本地不存在 → 远程未删除的直接创建
+        if (session.deleted != 1) {
+          await sessionManager.save(session);
+        }
+      } else {
+        // 合并：deleteTime + deleted 独立比较，数据按 updateTime 合并
+        final localDT = existing.deleteTime;
+        final remoteDT = session.deleteTime;
+        DateTime? mergedDeleteTime;
+        int mergedDeleted;
+
+        if (localDT == null && remoteDT == null) {
+          mergedDeleteTime = null;
+          mergedDeleted = 0;
+        } else if (localDT == null) {
+          mergedDeleteTime = remoteDT;
+          mergedDeleted = session.deleted;
+        } else if (remoteDT == null) {
+          mergedDeleteTime = localDT;
+          mergedDeleted = existing.deleted;
+        } else {
+          if (localDT.isAfter(remoteDT)) {
+            mergedDeleteTime = localDT;
+            mergedDeleted = existing.deleted;
+          } else {
+            mergedDeleteTime = remoteDT;
+            mergedDeleted = session.deleted;
+          }
+        }
+
+        final shouldUpdateData =
+            session.updateTime.isAfter(existing.updateTime);
+        final shouldUpdateDelete =
+            mergedDeleteTime != localDT || mergedDeleted != existing.deleted;
+
+        if (shouldUpdateData || shouldUpdateDelete) {
+          final base = shouldUpdateData ? session : existing;
+          await sessionManager.save(base.copyWith(
+            deleted: mergedDeleted,
+            deleteTime: mergedDeleteTime,
+          ));
+        }
       }
     }
     return {'count': sessions.length};

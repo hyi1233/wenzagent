@@ -58,7 +58,7 @@ class LangChainChatAdapter implements IChatAdapter {
   ToolPermissionManager? _permissionManager;
 
   /// 工具事件回调
-  void Function(Map<String, dynamic> event)? _toolEventCallback;
+  void Function(ToolEvent event)? _toolEventCallback;
 
   /// 当前正在执行的工具（用于取消）
   AgentTool? _currentTool;
@@ -382,14 +382,11 @@ class LangChainChatAdapter implements IChatAdapter {
             toolName: toolName,
             arguments: toolArguments,
           );
-          _toolEventCallback?.call({
-            'type': 'toolCallStart',
-            'data': {
-              'toolCallId': toolCallId,
-              'toolName': toolName,
-              'arguments': toolArguments,
-            },
-          });
+          _toolEventCallback?.call(ToolCallStartEvent(
+            toolCallId: toolCallId,
+            toolName: toolName,
+            arguments: toolArguments,
+          ));
 
           // 查找工具
           final tool = _toolRegistry!.getTool(toolName);
@@ -408,15 +405,12 @@ class LangChainChatAdapter implements IChatAdapter {
               result: errorResult,
               isError: true,
             );
-            _toolEventCallback?.call({
-              'type': 'toolCallResult',
-              'data': {
-                'toolCallId': toolCallId,
-                'toolName': toolName,
-                'result': errorResult,
-                'isError': true,
-              },
-            });
+            _toolEventCallback?.call(ToolCallResultEvent(
+              toolCallId: toolCallId,
+              toolName: toolName,
+              result: errorResult,
+              isError: true,
+            ));
             executedToolIndex++;
             continue;
           }
@@ -450,18 +444,15 @@ class LangChainChatAdapter implements IChatAdapter {
                 result: denyResult,
                 isError: true,
               );
-              _toolEventCallback?.call({
-                'type': 'toolCallResult',
-                'data': {
-                  'toolCallId': toolCallId,
-                  'toolName': toolName,
-                  'result': denyResult,
-                  'isError': true,
-                  'denyReason': _permissionManager!.lastDenyMessage != null
-                      ? 'blacklist'
-                      : 'user',
-                },
-              });
+              _toolEventCallback?.call(ToolCallResultEvent(
+                toolCallId: toolCallId,
+                toolName: toolName,
+                result: denyResult,
+                isError: true,
+                denyReason: _permissionManager!.lastDenyMessage != null
+                    ? 'blacklist'
+                    : 'user',
+              ));
               executedToolIndex++;
               continue;
             }
@@ -517,16 +508,13 @@ class LangChainChatAdapter implements IChatAdapter {
             isError: result.isError,
             durationMs: stopwatch.elapsedMilliseconds,
           );
-          _toolEventCallback?.call({
-            'type': 'toolCallResult',
-            'data': {
-              'toolCallId': toolCallId,
-              'toolName': toolName,
-              'result': result.content,
-              'isError': result.isError,
-              'durationMs': stopwatch.elapsedMilliseconds,
-            },
-          });
+          _toolEventCallback?.call(ToolCallResultEvent(
+            toolCallId: toolCallId,
+            toolName: toolName,
+            result: result.content,
+            isError: result.isError,
+            durationMs: stopwatch.elapsedMilliseconds,
+          ));
 
           // 工具调用出错时，yield 提示给用户看到
           if (result.isError) {
@@ -604,6 +592,7 @@ class LangChainChatAdapter implements IChatAdapter {
   ///
   /// 注意：此方法仅删除内存中的消息，不会删除数据库中的消息
   /// 返回是否成功删除
+  @override
   bool removeMessageFromMemory(String messageId) {
     if (currentEmployeeUuid == null) {
       print(
@@ -681,7 +670,7 @@ class LangChainChatAdapter implements IChatAdapter {
 
   @override
   void setToolEventCallback(
-    void Function(Map<String, dynamic> event)? callback,
+    void Function(ToolEvent event)? callback,
   ) {
     _toolEventCallback = callback;
   }

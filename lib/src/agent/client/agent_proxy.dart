@@ -47,11 +47,11 @@ class AgentProxy {
       StreamController<AgentStateSnapshot>.broadcast();
 
   /// 事件通知（用于缓存层监听原始事件）
-  final StreamController<Map<String, dynamic>> _eventController =
-      StreamController<Map<String, dynamic>>.broadcast();
+  final StreamController<AgentEvent> _eventController =
+      StreamController<AgentEvent>.broadcast();
 
   /// 远程事件流订阅取消器
-  StreamSubscription<Map<String, dynamic>>? _remoteEventSubscription;
+  StreamSubscription<AgentEvent>? _remoteEventSubscription;
 
   /// 待确认消息队列（存储已发送但未被查询确认的完整消息内容）
   final List<PendingMessage> _pendingMessageQueue = [];
@@ -69,7 +69,7 @@ class AgentProxy {
     required this.employeeId,
     required this.deviceId,
     required RpcCall rpcCall,
-    Stream<Map<String, dynamic>>? remoteEventStream,
+    Stream<AgentEvent>? remoteEventStream,
   }) : isLocalMode = false,
        _localAgent = null {
     _rpcUtil = AgentRpcUtil(rpcCall);
@@ -87,7 +87,7 @@ class AgentProxy {
   }
 
   /// 事件流（暴露原始事件，供CachedAgentProxy监听）
-  Stream<Map<String, dynamic>> get onEvent {
+  Stream<AgentEvent> get onEvent {
     if (isLocalMode && _localAgent != null) {
       // 本地模式：直接返回 Agent 的事件流
       return _localAgent.onEvent;
@@ -394,7 +394,7 @@ class AgentProxy {
   /// 查询消息已读状态
   ///
   /// 设备重新打开时从 Agent 查询哪些消息已读
-  Future<Map<String, dynamic>> getMessagesReadStatus({
+  Future<MessagesReadStatusResult> getMessagesReadStatus({
     required String deviceId,
   }) async {
     if (isLocalMode && _localAgent != null) {
@@ -407,7 +407,8 @@ class AgentProxy {
       employeeId: employeeId,
       deviceId: deviceId,
     );
-    return _rpcUtil!.getMessagesReadStatus(request);
+    final result = await _rpcUtil!.getMessagesReadStatus(request);
+    return MessagesReadStatusResult.fromMap(result);
   }
 
   /// 清空当前会话
@@ -584,29 +585,27 @@ class AgentProxy {
   /// 检查路径是否存在于目标设备上（异步版本，支持远程 RPC）
   ///
   /// [path] 文件系统绝对路径
-  /// 返回 { 'exists': bool, 'isDirectory': bool?, 'error': String? }
-  Future<Map<String, dynamic>> checkPathExists(String path) async {
+  Future<PathExistsResult> checkPathExists(String path) async {
     if (isLocalMode) {
       final dir = await Directory(path).exists();
       final file = !dir ? await File(path).exists() : false;
-      return {'exists': dir || file, 'isDirectory': dir};
+      return PathExistsResult(exists: dir || file, isDirectory: dir);
     }
     final request = CheckPathExistsRequest(employeeId: employeeId, path: path);
-    return _rpcUtil!.checkPathExists(request);
+    final result = await _rpcUtil!.checkPathExists(request);
+    return PathExistsResult.fromMap(result);
   }
 
   /// 列出目录内容
   ///
   /// [path] 目录路径
-  /// 返回 { 'items': List<Map>, 'error': String? }
-  /// 每个item: { 'name': String, 'path': String, 'isDirectory': bool, 'size': int?, 'modified': String? }
-  Future<Map<String, dynamic>> listDirectory(String path) async {
+  Future<DirectoryListingResult> listDirectory(String path) async {
     if (isLocalMode) {
       final dir = Directory(path);
       if (!await dir.exists()) {
-        return {'items': [], 'error': '目录不存在'};
+        return DirectoryListingResult(items: [], error: '目录不存在');
       }
-      final items = <Map<String, dynamic>>[];
+      final items = <DirectoryItem>[];
       try {
         await for (final entity in dir.list(recursive: false, followLinks: false)) {
           try {
@@ -614,134 +613,131 @@ class AgentProxy {
             final entityPath = entity.path;
             final entityName = entityPath.split(Platform.pathSeparator).last;
             if (entityName.isEmpty) continue;
-            items.add({
-              'name': entityName,
-              'path': entityPath,
-              'isDirectory': entity is Directory,
-              'size': stat.size,
-              'modified': stat.modified.toIso8601String(),
-            });
+            items.add(DirectoryItem(
+              name: entityName,
+              path: entityPath,
+              isDirectory: entity is Directory,
+              size: stat.size,
+              modified: stat.modified.toIso8601String(),
+            ));
           } catch (_) {
             continue;
           }
         }
         // 排序：文件夹在前，文件在后，按名称排序
         items.sort((a, b) {
-          final aDir = a['isDirectory'] as bool;
-          final bDir = b['isDirectory'] as bool;
-          if (aDir && !bDir) return -1;
-          if (!aDir && bDir) return 1;
-          return (a['name'] as String).toLowerCase().compareTo((b['name'] as String).toLowerCase());
+          if (a.isDirectory && !b.isDirectory) return -1;
+          if (!a.isDirectory && b.isDirectory) return 1;
+          return a.name.toLowerCase().compareTo(b.name.toLowerCase());
         });
-        return {'items': items};
+        return DirectoryListingResult(items: items);
       } catch (e) {
-        return {'items': [], 'error': e.toString()};
+        return DirectoryListingResult(items: [], error: e.toString());
       }
     }
     final request = ListDirectoryRequest(employeeId: employeeId, path: path);
-    return _rpcUtil!.listDirectory(request);
+    final result = await _rpcUtil!.listDirectory(request);
+    return DirectoryListingResult.fromMap(result);
   }
 
   /// 获取文件/目录信息
   ///
   /// [path] 文件路径
-  /// 返回 { 'exists': bool, 'name': String?, 'path': String?, 'isDirectory': bool?, 'size': int?, 'modified': String?, 'error': String? }
-  Future<Map<String, dynamic>> getFileInfo(String path) async {
+  Future<FileInfoResult> getFileInfo(String path) async {
     if (isLocalMode) {
       final file = File(path);
       if (await file.exists()) {
         final stat = await file.stat();
         final name = path.split(Platform.pathSeparator).last;
-        return {
-          'exists': true,
-          'name': name,
-          'path': path,
-          'isDirectory': false,
-          'size': stat.size,
-          'modified': stat.modified.toIso8601String(),
-        };
+        return FileInfoResult(
+          exists: true,
+          name: name,
+          path: path,
+          isDirectory: false,
+          size: stat.size,
+          modified: stat.modified.toIso8601String(),
+        );
       }
       final dir = Directory(path);
       if (await dir.exists()) {
         final stat = await dir.stat();
         final name = path.split(Platform.pathSeparator).last;
-        return {
-          'exists': true,
-          'name': name,
-          'path': path,
-          'isDirectory': true,
-          'size': stat.size,
-          'modified': stat.modified.toIso8601String(),
-        };
+        return FileInfoResult(
+          exists: true,
+          name: name,
+          path: path,
+          isDirectory: true,
+          size: stat.size,
+          modified: stat.modified.toIso8601String(),
+        );
       }
-      return {'exists': false};
+      return const FileInfoResult(exists: false);
     }
     final request = GetFileInfoRequest(employeeId: employeeId, path: path);
-    return _rpcUtil!.getFileInfo(request);
+    final result = await _rpcUtil!.getFileInfo(request);
+    return FileInfoResult.fromMap(result);
   }
 
   /// 创建目录
   ///
   /// [path] 目录路径
-  /// 返回 { 'success': bool, 'error': String? }
-  Future<Map<String, dynamic>> createDirectory(String path) async {
+  Future<FileOpResult> createDirectory(String path) async {
     if (isLocalMode) {
       try {
         await Directory(path).create(recursive: true);
-        return {'success': true};
+        return const FileOpResult(success: true);
       } catch (e) {
-        return {'success': false, 'error': e.toString()};
+        return FileOpResult(success: false, error: e.toString());
       }
     }
     final request = CreateDirectoryRequest(employeeId: employeeId, path: path);
-    return _rpcUtil!.createDirectory(request);
+    final result = await _rpcUtil!.createDirectory(request);
+    return FileOpResult.fromMap(result);
   }
 
   /// 删除文件/目录
   ///
   /// [path] 文件/目录路径
-  /// 返回 { 'success': bool, 'error': String? }
-  Future<Map<String, dynamic>> deleteFile(String path) async {
+  Future<FileOpResult> deleteFile(String path) async {
     if (isLocalMode) {
       try {
         final file = File(path);
         if (await file.exists()) {
           await file.delete();
-          return {'success': true};
+          return const FileOpResult(success: true);
         }
         final dir = Directory(path);
         if (await dir.exists()) {
           await dir.delete(recursive: true);
-          return {'success': true};
+          return const FileOpResult(success: true);
         }
-        return {'success': false, 'error': '路径不存在'};
+        return const FileOpResult(success: false, error: '路径不存在');
       } catch (e) {
-        return {'success': false, 'error': e.toString()};
+        return FileOpResult(success: false, error: e.toString());
       }
     }
     final request = DeleteFileRequest(employeeId: employeeId, path: path);
-    return _rpcUtil!.deleteFile(request);
+    final result = await _rpcUtil!.deleteFile(request);
+    return FileOpResult.fromMap(result);
   }
 
   /// 重命名/移动文件
-  ///
-  /// 返回 { 'success': bool, 'error': String? }
-  Future<Map<String, dynamic>> renameFile(String oldPath, String newPath) async {
+  Future<FileOpResult> renameFile(String oldPath, String newPath) async {
     if (isLocalMode) {
       try {
         final entity = File(oldPath);
         if (await entity.exists()) {
           await entity.rename(newPath);
-          return {'success': true};
+          return const FileOpResult(success: true);
         }
         final dir = Directory(oldPath);
         if (await dir.exists()) {
           await dir.rename(newPath);
-          return {'success': true};
+          return const FileOpResult(success: true);
         }
-        return {'success': false, 'error': '路径不存在'};
+        return const FileOpResult(success: false, error: '路径不存在');
       } catch (e) {
-        return {'success': false, 'error': e.toString()};
+        return FileOpResult(success: false, error: e.toString());
       }
     }
     final request = RenameFileRequest(
@@ -749,7 +745,8 @@ class AgentProxy {
       oldPath: oldPath,
       newPath: newPath,
     );
-    return _rpcUtil!.renameFile(request);
+    final result = await _rpcUtil!.renameFile(request);
+    return FileOpResult.fromMap(result);
   }
 
   // ===== 工具管理 =====
@@ -851,7 +848,7 @@ class AgentProxy {
   // ===== 内部方法 =====
 
   /// 订阅远程事件流
-  void _subscribeRemoteEvents(Stream<Map<String, dynamic>> stream) {
+  void _subscribeRemoteEvents(Stream<AgentEvent> stream) {
     _remoteEventSubscription?.cancel();
     _remoteEventSubscription = stream.listen(
       _onRemoteEvent,
@@ -865,10 +862,10 @@ class AgentProxy {
   }
 
   /// 处理远程事件
-  void _onRemoteEvent(Map<String, dynamic> eventData) {
-    final type = eventData['type'] as String?;
-    final data = eventData['data'] as Map<String, dynamic>? ?? {};
-    final eventEmployeeUuid = eventData['employeeId'] as String?;
+  void _onRemoteEvent(AgentEvent event) {
+    final type = event.type;
+    final data = event.data;
+    final eventEmployeeUuid = event.employeeId;
 
     // 只处理与当前 Agent 相关的事件
     if (eventEmployeeUuid != null && eventEmployeeUuid != employeeId) {
@@ -876,7 +873,7 @@ class AgentProxy {
     }
 
     // 🔑 关键改进：广播原始事件，供CachedAgentProxy监听
-    _eventController.add(eventData);
+    _eventController.add(event);
 
     switch (type) {
       case 'agentStatusChanged':

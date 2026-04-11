@@ -174,7 +174,7 @@ class MessagePersistenceFullTest {
         final msg = messagesInMemory[i];
         final content = msg.content ?? '';
         if (content.contains(userMessages[i])) {
-          print('    ✓ 消息 ${i + 1} 内容正确: ${content}');
+          print('    ✓ 消息 ${i + 1} 内容正确: $content');
         } else {
           print('    ❌ 消息 ${i + 1} 内容不匹配');
           print('       期望: ${userMessages[i]}');

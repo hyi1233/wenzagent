@@ -45,6 +45,9 @@ abstract class EmployeeManager {
   /// 创建员工
   Future<AiEmployeeEntity> createEmployee(AiEmployeeEntity employee);
 
+  /// 保存员工（同步场景使用，不修改 deviceId 和时间戳）
+  Future<void> saveEmployee(AiEmployeeEntity employee);
+
   /// 更新员工
   Future<void> updateEmployee(AiEmployeeEntity employee);
 
@@ -90,13 +93,24 @@ class EmployeeManagerImpl implements EmployeeManager {
   Future<AiEmployeeEntity> createEmployee(AiEmployeeEntity employee) async {
     final now = DateTime.now();
     final newEmployee = employee.copyWith(
-      spaceId: _deviceId,
+      deviceId: employee.deviceId ?? _deviceId,
       createTime: now,
       updateTime: now,
     );
     await _store.save(newEmployee);
     _notifyChange(EmployeeChangeType.created, newEmployee);
     return newEmployee;
+  }
+
+  @override
+  Future<void> saveEmployee(AiEmployeeEntity employee) async {
+    final existing = await _store.find(null, employee.uuid);
+    await _store.save(employee);
+    if (existing != null) {
+      _notifyChange(EmployeeChangeType.updated, employee);
+    } else {
+      _notifyChange(EmployeeChangeType.created, employee);
+    }
   }
 
   @override

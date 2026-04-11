@@ -8,7 +8,6 @@ import '../../agent/adapter/persistent_chat_adapter.dart';
 import '../../agent/agent_state.dart';
 import '../../agent/client/agent_proxy.dart';
 import '../../agent/client/cached_agent_proxy.dart';
-import '../../agent/entity/agent_message.dart';
 import '../../agent/entity/entity.dart';
 import '../../agent/i_agent.dart';
 import '../../agent/impl/agent_impl.dart';
@@ -93,14 +92,14 @@ class DeviceClientImpl implements DeviceClient {
   final Set<String> _syncingRemoteKeys = {};
 
   /// Agent 事件订阅
-  final Map<String, StreamSubscription<Map<String, dynamic>>>
+  final Map<String, StreamSubscription<AgentEvent>>
   _agentEventSubscriptions = {};
 
   /// 连接状态控制器
   final _stateController = StreamController<DeviceConnectionState>.broadcast();
 
   /// Agent 事件控制器
-  final _eventController = StreamController<Map<String, dynamic>>.broadcast();
+  final _eventController = StreamController<AgentEvent>.broadcast();
 
   /// LAN 消息控制器
   final _lanMessageController = StreamController<LanMessage>.broadcast();
@@ -235,7 +234,7 @@ class DeviceClientImpl implements DeviceClient {
   Stream<DeviceConnectionState> get onStateChanged => _stateController.stream;
 
   @override
-  Stream<Map<String, dynamic>> get onAgentEvent => _eventController.stream;
+  Stream<AgentEvent> get onAgentEvent => _eventController.stream;
 
   @override
   Stream<DeviceEvent> get onDeviceEvent => _deviceEventController.stream;
@@ -251,7 +250,6 @@ class DeviceClientImpl implements DeviceClient {
 
   // ===== 连接管理 =====
 
-  @override
   @override
   Future<bool> pingEmployee(String employeeId, {Duration timeout = const Duration(seconds: 2)}) async {
     // 本地员工：直接检查 isAlive
@@ -288,6 +286,7 @@ class DeviceClientImpl implements DeviceClient {
     return _employeeOnlineState[employeeId];
   }
 
+  @override
   Future<void> connect() async {
     await _connectionLock.synchronized(() => _connectInternal());
   }
@@ -469,10 +468,11 @@ class DeviceClientImpl implements DeviceClient {
     ) async {
       final request = GetMessagesReadStatusRequest.fromMap(params);
       final agent = await _ensureLocalAgentForRpc(request.employeeId);
-      return agent.getMessagesReadStatus(
+      final result = await agent.getMessagesReadStatus(
         deviceId: request.deviceId,
         employeeId: request.employeeId,
       );
+      return result.toMap();
     });
 
     _rpcServer!.register(AgentRpcConfig.methodGetState, (params) async {
@@ -862,7 +862,8 @@ class DeviceClientImpl implements DeviceClient {
       for (final employee in employees) {
         final existing = await _employeeManager.getEmployee(employee.uuid);
         if (existing == null) {
-          await _employeeManager.createEmployee(employee);
+          // 本地不存在 → 直接保存（保留原始 deviceId 和时间戳）
+          await _employeeManager.saveEmployee(employee);
         } else {
           await _employeeManager.updateEmployee(employee);
         }
@@ -987,21 +988,31 @@ class DeviceClientImpl implements DeviceClient {
     required String employeeId,
     String? deviceId,
     AiEmployeeEntity? employee,
+    bool autoCreateSession = true,
   }) async {
     final sw = Stopwatch()..start();
     // 1 & 2. 并行获取 Session 和 Employee（减少串行等待时间）
     final results = await Future.wait<dynamic>([
-      _sessionManager.getOrCreateSession(employeeId),
+      autoCreateSession
+          ? _sessionManager.getOrCreateSession(employeeId)
+          : _sessionManager.getSession(employeeId),
       employee != null
           ? Future.value(employee)
           : _employeeManager.getEmployee(employeeId),
     ]);
     print('[DeviceClient] Future.wait (session+employee): ${sw.elapsedMilliseconds}ms');
-    final session = results[0] as AiEmployeeSessionEntity;
+    var session = results[0] as AiEmployeeSessionEntity?;
     employee = results[1] as AiEmployeeEntity?;
     if (employee == null) {
       throw StateError('Employee not found: $employeeId');
     }
+
+    // 如果 session 不存在且不自动创建，使用临时空对象用于 Agent 初始化
+    session ??= AiEmployeeSessionEntity(
+      employeeId: employeeId,
+      createTime: DateTime.now(),
+      updateTime: DateTime.now(),
+    );
 
     // 3. 确定目标设备ID（优先从Employee.currentDeviceId获取，否则使用传入的deviceId，最后使用当前设备ID）
     String targetDeviceId;
@@ -1167,7 +1178,13 @@ class DeviceClientImpl implements DeviceClient {
       );
     }
 
-    final session = await _sessionManager.getOrCreateSession(employeeId);
+    // 获取 session（仅内存使用，不持久化，遵循"创建员工不创建 session"原则）
+    final session = await _sessionManager.getSession(employeeId) ??
+        AiEmployeeSessionEntity(
+          employeeId: employeeId,
+          createTime: DateTime.now(),
+          updateTime: DateTime.now(),
+        );
     agent = await _getOrCreateLocalAgent(employeeId, employee, session);
 
     // RPC 路径创建的 Agent 也需要 warmup（后台加载完整历史+技能）
@@ -1545,20 +1562,19 @@ class DeviceClientImpl implements DeviceClient {
     final subscription = agent.onEvent.listen((event) {
       _broadcastAgentEvent(employeeId, event);
 
-      final type = event['type'] as String?;
-      final data = event['data'] as Map<String, dynamic>? ?? {};
+      final type = event.type;
+      final data = event.data;
 
       // LAN 未连接时，直接将 agent 事件推送到 onAgentEvent 流
       // LAN 已连接时，事件会通过 LAN 回环路径到达 _handleAgentEvent 推送
       final lanClient = _lanClient;
       if (lanClient == null || !lanClient.isConnected) {
-        _eventController.add({
-          'type': type,
-          'data': data,
-          'employeeId': employeeId,
-          'fromId': deviceId,
-          'fromDeviceId': deviceId,
-        });
+        _eventController.add(AgentEvent(
+          type: type,
+          data: data,
+          employeeId: employeeId,
+          fromDeviceId: deviceId,
+        ));
       }
 
       if (type != 'messageStatusChanged') return;
@@ -1602,7 +1618,7 @@ class DeviceClientImpl implements DeviceClient {
           final msg = AgentMessage(
             id: lastAssistant.id,
             role: lastAssistant.role,
-            type: lastAssistant.type ?? 'text',
+            type: lastAssistant.type,
             content: lastAssistant.content,
             createdAt: lastAssistant.createdAt,
             status: status,
@@ -1627,12 +1643,12 @@ class DeviceClientImpl implements DeviceClient {
   }
 
   /// 广播 Agent 事件
-  void _broadcastAgentEvent(String employeeId, Map<String, dynamic> event) {
+  void _broadcastAgentEvent(String employeeId, AgentEvent event) {
     final lanClient = _lanClient;
     if (lanClient == null || !lanClient.isConnected) return;
 
-    final type = event['type'] as String?;
-    final data = event['data'] as Map<String, dynamic>? ?? {};
+    final type = event.type;
+    final data = event.data;
 
     LanMessageType msgType;
     switch (type) {
@@ -2045,12 +2061,12 @@ class DeviceClientImpl implements DeviceClient {
     try {
       // 2. 通过 proxy 向 Agent 查询已读状态
       final result = await proxy.getMessagesReadStatus(deviceId: deviceId);
-      final readStatus = result['readStatus'] as Map<String, dynamic>? ?? {};
+      final readStatus = result.readStatus;
 
       // 3. 遍历已读状态，更新本地数据库中对应消息的 isRead 字段
       for (final entry in readStatus.entries) {
         final messageId = entry.key;
-        final isRead = entry.value as bool? ?? false;
+        final isRead = entry.value;
         if (isRead) {
           // 通过 uuid 获取消息，更新 isRead 标记
           _messageStoreService.getMessage(messageId).then((message) {
@@ -2178,40 +2194,48 @@ class DeviceClientImpl implements DeviceClient {
           final existing = await _employeeManager.getEmployee(employee.uuid);
           
           if (existing == null) {
-            // 本地不存在 → 创建（包括已删除的员工）
-            await _employeeManager.createEmployee(employee);
+            // 本地不存在 → 直接保存（保留原始 deviceId 和时间戳）
+            await _employeeManager.saveEmployee(employee);
           } else {
-            // 本地已存在 → 判断是否需要更新
-            
-            // 优先比较 deletedTime（如果任一员工被删除）
-            if (employee.deleted == 1 || existing.deleted == 1) {
-              // 至少一方被删除，比较 deletedTime
-              final remoteDeletedTime = employee.deletedTime;
-              final localDeletedTime = existing.deletedTime;
-              
-              if (remoteDeletedTime != null && localDeletedTime != null) {
-                // 双方都有 deletedTime，比较哪个更新
-                if (remoteDeletedTime.isAfter(localDeletedTime)) {
-                  // 远程删除更新 → 同步删除状态
-                  await _employeeManager.updateEmployee(
-                    employee.copyWith(updateTime: DateTime.now()),
-                  );
-                }
-                // 否则保留本地的删除状态
-              } else if (remoteDeletedTime != null) {
-                // 远程已删除，本地未删除 → 标记删除
-                await _employeeManager.updateEmployee(
-                  employee.copyWith(updateTime: DateTime.now()),
-                );
-              }
-              // 如果只有本地删除了，保留本地状态
+            // 合并：deleteTime 独立比较，数据按 updateTime 合并
+            final localDT = existing.deletedTime;
+            final remoteDT = employee.deletedTime;
+            DateTime? mergedDeleteTime;
+            int mergedDeleted;
+
+            if (localDT == null && remoteDT == null) {
+              mergedDeleteTime = null;
+              mergedDeleted = 0;
+            } else if (localDT == null) {
+              // 远程有删除记录 → 保留远程删除状态
+              mergedDeleteTime = remoteDT;
+              mergedDeleted = employee.deleted;
+            } else if (remoteDT == null) {
+              // 本地有删除记录 → 保留本地删除状态
+              mergedDeleteTime = localDT;
+              mergedDeleted = existing.deleted;
             } else {
-              // 都未删除，正常比较 updateTime
-              if (employee.updateTime.isAfter(existing.updateTime)) {
-                // 远程更新 → 更新本地
-                await _employeeManager.updateEmployee(employee);
+              // 双方都有删除记录 → 取 deleteTime 更大的决定 deleted
+              if (localDT.isAfter(remoteDT)) {
+                mergedDeleteTime = localDT;
+                mergedDeleted = existing.deleted;
+              } else {
+                mergedDeleteTime = remoteDT;
+                mergedDeleted = employee.deleted;
               }
-              // 否则：本地更新或相同 → 保留本地
+            }
+
+            final shouldUpdateData =
+                employee.updateTime.isAfter(existing.updateTime);
+            final shouldUpdateDelete =
+                mergedDeleteTime != localDT || mergedDeleted != existing.deleted;
+
+            if (shouldUpdateData || shouldUpdateDelete) {
+              final base = shouldUpdateData ? employee : existing;
+              await _employeeManager.updateEmployee(base.copyWith(
+                deleted: mergedDeleted,
+                deletedTime: mergedDeleteTime,
+              ));
             }
           }
         }
@@ -2300,47 +2324,53 @@ class DeviceClientImpl implements DeviceClient {
           );
 
           if (existing == null) {
-            // 本地不存在 → 远程未删除的直接创建；远程已删除且未被复活的也同步（保留删除状态）
-            if (session.deleted != 1 ||
-                (session.deleteTime != null && session.updateTime.isAfter(session.deleteTime!))) {
-              // 远程未删除，或已复活 → 创建
+            // 本地不存在 → 远程未删除的直接创建
+            if (session.deleted != 1) {
               await _sessionManager.save(session);
             }
-            // 远程已删除且未复活 → 不同步（避免拉回垃圾数据）
           } else {
             // 本地已存在 → 合并逻辑
-            if (existing.deleted == 1 && session.deleted == 1) {
-              // 双方都已删除 → 保留 deleteTime 更大（更晚删除）的一方
-              final eTime = existing.deleteTime ?? existing.updateTime;
-              final sTime = session.deleteTime ?? session.updateTime;
-              if (sTime.isAfter(eTime)) {
-                await _sessionManager.save(session);
-              }
-            } else if (existing.deleted == 1) {
-              // 仅本地已删除 → 检查是否已被远程复活（远程 updateTime > 本地 deleteTime）
-              final localDeleteTime = existing.deleteTime ?? existing.updateTime;
-              if (session.updateTime.isAfter(localDeleteTime)) {
-                // 远程有更新活动（新消息等）→ 远程复活，同步过来
-                await _sessionManager.save(session.copyWith(
-                  deleted: 0,
-                  deleteTime: null,
-                ));
-              }
-              // 否则保留本地的删除状态
-            } else if (session.deleted == 1) {
-              // 仅远程已删除 → 检查本地是否有更新活动
-              final remoteDeleteTime = session.deleteTime ?? session.updateTime;
-              if (existing.updateTime.isAfter(remoteDeleteTime)) {
-                // 本地有更新活动 → 忽略远程删除（本地已复活）
-              } else {
-                // 本地无更新活动 → 同步远程删除
-                await _sessionManager.save(session);
-              }
+            // 1. deleteTime + deleted 独立合并：取 deleteTime 更新的那方
+            final localDT = existing.deleteTime;
+            final remoteDT = session.deleteTime;
+            DateTime? mergedDeleteTime;
+            int mergedDeleted;
+
+            if (localDT == null && remoteDT == null) {
+              // 双方都未删除
+              mergedDeleteTime = null;
+              mergedDeleted = 0;
+            } else if (localDT == null) {
+              // 远程有删除记录 → 保留远程删除状态
+              mergedDeleteTime = remoteDT;
+              mergedDeleted = session.deleted;
+            } else if (remoteDT == null) {
+              // 本地有删除记录 → 保留本地删除状态
+              mergedDeleteTime = localDT;
+              mergedDeleted = existing.deleted;
             } else {
-              // 双方都未删除 → 正常比较 updateTime
-              if (session.updateTime.isAfter(existing.updateTime)) {
-                await _sessionManager.save(session);
+              // 双方都有删除记录 → 保留 deleteTime 更新的
+              if (localDT.isAfter(remoteDT)) {
+                mergedDeleteTime = localDT;
+                mergedDeleted = existing.deleted;
+              } else {
+                mergedDeleteTime = remoteDT;
+                mergedDeleted = session.deleted;
               }
+            }
+
+            // 2. 数据（title, config 等）取 updateTime 更新的
+            final shouldUpdateData =
+                session.updateTime.isAfter(existing.updateTime);
+            final shouldUpdateDelete =
+                mergedDeleteTime != localDT || mergedDeleted != existing.deleted;
+
+            if (shouldUpdateData || shouldUpdateDelete) {
+              final base = shouldUpdateData ? session : existing;
+              await _sessionManager.save(base.copyWith(
+                deleted: mergedDeleted,
+                deleteTime: mergedDeleteTime,
+              ));
             }
           }
         }
@@ -2649,7 +2679,7 @@ class DeviceClientImpl implements DeviceClient {
     } catch (_) {}
 
     // 收集平台信息
-    String? os, osVersion, platform;
+    String? os,  platform;
     if (Platform.isAndroid) {
       os = 'android';
       platform = 'mobile';
@@ -2799,13 +2829,12 @@ class DeviceClientImpl implements DeviceClient {
       final employeeId = content['employeeId'] as String?;
       final fromDeviceId = msg.fromId;
 
-      _eventController.add({
-        'type': type,
-        'data': data,
-        'employeeId': employeeId,
-        'fromId': msg.fromId,
-        'fromDeviceId': msg.fromId,
-      });
+      _eventController.add(AgentEvent(
+        type: type ?? '',
+        data: data,
+        employeeId: employeeId,
+        fromDeviceId: fromDeviceId,
+      ));
 
       // 接入通知中心
       if (employeeId != null && fromDeviceId != null) {

@@ -7,7 +7,6 @@ import 'dart:io';
 
 import 'package:wenzagent/src/persistence/entities/device_config_entity.dart';
 import 'package:wenzagent/src/persistence/database_manager.dart';
-import 'package:wenzagent/src/device/device_client.dart';
 import 'package:wenzagent/src/device/impl/device_client_impl.dart';
 
 Future<void> main() async {
@@ -96,7 +95,7 @@ Future<void> main() async {
 
     print('API 地址: $apiUrl');
     print('调试模式: ${debugMode ? "开启" : "关闭"}');
-    print('超时时间: ${timeout}秒');
+    print('超时时间: $timeout秒');
     print('');
 
     // ===== 示例 6: 删除环境变量 =====

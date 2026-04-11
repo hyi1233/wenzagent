@@ -7,6 +7,7 @@ import '../agent/agent_state.dart';
 import '../agent/tool/agent_tool.dart';
 import '../agent/tool/builtin/builtin_tools.dart';
 import '../agent/tool/tool_registry.dart';
+import 'entity/agent_runtime_config.dart';
 import 'permission_forwarder.dart';
 
 /// 定时任务执行结果
@@ -41,13 +42,7 @@ class TaskExecutionResult {
 /// 执行完成后把结果通过 [deliverResult] 送入正式 Agent 通道。
 class TaskExecutor {
   /// 获取 Agent 配置（provider、systemPrompt 等）
-  ///
-  /// 返回 Map 可能包含:
-  /// - `providerConfig`: Map — ProviderConfig.toMap()
-  /// - `systemPrompt`: String
-  /// - `projectContext`: Map
-  /// - `tools`: `List<AgentTool>`
-  Future<Map<String, dynamic>?> Function(String employeeId)? getAgentConfig;
+  Future<AgentRuntimeConfig?> Function(String employeeId)? getAgentConfig;
 
   /// 把结果推送给用户（走正式 Agent 的消息通道）
   Future<void> Function(String employeeId, String content)? deliverResult;
@@ -97,10 +92,8 @@ class TaskExecutor {
       await adapter.initSession(employeeId: tempSessionId);
 
       // ④ 设置模型
-      final providerConfig =
-          config['providerConfig'] as Map<String, dynamic>?;
-      if (providerConfig != null) {
-        await adapter.updateProvider(providerConfig);
+      if (config.providerConfig != null) {
+        await adapter.updateProvider(config.providerConfig!);
       }
 
       // ⑤ 设置上下文（systemPrompt + 项目上下文）
@@ -113,14 +106,14 @@ class TaskExecutor {
           '- 语气温暖自然，像朋友一样关心用户\n'
           '- 简洁明了，2-4句话即可\n'
           '- 可以适当加一点表情符号增加亲和力';
-      if (config['systemPrompt'] != null) {
+      if (config.systemPrompt != null) {
         context['systemPrompt'] =
-            '${config['systemPrompt']}\n\n$scheduledSystemPrompt';
+            '${config.systemPrompt}\n\n$scheduledSystemPrompt';
       } else {
         context['systemPrompt'] = scheduledSystemPrompt;
       }
-      if (config['projectContext'] != null) {
-        context.addAll(config['projectContext'] as Map<String, dynamic>);
+      if (config.projectContext != null) {
+        context.addAll(config.projectContext!);
       }
       if (context.isNotEmpty) {
         adapter.setContext(context);
@@ -128,8 +121,9 @@ class TaskExecutor {
 
       // ⑥ 注册工具 —— 使用 PermissionForwarder 将权限请求转发到主 agent
       final registry = ToolRegistry();
-      final tools =
-          config['tools'] as List<AgentTool>? ?? BuiltinTools.readOnly();
+      final tools = config.tools != null
+          ? (config.tools!.cast<AgentTool>())
+          : BuiltinTools.readOnly();
       registry.registerTools(tools);
       adapter.setToolRegistry(registry);
 

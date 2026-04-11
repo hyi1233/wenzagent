@@ -1,7 +1,5 @@
 /// RPC 请求参数实体类
 ///
-/// 为所有RPC方法提供类型安全的参数封装
-
 /// 撤回消息请求
 class RevokeMessageRequest {
   final String employeeId;

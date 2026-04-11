@@ -7,7 +7,6 @@ import '../agent/adapter/persistent_chat_adapter.dart';
 import '../agent/entity/entity.dart';
 import '../agent/i_agent.dart';
 import '../agent/impl/agent_impl.dart';
-import '../agent/agent_state.dart';
 import '../agent/tool/builtin/schedule_task_tool.dart';
 import '../agent/tool/permission_rule.dart';
 import '../persistence/persistence.dart';
@@ -65,7 +64,6 @@ class AgentFactoryImpl implements AgentFactory {
   final EmployeeManager _employeeManager;
   final SessionManager _sessionManager;
   final MessageStoreService _messageStore;
-  final SkillManager _skillManager;
   final ScheduledTaskManager? _scheduledTaskManager;
 
   /// 判断消息是否应直接写入已读状态的回调
@@ -85,7 +83,6 @@ class AgentFactoryImpl implements AgentFactory {
   })  : _employeeManager = employeeManager,
        _sessionManager = sessionManager,
        _messageStore = messageStore,
-       _skillManager = skillManager,
        _scheduledTaskManager = scheduledTaskManager;
 
   @override
@@ -270,12 +267,9 @@ class AgentFactoryImpl implements AgentFactory {
     // 持久化会话回调
     adapter.persistSession = (session) async {
       var existingSession = await _sessionManager.getSession(employeeId);
-      if (existingSession == null) {
-        // Session应该已由getOrCreateSession创建
-        existingSession = await _sessionManager.getOrCreateSession(
+      existingSession ??= await _sessionManager.getOrCreateSession(
           employeeId,
         );
-      }
 
       // 更新标题
       final title = session['title'] as String?;

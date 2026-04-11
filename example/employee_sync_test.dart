@@ -470,7 +470,6 @@ class EmployeeSyncTest {
     // 设备 A 删除员工
     await deviceA.employeeManager.deleteEmployee(employeeUuid);
 
-    final deletedEmployeeA = await deviceA.employeeManager.getEmployee(employeeUuid);
     // 注意：getEmployee 可能过滤了已删除的员工，需要从数据库直接获取
     // 这里我们通过同步来验证
 
@@ -542,21 +541,6 @@ class EmployeeSyncTest {
           // 否则：目标设备更新或相同 → 保留目标设备
         }
       }
-    }
-  }
-
-  /// 模拟同步特定员工
-  Future<void> _simulateSyncWithSpecificEmployee(
-    DeviceClientImpl source,
-    DeviceClientImpl target,
-    AiEmployeeEntity employee,
-  ) async {
-    final existingEmployee = await target.employeeManager.getEmployee(employee.uuid);
-
-    if (existingEmployee == null) {
-      await target.employeeManager.createEmployee(employee);
-    } else if (employee.updateTime.isAfter(existingEmployee.updateTime)) {
-      await target.employeeManager.updateEmployee(employee);
     }
   }
 

@@ -314,8 +314,6 @@ class RemoteSessionListTest {
       );
       final currentDeviceId = employee?.currentDeviceId;
       final isLocal = currentDeviceId == deviceAId;
-      final isRemote = currentDeviceId != deviceAId;
-
       print('    - ${employee?.name ?? "未知"} (${session.employeeId})');
       print('      currentDeviceId: $currentDeviceId');
       print('      状态: ${isLocal ? "本地" : "远程"}');
@@ -331,8 +329,6 @@ class RemoteSessionListTest {
       );
       final currentDeviceId = employee?.currentDeviceId;
       final isLocal = currentDeviceId == deviceBId;
-      final isRemote = currentDeviceId != deviceBId;
-
       print('    - ${employee?.name ?? "未知"} (${session.employeeId})');
       print('      currentDeviceId: $currentDeviceId');
       print('      状态: ${isLocal ? "本地" : "远程"}');

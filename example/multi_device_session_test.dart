@@ -270,7 +270,7 @@ class MultiDeviceSessionTest {
     
     // 获取各设备的配置
     final configA = sessionA!.getConfig(deviceAId);
-    final configB = sessionA!.getConfig(deviceBId);
+    final configB = sessionA.getConfig(deviceBId);
     
     print('  Device-A 配置:');
     print('    providerConfig: ${configA?.providerConfig}');

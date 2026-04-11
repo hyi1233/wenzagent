@@ -155,7 +155,7 @@ abstract class IAgent {
   ///
   /// [deviceId] 查询设备ID
   /// [employeeId] 员工ID
-  Future<Map<String, dynamic>> getMessagesReadStatus({
+  Future<MessagesReadStatusResult> getMessagesReadStatus({
     required String deviceId,
     required String employeeId,
   });
@@ -273,7 +273,7 @@ abstract class IAgent {
   Stream<AgentStateSnapshot> get onStateChanged;
 
   /// 通用事件流（用于 RPC 流式广播）
-  Stream<Map<String, dynamic>> get onEvent;
+  Stream<AgentEvent> get onEvent;
 
   /// 是否正在发送
   bool get isSending;

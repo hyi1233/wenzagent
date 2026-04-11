@@ -54,13 +54,11 @@ class AgentImpl implements IAgent {
   bool _enableSkills = false;
 
   /// 消息接收状态跟踪
-  /// Map<messageId, Map<receiverDeviceId, updateTime>>
   /// 当消息被设备接收后，记录接收时间和消息的更新时间
   /// 当消息状态更新时，清除接收状态，让设备可以重新接收
   final Map<String, Map<String, DateTime>> _messageReceiveStatus = {};
 
   /// 消息已读状态跟踪
-  /// Map<messageId, Map<readerDeviceId, readTime>>
   /// 当某个设备上的用户查看了消息后，记录已读状态
   final Map<String, Map<String, DateTime>> _messageReadStatus = {};
 
@@ -151,11 +149,13 @@ class AgentImpl implements IAgent {
       _processor?.setPermissionBlocked(request.requestId);
 
       // 广播权限请求事件
-      _eventController.add({
-        'type': 'toolPermissionRequest',
-        'data': request.toMap(),
-        'employeeId': employeeId,
-      });
+      _eventController.add(
+        AgentEvent(
+          type: 'toolPermissionRequest',
+          data: request.toMap(),
+          employeeId: employeeId,
+        ),
+      );
 
       try {
         return await completer.future;
@@ -168,8 +168,11 @@ class AgentImpl implements IAgent {
     };
 
     // 设置工具事件回调：通过事件流广播
-    _chatAdapter.setToolEventCallback((event) {
-      _eventController.add({...event, 'employeeId': employeeId});
+    _chatAdapter.setToolEventCallback((toolEvent) {
+      final map = ToolEventMapper.toMap(toolEvent);
+      _eventController.add(
+        AgentEvent.fromMap({...map, 'employeeId': employeeId}),
+      );
     });
 
     // 初始化消息处理调度器
@@ -223,8 +226,6 @@ class AgentImpl implements IAgent {
         error: error,
         extraData: extraData,
       );
-
-
     };
 
     _touch();
@@ -351,9 +352,11 @@ class AgentImpl implements IAgent {
     int failed = 0;
 
     for (final entity in entities) {
-      print('[Skill] 处理技能: uuid=${entity.uuid}, name=${entity.name}, '
-          'type=${entity.skillType}, enabled=${entity.enabled}, '
-          'config=${entity.config?.substring(0, entity.config!.length > 80 ? 80 : entity.config!.length)}');
+      print(
+        '[Skill] 处理技能: uuid=${entity.uuid}, name=${entity.name}, '
+        'type=${entity.skillType}, enabled=${entity.enabled}, '
+        'config=${entity.config?.substring(0, entity.config!.length > 80 ? 80 : entity.config!.length)}',
+      );
 
       if (entity.enabled != 1) {
         print('[Skill] 跳过已禁用技能: ${entity.name}');
@@ -382,19 +385,26 @@ class AgentImpl implements IAgent {
         case 'folder':
           String? folderPath;
           try {
-            final configMap = jsonDecode(entity.config!) as Map<String, dynamic>;
+            final configMap =
+                jsonDecode(entity.config!) as Map<String, dynamic>;
             folderPath = configMap['folder_path'] as String?;
           } catch (_) {
             folderPath = entity.config;
           }
           if (folderPath != null && folderPath.isNotEmpty) {
-            final s = FolderSkill(path: folderPath, id: entity.uuid, name: entity.name);
-            s.setContext(SkillContext(
-              toolRegistry: _toolRegistry,
-              employeeId: employeeId,
-              invokeLlm: (prompt) => _chatAdapter.invokeOnce(prompt),
-              logger: (level, msg) => print('[Skill][$level] $msg'),
-            ));
+            final s = FolderSkill(
+              path: folderPath,
+              id: entity.uuid,
+              name: entity.name,
+            );
+            s.setContext(
+              SkillContext(
+                toolRegistry: _toolRegistry,
+                employeeId: employeeId,
+                invokeLlm: (prompt) => _chatAdapter.invokeOnce(prompt),
+                logger: (level, msg) => print('[Skill][$level] $msg'),
+              ),
+            );
             skill = s;
             print('[Skill] Folder 技能实体创建成功: ${entity.name}, path=$folderPath');
           } else {
@@ -449,16 +459,18 @@ class AgentImpl implements IAgent {
       await _warmupCompleter!.future;
     }
 
-    print('[AgentImpl] sendMessage: ${input.content.substring(0, input.content.length.clamp(0, 50))}');
+    print(
+      '[AgentImpl] sendMessage: ${input.content.substring(0, input.content.length.clamp(0, 50))}',
+    );
 
     return await _withLock(() async {
       // 🔑 关键修复：优先使用 MessageInput.id，避免被 metadata.id 覆盖
       // 这是客户端提供的"真实"消息ID，必须在整个传输链中保持一致
       final clientProvidedId = input.id;
-      
+
       // 转换为 Map 以便内部处理
       final messageData = input.toMap();
-      
+
       // 🔑 关键：如果客户端提供了ID，强制使用它，覆盖metadata中的id
       if (clientProvidedId != null && clientProvidedId.isNotEmpty) {
         messageData['id'] = clientProvidedId;
@@ -609,7 +621,9 @@ class AgentImpl implements IAgent {
       }
     }
 
-    print('[AgentImpl] 查询设备 $receiverDeviceId 的未接收消息，共 ${unreceivedMessages.length} 条');
+    print(
+      '[AgentImpl] 查询设备 $receiverDeviceId 的未接收消息，共 ${unreceivedMessages.length} 条',
+    );
     return unreceivedMessages;
   }
 
@@ -624,10 +638,13 @@ class AgentImpl implements IAgent {
       _messageReceiveStatus[info.messageId] ??= {};
 
       // 记录该设备的接收时间
-      _messageReceiveStatus[info.messageId]![receiverDeviceId] = info.updateTime;
+      _messageReceiveStatus[info.messageId]![receiverDeviceId] =
+          info.updateTime;
     }
 
-    print('[AgentImpl] 已标记设备 $receiverDeviceId 接收 ${messageReceiveList.length} 条消息');
+    print(
+      '[AgentImpl] 已标记设备 $receiverDeviceId 接收 ${messageReceiveList.length} 条消息',
+    );
   }
 
   @override
@@ -657,40 +674,39 @@ class AgentImpl implements IAgent {
     }
 
     // 广播已读状态变更事件
-    _eventController.add({
-      'type': 'messageReadStatusChanged',
-      'data': {
-        'employeeId': employeeId,
-        'readerDeviceId': readerDeviceId,
-        'messageIds': ids,
-      },
-      'employeeId': employeeId,
-    });
+    _eventController.add(
+      AgentEvent(
+        type: 'messageReadStatusChanged',
+        data: {
+          'employeeId': employeeId,
+          'readerDeviceId': readerDeviceId,
+          'messageIds': ids,
+        },
+        employeeId: employeeId,
+      ),
+    );
   }
 
   @override
-  Future<Map<String, dynamic>> getMessagesReadStatus({
+  Future<MessagesReadStatusResult> getMessagesReadStatus({
     required String deviceId,
     required String employeeId,
   }) async {
     // 获取该员工的所有消息
     final allMessages = await _chatAdapter.getSessionMessages(employeeId);
 
-    final readStatus = <String, dynamic>{};
+    final readStatus = <String, bool>{};
     for (final message in allMessages) {
       final messageReadMap = _messageReadStatus[message.id];
-      if (messageReadMap != null && messageReadMap.containsKey(deviceId)) {
-        readStatus[message.id] = true;
-      } else {
-        readStatus[message.id] = false;
-      }
+      readStatus[message.id] =
+          messageReadMap != null && messageReadMap.containsKey(deviceId);
     }
 
-    return {
-      'employeeId': employeeId,
-      'deviceId': deviceId,
-      'readStatus': readStatus,
-    };
+    return MessagesReadStatusResult(
+      employeeId: employeeId,
+      deviceId: deviceId,
+      readStatus: readStatus,
+    );
   }
 
   /// 获取消息的更新时间
@@ -709,18 +725,6 @@ class AgentImpl implements IAgent {
     return message.createdAt;
   }
 
-  /// 清除消息的接收状态（当消息更新时调用）
-  void _clearMessageReceiveStatus(String messageId) {
-    _messageReceiveStatus.remove(messageId);
-    print('[AgentImpl] 已清除消息 $messageId 的接收状态');
-  }
-
-  /// 清除消息的已读状态（当消息更新时调用）
-  void _clearMessageReadStatus(String messageId) {
-    _messageReadStatus.remove(messageId);
-    print('[AgentImpl] 已清除消息 $messageId 的已读状态');
-  }
-
   @override
   Future<List<Map<String, dynamic>>> getSessionMessagesAsMap() async {
     final messages = await getSessionMessages();
@@ -730,7 +734,7 @@ class AgentImpl implements IAgent {
   @override
   Future<void> revokeMessage(String messageId) async {
     _touch();
-    
+
     // 如果正在处理的是要删除的消息，先打断
     if (_processor?.currentProcessingMessageId == messageId) {
       print('[AgentImpl] 正在处理的消息被删除，打断处理: $messageId');
@@ -739,7 +743,7 @@ class AgentImpl implements IAgent {
       // 否则只从队列中撤回
       await _processor?.revokeMessage(messageId);
     }
-    
+
     // 从内存中删除消息
     _chatAdapter.removeMessageFromMemory(messageId);
   }
@@ -760,7 +764,7 @@ class AgentImpl implements IAgent {
         print('[AgentImpl] 清空会话，打断正在处理的消息');
         await _processor?.interruptCurrentTask();
       }
-      
+
       await _chatAdapter.clearCurrentSession();
     });
   }
@@ -817,7 +821,10 @@ class AgentImpl implements IAgent {
       final store = SkillStore();
 
       // 1. 软删除当前员工的所有技能
-      final existingSkills = await store.findByEmployeeWithDeviceId(null, employeeId);
+      final existingSkills = await store.findByEmployeeWithDeviceId(
+        null,
+        employeeId,
+      );
       for (final skill in existingSkills) {
         await store.delete(null, skill.uuid);
       }
@@ -849,12 +856,16 @@ class AgentImpl implements IAgent {
     // 注意：此处仅返回运行时已加载的技能信息，用于快速响应
     // 完整列表可通过 getSkillsConfigAsync() 异步获取
     if (_skillManager == null) return [];
-    return _skillManager!.skills.map((s) => {
-      'id': s.id,
-      'name': s.name,
-      'description': s.description,
-      'type': s.type.name,
-    }).toList();
+    return _skillManager!.skills
+        .map(
+          (s) => {
+            'id': s.id,
+            'name': s.name,
+            'description': s.description,
+            'type': s.type.name,
+          },
+        )
+        .toList();
   }
 
   // ===== IAgent: MCP 管理 =====
@@ -881,7 +892,10 @@ class AgentImpl implements IAgent {
 
       // 2. 同步 MCP 技能实体到 SkillStore
       // 先删除旧的 MCP 类型技能
-      final existingSkills = await skillStore.findByEmployeeWithDeviceId(null, employeeId);
+      final existingSkills = await skillStore.findByEmployeeWithDeviceId(
+        null,
+        employeeId,
+      );
       for (final skill in existingSkills) {
         if (skill.skillType == 'mcp') {
           await skillStore.delete(null, skill.uuid);
@@ -914,7 +928,10 @@ class AgentImpl implements IAgent {
       }
 
       // 4. 重新加载所有持久化技能（仅 MCP 类型）
-      final allSkills = await skillStore.findByEmployeeWithDeviceId(null, employeeId);
+      final allSkills = await skillStore.findByEmployeeWithDeviceId(
+        null,
+        employeeId,
+      );
       for (final entity in allSkills) {
         if (entity.skillType != 'mcp' || entity.enabled != 1) continue;
         try {
@@ -999,21 +1016,25 @@ class AgentImpl implements IAgent {
       }
 
       // 广播权限响应事件
-      _eventController.add({
-        'type': 'toolPermissionResponse',
-        'data': {
-          'requestId': requestId,
-          'decision': decision.name,
-          'scope': scope.name,
-        },
-        'employeeId': employeeId,
-      });
+      _eventController.add(
+        AgentEvent(
+          type: 'toolPermissionResponse',
+          data: {
+            'requestId': requestId,
+            'decision': decision.name,
+            'scope': scope.name,
+          },
+          employeeId: employeeId,
+        ),
+      );
     }
   }
 
   /// 根据审批范围持久化授权规则到权限配置
   void _persistApproval(
-      AgentPermissionRequest request, PermissionApprovalScope scope) {
+    AgentPermissionRequest request,
+    PermissionApprovalScope scope,
+  ) {
     final toolName = request.permissionType ?? request.functionName;
     final argKey = request.permissionArgKey;
     final argValue = request.permissionArgValue;
@@ -1023,34 +1044,33 @@ class AgentImpl implements IAgent {
 
     final PermissionRule rule = switch (scope) {
       PermissionApprovalScope.exact => PermissionRule(
-          tool: toolName,
-          arg: argKey,
-          pattern: argValue ?? '',
-          mode: PermissionMatchMode.exact,
-          createTime: now,
-        ),
+        tool: toolName,
+        arg: argKey,
+        pattern: argValue ?? '',
+        mode: PermissionMatchMode.exact,
+        createTime: now,
+      ),
       PermissionApprovalScope.pattern => PermissionRule(
-          tool: toolName,
-          arg: argKey,
-          pattern: request.suggestedPattern ??
-              (argValue != null
-                  ? PermissionRule.derivePattern(argValue)
-                  : '.*'),
-          mode: PermissionMatchMode.regex,
-          createTime: now,
-        ),
+        tool: toolName,
+        arg: argKey,
+        pattern:
+            request.suggestedPattern ??
+            (argValue != null ? PermissionRule.derivePattern(argValue) : '.*'),
+        mode: PermissionMatchMode.regex,
+        createTime: now,
+      ),
       PermissionApprovalScope.all => PermissionRule(
-          tool: toolName,
-          pattern: '*',
-          mode: PermissionMatchMode.all,
-          createTime: now,
-        ),
+        tool: toolName,
+        pattern: '*',
+        mode: PermissionMatchMode.all,
+        createTime: now,
+      ),
       PermissionApprovalScope.once => PermissionRule(
-          tool: toolName,
-          pattern: '',
-          mode: PermissionMatchMode.exact,
-          createTime: now,
-        ),
+        tool: toolName,
+        pattern: '',
+        mode: PermissionMatchMode.exact,
+        createTime: now,
+      ),
     };
 
     _permissionManager.addApproval(rule);
@@ -1071,13 +1091,13 @@ class AgentImpl implements IAgent {
   }
 
   final _stateController = StreamController<AgentStateSnapshot>.broadcast();
-  final _eventController = StreamController<Map<String, dynamic>>.broadcast();
+  final _eventController = StreamController<AgentEvent>.broadcast();
 
   @override
   Stream<AgentStateSnapshot> get onStateChanged => _stateController.stream;
 
   @override
-  Stream<Map<String, dynamic>> get onEvent => _eventController.stream;
+  Stream<AgentEvent> get onEvent => _eventController.stream;
 
   // ===== 内部方法 =====
 
@@ -1106,11 +1126,13 @@ class AgentImpl implements IAgent {
 
     final snapshot = getStateSnapshot();
     _stateController.add(snapshot);
-    _eventController.add({
-      'type': 'agentStatusChanged',
-      'data': snapshot.toMap(),
-      'employeeId': employeeId,
-    });
+    _eventController.add(
+      AgentEvent(
+        type: 'agentStatusChanged',
+        data: snapshot.toMap(),
+        employeeId: employeeId,
+      ),
+    );
   }
 
   /// 更新最后活跃时间
@@ -1147,19 +1169,14 @@ class AgentImpl implements IAgent {
 
     // 1. 写入 adapter session + 持久化
     if (_chatAdapter is PersistentChatAdapter) {
-      (_chatAdapter as PersistentChatAdapter)
-          .injectAssistantMessage(messageId, content, 'default');
+      _chatAdapter.injectAssistantMessage(messageId, content, 'default');
     }
 
     // 2. 广播 completed 事件（UI 监听此事件渲染消息）
     _broadcasterBroadcastMessageStatusChange(
       messageId: messageId,
       status: AgentMessageStatus.completed,
-      extraData: {
-        'role': 'assistant',
-        'type': 'text',
-        'content': content,
-      },
+      extraData: {'role': 'assistant', 'type': 'text', 'content': content},
     );
 
     _touch();
@@ -1184,8 +1201,11 @@ class AgentImpl implements IAgent {
         : '【定时任务触发】\n$taskContent';
 
     if (_chatAdapter is PersistentChatAdapter) {
-      (_chatAdapter as PersistentChatAdapter)
-          .injectSystemMessage(systemMsgId, systemContent, 'default');
+      _chatAdapter.injectSystemMessage(
+        systemMsgId,
+        systemContent,
+        'default',
+      );
     }
 
     // 2. 发送 user 消息触发 LLM 处理（metadata 标记 trigger=scheduled_task，
@@ -1225,8 +1245,11 @@ class AgentImpl implements IAgent {
     final now = DateTime.now();
 
     if (_chatAdapter is PersistentChatAdapter) {
-      (_chatAdapter as PersistentChatAdapter)
-          .injectAssistantMessage(msgId, content, 'system');
+      _chatAdapter.injectAssistantMessage(
+        msgId,
+        content,
+        'system',
+      );
     }
 
     // 广播消息状态变更（completed），与正常助手消息完成流程一致
@@ -1252,11 +1275,13 @@ class AgentImpl implements IAgent {
     if (!_stateController.isClosed && !_eventController.isClosed) {
       final snapshot = getStateSnapshot();
       _stateController.add(snapshot);
-      _eventController.add({
-        'type': 'agentStatusChanged',
-        'data': snapshot.toMap(),
-        'employeeId': employeeId,
-      });
+      _eventController.add(
+        AgentEvent(
+          type: 'agentStatusChanged',
+          data: snapshot.toMap(),
+          employeeId: employeeId,
+        ),
+      );
     }
 
     return msgId;
@@ -1270,15 +1295,17 @@ class AgentImpl implements IAgent {
     Map<String, dynamic> extraData = const {},
   }) {
     if (_status == AgentStatus.disposed) return;
-    _eventController.add({
-      'type': 'messageStatusChanged',
-      'data': {
-        'messageId': messageId,
-        'status': status.name,
-        if (error != null) 'error': error,
-        ...extraData,
-      },
-      'employeeId': employeeId,
-    });
+    _eventController.add(
+      AgentEvent(
+        type: 'messageStatusChanged',
+        data: {
+          'messageId': messageId,
+          'status': status.name,
+          'error': ?error,
+          ...extraData,
+        },
+        employeeId: employeeId,
+      ),
+    );
   }
 }

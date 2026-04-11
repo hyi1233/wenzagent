@@ -5,6 +5,7 @@ import 'package:sqlite3/sqlite3.dart';
 
 import 'migrations/migration.dart';
 import 'migrations/v1_migration.dart';
+import 'migrations/v2_migration.dart';
 
 /// 数据库管理器
 ///
@@ -52,15 +53,14 @@ class DatabaseManager {
   bool _initialized = false;
 
   /// 当前 schema 版本号
-  static const int currentVersion = 1;
+  static const int currentVersion = 2;
 
   /// 版本迁移注册表
   ///
   /// 按版本号从小到大排列，初始化时自动按顺序执行。
   static final List<Migration> _migrations = [
     V1Migration(),
-    // 在此注册新迁移，例如：
-    // V2Migration(),
+    V2Migration(),
   ];
 
   /// 获取数据库连接

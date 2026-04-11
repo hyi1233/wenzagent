@@ -1,7 +1,6 @@
 ﻿import 'dart:async';
 
 import '../agent/client/cached_agent_proxy.dart';
-import '../agent/entity/agent_message.dart';
 import '../agent/entity/entity.dart';
 import '../agent/notification/agent_notification_hub.dart';
 import '../entity/lan_device_info.dart';
@@ -50,7 +49,7 @@ typedef LanMessageHandler = void Function(LanMessage message);
 /// DeviceClient 抽象类 - 设备级统一入口
 ///
 /// 核心概念：
-/// - deviceId = spaceId，作为数据隔离标识
+/// - deviceId 作为数据隔离标识
 /// - 员工绑定设备 = 员工在该设备上线
 /// - AgentProxy = 会话窗口代理，用于与员工对话
 /// - 数据同步通过LAN RPC自动实现
@@ -64,7 +63,7 @@ typedef LanMessageHandler = void Function(LanMessage message);
 abstract class DeviceClient {
   // ===== 只读属性 =====
 
-  /// 设备ID（也是spaceId，用于数据隔离）
+  /// 设备ID（用于数据隔离）
   String get deviceId;
 
   /// 设备名称
@@ -101,7 +100,7 @@ abstract class DeviceClient {
   Stream<EmployeeOnlineEvent> get onEmployeeOnlineChanged;
 
   /// Agent 事件流
-  Stream<Map<String, dynamic>> get onAgentEvent;
+  Stream<AgentEvent> get onAgentEvent;
 
   /// 设备事件流（上线、下线、信息变更）
   Stream<DeviceEvent> get onDeviceEvent;
@@ -178,10 +177,14 @@ abstract class DeviceClient {
   /// - 远程模式：启用缓存，支持离线查看
   ///
   /// 每个 AgentProxy 代表一个员工会话窗口
+  ///
+  /// [autoCreateSession] 是否自动创建会话，默认为 true。
+  /// 设为 false 时（如查看员工详情）不会在会话列表中创建条目。
   Future<CachedAgentProxy> getOrCreateAgentProxy({
     required String employeeId,
     String? deviceId,
     AiEmployeeEntity? employee,
+    bool autoCreateSession = true,
   });
 
   /// 销毁 AgentProxy

@@ -114,9 +114,8 @@ class SessionStore {
     final params = <Object?>[];
 
     if (!includeDeleted) {
-      conditions.add(
-        '(deleted != 1 OR (delete_time IS NOT NULL AND delete_time >= update_time))',
-      );
+      // 只排除真正软删除的会话（deleted == 1）
+      conditions.add('deleted != 1');
     }
     if (!includeArchived) {
       conditions.add('is_archived != 1');

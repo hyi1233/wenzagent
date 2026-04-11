@@ -34,6 +34,7 @@ class RemoteSessionMessageTest {
 
   /// 从环境变量获取 API 配置
   String? get _apiKey => Platform.environment['OPENAI_API_KEY'];
+
   String? get _apiBaseUrl => Platform.environment['OPENAI_API_URL'];
 
   Future<void> run() async {
@@ -52,7 +53,7 @@ class RemoteSessionMessageTest {
 
       // ===== 阶段 4: Device-A 发送消息 =====
       print('\n[阶段 4] Device-A 发送消息...');
-      final messageIds = await _deviceASendMessages();
+      await _deviceASendMessages();
 
       // ===== 阶段 5: Device-B 连接并同步数据 =====
       print('\n[阶段 5] Device-B 连接并同步数据...');
@@ -236,7 +237,7 @@ class RemoteSessionMessageTest {
 
     for (int i = 0; i < messages.length; i++) {
       final msg = messages[i];
-      final role = msg.role ?? 'unknown';
+      final role = msg.role;
       final content = msg.content ?? '';
       final status = msg.status ?? 'unknown';
 
@@ -278,7 +279,7 @@ class RemoteSessionMessageTest {
         completedMessages++;
       }
 
-      print('    消息: ${role} - 状态: $status');
+      print('    消息: $role - 状态: $status');
     }
 
     print('  用户消息: $userMessages');
@@ -328,12 +329,12 @@ class RemoteSessionMessageTest {
 
     late StreamSubscription subscription;
     subscription = device.onAgentEvent.listen((event) {
-      final type = event['type'] as String?;
-      final data = event['data'] as Map<String, dynamic>?;
+      final type = event.type;
+      final data = event.data;
 
       if (type == 'messageStatusChanged') {
-        final msgId = data?['messageId'] as String?;
-        final status = data?['status'] as String?;
+        final msgId = data['messageId'] as String?;
+        final status = data['status'] as String?;
 
         if (msgId == messageId &&
             (status == 'completed' || status == 'failed')) {

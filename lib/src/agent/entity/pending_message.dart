@@ -136,13 +136,13 @@ class PendingMessage extends AgentMessage {
   PendingMessage fail() => copyWith(pendingStatus: PendingMessageStatus.failed);
 
   /// 是否待确认
-  bool get isPending => status == PendingMessageStatus.pending;
+  bool get isPending => pendingStatus == PendingMessageStatus.pending;
 
   /// 是否已确认
-  bool get isConfirmed => status == PendingMessageStatus.confirmed;
+  bool get isConfirmed => pendingStatus == PendingMessageStatus.confirmed;
 
   /// 是否失败
-  bool get isFailed => status == PendingMessageStatus.failed;
+  bool get isFailed => pendingStatus == PendingMessageStatus.failed;
 
   @override
   String toString() {

@@ -32,8 +32,8 @@ class LanDeviceInfo {
   /// 平台标识
   final String? platform;
 
-  /// 所属空间 ID
-  final String? spaceId;
+  /// 设备ID
+  final String? deviceId;
 
   /// 设备上的员工数量
   final int? employeeCount;
@@ -52,7 +52,7 @@ class LanDeviceInfo {
     this.osVersion,
     this.appVersion,
     this.platform,
-    this.spaceId,
+    this.deviceId,
     this.employeeCount,
     this.status,
   });
@@ -68,7 +68,7 @@ class LanDeviceInfo {
         if (osVersion != null) 'osVersion': osVersion,
         if (appVersion != null) 'appVersion': appVersion,
         if (platform != null) 'platform': platform,
-        if (spaceId != null) 'spaceId': spaceId,
+        if (deviceId != null) 'deviceId': deviceId,
         if (employeeCount != null) 'employeeCount': employeeCount,
         if (status != null) 'status': status,
       };
@@ -87,7 +87,7 @@ class LanDeviceInfo {
       osVersion: map['osVersion'] as String?,
       appVersion: map['appVersion'] as String?,
       platform: map['platform'] as String?,
-      spaceId: map['spaceId'] as String?,
+      deviceId: map['deviceId'] as String?,
       employeeCount: map['employeeCount'] as int?,
       status: map['status'] as String?,
     );
@@ -116,7 +116,7 @@ class LanDeviceInfo {
     String? osVersion,
     String? appVersion,
     String? platform,
-    String? spaceId,
+    String? deviceId,
     int? employeeCount,
     String? status,
   }) {
@@ -131,7 +131,7 @@ class LanDeviceInfo {
       osVersion: osVersion ?? this.osVersion,
       appVersion: appVersion ?? this.appVersion,
       platform: platform ?? this.platform,
-      spaceId: spaceId ?? this.spaceId,
+      deviceId: deviceId ?? this.deviceId,
       employeeCount: employeeCount ?? this.employeeCount,
       status: status ?? this.status,
     );

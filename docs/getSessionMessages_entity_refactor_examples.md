@@ -51,7 +51,7 @@ final toolCalls = msg['toolCalls'];
 final toolCallId = msg['toolCallId'];
 
 // 修改后
-final role = msg.role ?? 'unknown';
+final role = msg.role
 final content = msg.content ?? '';
 final toolCalls = msg.toolCalls;
 final toolCallId = msg.toolCallId;
@@ -307,7 +307,7 @@ final role = msg['role'] as String? ?? 'unknown';
 final content = msg['content'] as String? ?? '';
 
 // 新方式
-final role = msg.role ?? 'unknown';
+final role = msg.role
 final content = msg.content ?? '';
 ```
 

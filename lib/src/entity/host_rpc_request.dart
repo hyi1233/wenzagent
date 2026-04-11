@@ -1,7 +1,5 @@
 /// Host RPC 请求参数实体类
 ///
-/// 为所有Host RPC方法提供类型安全的参数封装
-
 /// 获取员工列表请求
 class GetEmployeesRequest {
   final String? keyword;

@@ -5,9 +5,6 @@ class AiEmployeeEntity {
   /// 员工UUID
   final String uuid;
 
-  /// 空间ID
-  String? spaceId;
-
   /// 员工名称
   String name;
 
@@ -97,7 +94,6 @@ class AiEmployeeEntity {
 
   AiEmployeeEntity({
     required this.uuid,
-    this.spaceId,
     required this.name,
     this.avatar,
     this.role = 'assistant',
@@ -132,7 +128,6 @@ class AiEmployeeEntity {
   factory AiEmployeeEntity.fromMap(Map<String, dynamic> map) {
     return AiEmployeeEntity(
       uuid: map['uuid'] as String,
-      spaceId: map['spaceId'] as String?,
       name: map['name'] as String,
       avatar: map['avatar'] as String?,
       role: map['role'] as String? ?? 'assistant',
@@ -176,7 +171,6 @@ class AiEmployeeEntity {
   Map<String, dynamic> toMap() {
     return {
       'uuid': uuid,
-      'spaceId': spaceId,
       'name': name,
       'avatar': avatar,
       'role': role,
@@ -211,7 +205,6 @@ class AiEmployeeEntity {
   /// 复制并修改
   AiEmployeeEntity copyWith({
     String? uuid,
-    String? spaceId,
     String? name,
     String? avatar,
     String? role,
@@ -243,7 +236,6 @@ class AiEmployeeEntity {
   }) {
     return AiEmployeeEntity(
       uuid: uuid ?? this.uuid,
-      spaceId: spaceId ?? this.spaceId,
       name: name ?? this.name,
       avatar: avatar ?? this.avatar,
       role: role ?? this.role,

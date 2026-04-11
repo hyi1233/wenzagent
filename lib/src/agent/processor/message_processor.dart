@@ -74,7 +74,7 @@ class StreamResponse {
         'toolName': toolName,
         'result': result,
         'isError': isError,
-        if (durationMs != null) 'durationMs': durationMs,
+        'durationMs': ?durationMs,
       },
     );
   }
@@ -163,7 +163,7 @@ abstract class IChatAdapter {
 
   /// 设置工具事件回调
   void setToolEventCallback(
-    void Function(Map<String, dynamic> event)? callback,
+    void Function(ToolEvent event)? callback,
   );
 
   /// 更新消息状态（用于持久化）

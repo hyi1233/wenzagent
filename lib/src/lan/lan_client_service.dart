@@ -1,4 +1,5 @@
 import '../entity/lan_message.dart';
+import 'entity/client_info.dart';
 
 /// 局域网客户端接口
 abstract class LanClientService {
@@ -48,7 +49,7 @@ abstract class LanClientService {
   Future<void> downloadFile(String fileId, String savePath);
 
   /// 获取客户端信息
-  Future<Map<String, dynamic>> getClientInfo();
+  Future<ClientInfo> getClientInfo();
 
   /// 手动触发重连
   Future<void> reconnect();

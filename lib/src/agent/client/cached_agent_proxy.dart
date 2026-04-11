@@ -86,7 +86,7 @@ class CachedAgentProxy {
   final Map<String, AgentPermissionRequest> _pendingPermissionRequests = {};
 
   /// 事件订阅
-  StreamSubscription<Map<String, dynamic>>? _eventSubscription;
+  StreamSubscription<AgentEvent>? _eventSubscription;
   StreamSubscription<AgentStateSnapshot>? _stateSubscription;
   
   /// 是否已释放
@@ -344,10 +344,10 @@ class CachedAgentProxy {
   }
   
   /// 处理Agent事件
-  void _handleAgentEvent(Map<String, dynamic> event) {
-    final type = event['type'] as String?;
-    final data = event['data'] as Map<String, dynamic>? ?? {};
-    final employeeId = event['employeeId'] as String?;
+  void _handleAgentEvent(AgentEvent event) {
+    final type = event.type;
+    final data = event.data;
+    final employeeId = event.employeeId;
     
     // 只处理当前员工的事件
     if (employeeId != null && employeeId != _employeeId) {
@@ -365,9 +365,7 @@ class CachedAgentProxy {
         break;
       case 'toolCallStart':
       case 'toolCallResult':
-        if (type != null) {
-          _handleToolEvent(type, data);
-        }
+        _handleToolEvent(type, data);
         break;
       case 'toolPermissionRequest':
         _handlePermissionRequest(data);
@@ -417,7 +415,7 @@ class CachedAgentProxy {
         : errorContent;
     
     final errorMessage = AgentMessage(
-      id: 'error_${originalMessageId}',
+      id: 'error_$originalMessageId',
       role: 'assistant',
       type: 'error',
       content: '处理失败: $displayError',
@@ -1406,27 +1404,27 @@ class CachedAgentProxy {
       _proxy.getCurrentProjectUuidAsync();
 
   /// 检查路径是否存在于目标设备上（异步版本，支持远程 RPC）
-  Future<Map<String, dynamic>> checkPathExists(String path) =>
+  Future<PathExistsResult> checkPathExists(String path) =>
       _proxy.checkPathExists(path);
 
   /// 列出目录内容
-  Future<Map<String, dynamic>> listDirectory(String path) =>
+  Future<DirectoryListingResult> listDirectory(String path) =>
       _proxy.listDirectory(path);
 
   /// 获取文件/目录信息
-  Future<Map<String, dynamic>> getFileInfo(String path) =>
+  Future<FileInfoResult> getFileInfo(String path) =>
       _proxy.getFileInfo(path);
 
   /// 创建目录
-  Future<Map<String, dynamic>> createDirectory(String path) =>
+  Future<FileOpResult> createDirectory(String path) =>
       _proxy.createDirectory(path);
 
   /// 删除文件/目录
-  Future<Map<String, dynamic>> deleteFile(String path) =>
+  Future<FileOpResult> deleteFile(String path) =>
       _proxy.deleteFile(path);
 
   /// 重命名/移动文件
-  Future<Map<String, dynamic>> renameFile(String oldPath, String newPath) =>
+  Future<FileOpResult> renameFile(String oldPath, String newPath) =>
       _proxy.renameFile(oldPath, newPath);
 
   /// 注册工具
@@ -1485,7 +1483,7 @@ class CachedAgentProxy {
   /// 查询消息已读状态
   ///
   /// 设备重新打开时从 Agent 查询哪些消息已读
-  Future<Map<String, dynamic>> getMessagesReadStatus({
+  Future<MessagesReadStatusResult> getMessagesReadStatus({
     required String deviceId,
   }) {
     return _proxy.getMessagesReadStatus(deviceId: deviceId);

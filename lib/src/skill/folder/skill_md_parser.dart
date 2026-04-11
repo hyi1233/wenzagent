@@ -44,7 +44,6 @@ class SkillMdParser {
     );
   }
 
-  /// 将 YamlMap 转为 Map<String, dynamic>
   static Map<String, dynamic> _yamlToMap(dynamic yaml) {
     if (yaml is YamlMap) {
       return yaml.map((key, value) => MapEntry(key.toString(), _yamlToDart(value)));

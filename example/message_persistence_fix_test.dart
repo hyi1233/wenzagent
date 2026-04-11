@@ -23,8 +23,6 @@ class MessagePersistenceFixTest {
   final String deviceId = 'test-device';
   final String employeeName = 'Test Assistant';
 
-  bool get _hasApiKey => false; // 测试不需要真实的 API Key
-
   Future<void> run() async {
     try {
       // ===== 阶段 1: 初始化存储 =====

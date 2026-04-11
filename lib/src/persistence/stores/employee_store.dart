@@ -18,7 +18,6 @@ class EmployeeStore {
   AiEmployeeEntity _rowToEntity(Row row) {
     return AiEmployeeEntity.fromMap({
       'uuid': row['uuid'],
-      'spaceId': row['space_id'],
       'name': row['name'],
       'avatar': row['avatar'],
       'role': row['role'],
@@ -54,7 +53,6 @@ class EmployeeStore {
   List<Object?> _entityToParams(AiEmployeeEntity e) {
     return [
       e.uuid,
-      e.spaceId,
       e.name,
       e.avatar,
       e.role,
@@ -88,16 +86,16 @@ class EmployeeStore {
 
   /// 查找所有员工
   Future<List<AiEmployeeEntity>> findAll(
-    String? spaceId, {
+    String? deviceId, {
     String? keyword,
     String? status,
   }) async {
     final conditions = <String>['deleted = 0'];
     final params = <Object?>[];
 
-    if (spaceId != null) {
-      conditions.add('space_id = ?');
-      params.add(spaceId);
+    if (deviceId != null) {
+      conditions.add('device_id = ?');
+      params.add(deviceId);
     }
     if (status != null) {
       conditions.add('status = ?');
@@ -119,10 +117,19 @@ class EmployeeStore {
   }
 
   /// 查找单个员工
-  Future<AiEmployeeEntity?> find(String? spaceId, String uuid) async {
+  Future<AiEmployeeEntity?> find(String? deviceId, String uuid) async {
+    final conditions = <String>['uuid = ?', 'deleted = 0'];
+    final params = <Object?>[uuid];
+
+    if (deviceId != null) {
+      conditions.add('device_id = ?');
+      params.add(deviceId);
+    }
+
+    final where = conditions.join(' AND ');
     final resultSet = _db.select(
-      'SELECT * FROM employees WHERE uuid = ? AND deleted = 0',
-      [uuid],
+      'SELECT * FROM employees WHERE $where',
+      params,
     );
     for (final row in resultSet) {
       return _rowToEntity(row);
@@ -132,22 +139,24 @@ class EmployeeStore {
 
   /// 保存员工（INSERT OR REPLACE）
   Future<void> save(AiEmployeeEntity entity) async {
-    _db.execute('''
-      INSERT OR REPLACE INTO employees (
-        uuid, space_id, name, avatar, role, status, description,
-        system_prompt, provider, model, api_key, api_base_url, model_config,
-        project_uuid, project_name, project_context, work_path,
-        enable_tools, enable_mcp, mcp_config, permission_config,
-        device_id, current_device_id, auto_approve, sort_order, is_pinned,
-        deleted, deleted_time, create_time, update_time
-      ) VALUES (
-        ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?
-      )
-    ''', _entityToParams(entity));
+    const columns = [
+      'uuid', 'name', 'avatar', 'role', 'status', 'description',
+      'system_prompt', 'provider', 'model', 'api_key', 'api_base_url', 'model_config',
+      'project_uuid', 'project_name', 'project_context', 'work_path',
+      'enable_tools', 'enable_mcp', 'mcp_config', 'permission_config',
+      'device_id', 'current_device_id', 'auto_approve', 'sort_order', 'is_pinned',
+      'deleted', 'deleted_time', 'create_time', 'update_time',
+    ];
+    final placeholders = List.filled(columns.length, '?').join(', ');
+    final columnList = columns.join(', ');
+    _db.execute(
+      'INSERT OR REPLACE INTO employees ($columnList) VALUES ($placeholders)',
+      _entityToParams(entity),
+    );
   }
 
   /// 删除员工（软删除）
-  Future<void> delete(String? spaceId, String uuid) async {
+  Future<void> delete(String? deviceId, String uuid) async {
     final now = DateTime.now().millisecondsSinceEpoch;
     _db.execute(
       'UPDATE employees SET deleted = 1, deleted_time = ?, update_time = ? WHERE uuid = ?',
@@ -156,13 +165,13 @@ class EmployeeStore {
   }
 
   /// 获取员工数量
-  Future<int> count(String? spaceId, {String? status}) async {
+  Future<int> count(String? deviceId, {String? status}) async {
     final conditions = <String>['deleted = 0'];
     final params = <Object?>[];
 
-    if (spaceId != null) {
-      conditions.add('space_id = ?');
-      params.add(spaceId);
+    if (deviceId != null) {
+      conditions.add('device_id = ?');
+      params.add(deviceId);
     }
     if (status != null) {
       conditions.add('status = ?');
@@ -178,7 +187,7 @@ class EmployeeStore {
   }
 
   /// 检查员工是否存在
-  Future<bool> exists(String? spaceId, String uuid) async {
+  Future<bool> exists(String? deviceId, String uuid) async {
     final resultSet = _db.select(
       'SELECT 1 FROM employees WHERE uuid = ? AND deleted = 0 LIMIT 1',
       [uuid],

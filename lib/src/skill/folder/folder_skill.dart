@@ -13,7 +13,7 @@ import 'skill_md_parser.dart';
 class FolderSkill implements Skill {
   final String _path;
   final String _id;
-  String? _pendingName;
+  final String? _pendingName;
   FolderSkillConfig? _config;
   List<AgentTool> _tools = [];
   SkillStatus _status = SkillStatus.uninitialized;

@@ -94,9 +94,7 @@ class DeviceConfigStore {
     DeviceInfoConfig deviceInfo,
   ) async {
     var config = await find(deviceId);
-    if (config == null) {
-      config = await getOrCreate(deviceId);
-    }
+    config ??= await getOrCreate(deviceId);
 
     await save(config.copyWith(
       deviceInfo: deviceInfo,
@@ -110,9 +108,7 @@ class DeviceConfigStore {
     Map<String, String> environmentVariables,
   ) async {
     var config = await find(deviceId);
-    if (config == null) {
-      config = await getOrCreate(deviceId);
-    }
+    config ??= await getOrCreate(deviceId);
 
     await save(config.copyWith(
       environmentVariables: environmentVariables,
@@ -127,9 +123,7 @@ class DeviceConfigStore {
     String value,
   ) async {
     var config = await find(deviceId);
-    if (config == null) {
-      config = await getOrCreate(deviceId);
-    }
+    config ??= await getOrCreate(deviceId);
 
     final newEnvVars = Map<String, String>.from(config.environmentVariables);
     newEnvVars[key] = value;

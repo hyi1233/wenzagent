@@ -350,7 +350,7 @@ Map<String, dynamic>? _getProviderConfig() {
     'provider': 'openai',
     'model': model,
     'apiKey': apiKey,
-    if (baseUrl != null) 'baseUrl': baseUrl,
+    'baseUrl': ?baseUrl,
     'options': {'temperature': 0.7},
   };
 }

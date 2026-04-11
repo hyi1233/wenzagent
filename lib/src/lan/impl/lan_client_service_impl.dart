@@ -6,6 +6,7 @@ import 'package:uuid/uuid.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../../entity/lan_message.dart';
+import '../entity/client_info.dart';
 import '../lan_chunk_service.dart';
 import '../lan_client_service.dart';
 
@@ -261,18 +262,18 @@ class LanClientServiceImpl implements LanClientService {
   }
 
   @override
-  Future<Map<String, dynamic>> getClientInfo() async {
+  Future<ClientInfo> getClientInfo() async {
     final ip = await _getLocalIp();
-    return {
-      'id': _myId,
-      'ip': ip,
-      'hostIp': _hostIp,
-      'hostPort': _hostPort,
-      'isConnected': _isConnected,
-      'deviceId': _deviceId,
-      'topic': _topic,
-      'name': _getDeviceName(),
-    };
+    return ClientInfo(
+      id: _myId ?? '',
+      ip: ip,
+      hostIp: _hostIp,
+      hostPort: _hostPort,
+      isConnected: _isConnected,
+      deviceId: _deviceId,
+      topic: _topic,
+      name: _getDeviceName(),
+    );
   }
 
   // ==================== Private ====================

@@ -364,7 +364,7 @@ class MultiDeviceConcurrentTest {
     print('\n  消息摘要:');
     for (int i = 0; i < messagesA.length; i++) {
       final msg = messagesA[i];
-      final role = msg.role ?? 'unknown';
+      final role = msg.role;
       final content = msg.content ?? '';
       print(
         '    [$i] $role: ${content.length > 60 ? "${content.substring(0, 60)}..." : content}',
@@ -385,12 +385,12 @@ class MultiDeviceConcurrentTest {
     late StreamSubscription subscription;
 
     subscription = device.onAgentEvent.listen((event) {
-      final type = event['type'] as String?;
-      final data = event['data'] as Map<String, dynamic>?;
+      final type = event.type;
+      final data = event.data;
 
       if (type == 'messageStatusChanged') {
-        final msgId = data?['messageId'] as String?;
-        final status = data?['status'] as String?;
+        final msgId = data['messageId'] as String?;
+        final status = data['status'] as String?;
 
         if (msgId == messageId &&
             (status == 'completed' || status == 'failed')) {

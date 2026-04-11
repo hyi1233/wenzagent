@@ -1,5 +1,6 @@
 import '../entity/lan_client.dart';
 import '../entity/lan_message.dart';
+import 'entity/host_info.dart';
 
 /// 局域网服务端接口
 abstract class LanHostService {
@@ -45,5 +46,5 @@ abstract class LanHostService {
   Future<List<int>?> getFile(String fileId);
 
   /// 获取服务端信息
-  Future<Map<String, dynamic>> getHostInfo();
+  Future<HostInfo> getHostInfo();
 }

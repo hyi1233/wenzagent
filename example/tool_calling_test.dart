@@ -1,12 +1,4 @@
-﻿/// Tool Calling 示例
-///
-/// 演示如何使用 Agent 的 Tool Calling 功能，
-/// 包括工具注册、权限确认和 LLM 自主调用工具。
-///
-/// 使用方法:
-/// 1. 设置环境变量 OPENAI_API_KEY
-/// 2. 运行: dart run example/tool_calling_test.dart
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:io';
 
 import 'package:wenzagent/wenzagent.dart';
@@ -58,27 +50,27 @@ void main() async {
 
   // 6. 监听事件
   agent.onEvent.listen((event) {
-    final type = event['type'] as String?;
-    final data = event['data'] as Map<String, dynamic>?;
+    final type = event.type;
+    final data = event.data;
 
     switch (type) {
       case 'toolCallStart':
-        print('\n  [工具调用] ${data?['toolName']}(${data?['arguments']})');
+        print('\n  [工具调用] ${data['toolName']}(${data['arguments']})');
         break;
       case 'toolCallResult':
-        final result = data?['result'] as String? ?? '';
-        final isError = data?['isError'] as bool? ?? false;
-        final duration = data?['durationMs'] as int?;
+        final result = data['result'] as String? ?? '';
+        final isError = data['isError'] as bool? ?? false;
+        final duration = data['durationMs'] as int?;
         final preview = result.length > 200
             ? '${result.substring(0, 200)}...'
             : result;
         print('  [工具结果] ${isError ? "错误: " : ""}$preview (${duration}ms)');
         break;
       case 'toolPermissionRequest':
-        print('\n  [权限请求] ${data?['description']}');
+        print('\n  [权限请求] ${data['description']}');
         // 在实际应用中，这里应该等待用户确认
         // 本示例自动同意
-        final requestId = data?['requestId'] as String?;
+        final requestId = data['requestId'] as String?;
         if (requestId != null) {
           agent.respondToPermission(requestId, PermissionDecision.allow);
         }
@@ -113,9 +105,9 @@ Future<void> _sendAndWait(AgentImpl agent, String content) async {
   // 监听消息状态变更
   late StreamSubscription sub;
   sub = agent.onEvent.listen((event) {
-    final type = event['type'] as String?;
+    final type = event.type;
     if (type == 'messageStatusChanged') {
-      final status = event['data']?['status'] as String?;
+      final status = event.data['status'] as String?;
       if (status == 'completed' || status == 'failed') {
         sub.cancel();
         if (!completer.isCompleted) {

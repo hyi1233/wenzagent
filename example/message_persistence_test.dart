@@ -1,5 +1,4 @@
 ﻿import 'dart:io';
-import 'dart:convert';
 
 import 'package:wenzagent/wenzagent.dart';
 import 'package:uuid/uuid.dart';
@@ -33,8 +32,6 @@ class MessagePersistenceTest {
   /// 从环境变量获取 API 配置
   String? get _apiKey => Platform.environment['OPENAI_API_KEY'];
   String? get _apiBaseUrl => Platform.environment['OPENAI_API_URL'];
-
-  bool get _hasApiKey => _apiKey != null && _apiKey!.isNotEmpty;
 
   Future<void> run() async {
     try {

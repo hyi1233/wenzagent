@@ -18,9 +18,6 @@ class ClientSession {
   /// 订阅的员工UUID集合
   final Set<String> subscribedEmployees;
 
-  /// 当前空间ID
-  final String? currentSpaceId;
-
   ClientSession({
     required this.clientId,
     required this.deviceId,
@@ -28,7 +25,6 @@ class ClientSession {
     this.topic,
     required this.connectedAt,
     Set<String>? subscribedEmployees,
-    this.currentSpaceId,
   }) : subscribedEmployees = subscribedEmployees ?? {};
 
   /// 复制并修改
@@ -39,7 +35,6 @@ class ClientSession {
     String? topic,
     DateTime? connectedAt,
     Set<String>? subscribedEmployees,
-    String? currentSpaceId,
   }) {
     return ClientSession(
       clientId: clientId ?? this.clientId,
@@ -48,7 +43,6 @@ class ClientSession {
       topic: topic ?? this.topic,
       connectedAt: connectedAt ?? this.connectedAt,
       subscribedEmployees: subscribedEmployees ?? Set.from(this.subscribedEmployees),
-      currentSpaceId: currentSpaceId ?? this.currentSpaceId,
     );
   }
 
@@ -61,7 +55,6 @@ class ClientSession {
       'topic': topic,
       'connectedAt': connectedAt.millisecondsSinceEpoch,
       'subscribedEmployees': subscribedEmployees.toList(),
-      'currentSpaceId': currentSpaceId,
     };
   }
 
@@ -78,7 +71,6 @@ class ClientSession {
       subscribedEmployees: map['subscribedEmployees'] != null
           ? Set<String>.from(map['subscribedEmployees'] as List)
           : null,
-      currentSpaceId: map['currentSpaceId'] as String?,
     );
   }
 
@@ -90,16 +82,12 @@ class ClientSession {
 
 /// 客户端会话管理器
 class ClientSessionManager {
-  /// 客户端会话映射 (clientId -> ClientSession)
   final Map<String, ClientSession> _clients = {};
 
-  /// 设备ID到客户端ID的映射 (deviceId -> Set<clientId>)
   final Map<String, Set<String>> _deviceClients = {};
 
-  /// 主题到客户端的映射 (topic -> Set<clientId>)
   final Map<String, Set<String>> _topicClients = {};
 
-  /// 员工订阅映射 (employeeId -> Set<clientId>)
   final Map<String, Set<String>> _employeeSubscribers = {};
 
   /// 注册客户端
@@ -245,7 +233,6 @@ class ClientSessionManager {
         'topic': firstClient?.topic,
         'connectedAt': firstClient?.connectedAt.millisecondsSinceEpoch,
         'clientCount': clients.length,
-        'spaceId': firstClient?.currentSpaceId,
       };
     }).toList();
   }

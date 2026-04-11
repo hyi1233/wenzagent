@@ -282,11 +282,6 @@ class McpServerConfig {
     );
   }
 
-  /// 从JSON字符串解析配置列表
-  ///
-  /// 支持两种格式：
-  /// - 新格式：List<McpServerConfig>
-  /// - 旧格式：Map<String, dynamic>（自动转换为List）
   static List<McpServerConfig> parseList(String? jsonString) {
     if (jsonString == null || jsonString.isEmpty) {
       return [];

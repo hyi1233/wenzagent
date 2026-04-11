@@ -35,8 +35,6 @@ class AgentPersistenceLoadTest {
   String? get _apiKey => Platform.environment['OPENAI_API_KEY'];
   String? get _apiBaseUrl => Platform.environment['OPENAI_API_URL'];
 
-  bool get _hasApiKey => _apiKey != null && _apiKey!.isNotEmpty;
-
   Future<void> run() async {
     try {
       // ===== 阶段 1: 初始化存储 =====
@@ -202,7 +200,7 @@ class AgentPersistenceLoadTest {
     // 打印消息摘要
     for (var i = 0; i < messages.length; i++) {
       final msg = messages[i];
-      final role = msg.role ?? 'unknown';
+      final role = msg.role;
       final content = msg.content ?? '';
       final preview = content.length > 30 ? '${content.substring(0, 30)}...' : content;
       print('    消息 ${i + 1}: [$role] $preview');

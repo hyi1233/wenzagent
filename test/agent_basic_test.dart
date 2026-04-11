@@ -82,7 +82,7 @@ void main() {
       await messageStore.addMessage(entity, deviceId: deviceId);
     };
     
-    adapter.loadMessages = (employeeId) async {
+    adapter.loadMessages = (employeeId, {int? limit}) async {
       final messages = await messageStore.getMessages(employeeId);
       return messages.map((m) => m.toMap()).toList();
     };

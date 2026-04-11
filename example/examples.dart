@@ -16,7 +16,7 @@
 ///
 /// 核心概念：
 /// 1. **Host**: 中转服务器，负责消息转发、文件存储
-/// 2. **Client**: 连接到 Host 的客户端，通过 spaceId 标识
+/// 2. **Client**: 连接到 Host 的客户端，通过 deviceId 标识
 /// 3. **RPC**: 远程过程调用，支持同步和流式两种模式
 /// 4. **Agent**: AI Agent 实例，可通过 RPC 远程操作
 library;

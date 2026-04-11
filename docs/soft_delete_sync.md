@@ -29,9 +29,9 @@ DateTime? deletedTime;
 **位置**: [employee_store.dart](file:///d:/project/GitHub/wenzagent/lib/src/persistence/stores/employee_store.dart#L60-L75)
 
 ```dart
-Future<void> delete(String? spaceId, String uuid) async {
+Future<void> delete(String? deviceId, String uuid) async {
   final box = _hiveManager.employeeBox;
-  final key = _hiveManager.buildEmployeeKey(spaceId, uuid);
+  final key = _hiveManager.buildEmployeeKey(deviceId, uuid);
   final entity = box.get(key);
   if (entity != null) {
     // 软删除时设置 deleted=1 和 deletedTime

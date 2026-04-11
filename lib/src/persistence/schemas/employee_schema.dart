@@ -6,7 +6,6 @@ class EmployeeSchema {
     db.execute('''
       CREATE TABLE IF NOT EXISTS employees (
         uuid             TEXT PRIMARY KEY,
-        space_id         TEXT,
         name             TEXT NOT NULL,
         avatar           TEXT,
         role             TEXT DEFAULT 'assistant',
@@ -38,8 +37,8 @@ class EmployeeSchema {
       );
     ''');
     db.execute('''
-      CREATE INDEX IF NOT EXISTS idx_employees_space
-        ON employees(space_id);
+      CREATE INDEX IF NOT EXISTS idx_employees_device
+        ON employees(device_id);
     ''');
   }
 }
