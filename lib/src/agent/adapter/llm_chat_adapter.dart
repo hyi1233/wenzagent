@@ -279,12 +279,17 @@ class LlmChatAdapter implements IChatAdapter {
             }
             print('[LlmChatAdapter] tool use empty, stop tool calling loop');
             if (llmResult.isDone) {
+              print(
+                '[LlmChatAdapter] ai call tool done: ${llmResult.aiContentBuffer.toString()}',
+              );
               break;
             } else {
               if (notReplyRecord.tooLongNotReply()) {
                 print('[LlmChatAdapter] ai not reply, too long no reply');
                 break;
               }
+              print('[LlmChatAdapter] ai not reply, wait for ai reply');
+              await Future.delayed(Duration(seconds: 3));
               continue;
             }
           }
@@ -698,7 +703,7 @@ class LlmChatAdapter implements IChatAdapter {
     return _LlmStreamResult(
       aiContentBuffer: aiContentBuffer,
       aiThinkingBuffer: thinkingContentBuffer,
-      isDone: aiContentBuffer.isNotEmpty,
+      isDone: aiContentBuffer.toString().trim().isNotEmpty,
       toolCalls: toolCalls,
     );
   }
