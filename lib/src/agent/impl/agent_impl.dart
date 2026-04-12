@@ -182,9 +182,9 @@ class AgentImpl implements IAgent {
     });
 
     _processor = MessageProcessor(
-      streamMessage: (messageId, messageData, {cancellationToken}) {
+      streamMessage: (messageId, message, {cancellationToken}) {
         return _chatAdapter
-            .streamMessage(messageData, cancellationToken: cancellationToken)
+            .streamMessage(message, cancellationToken: cancellationToken)
             .map(
               (r) => StreamResponse(
                 content: r.content,

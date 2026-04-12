@@ -111,15 +111,15 @@ void main() async {
 Future<void> _processMessage(LlmChatAdapter adapter, String input) async {
   stdout.write('\n助手: ');
 
-  final messageData = {
-    'id': 'msg_${DateTime.now().millisecondsSinceEpoch}',
-    'content': input,
-  };
+  final message = MessageInput(
+    id: 'msg_${DateTime.now().millisecondsSinceEpoch}',
+    content: input,
+  );
 
   bool hasTextOutput = false;
 
   try {
-    await for (final response in adapter.streamMessage(messageData)) {
+    await for (final response in adapter.streamMessage(message)) {
       // 错误
       if (response.error != null) {
         if (hasTextOutput) stdout.writeln();

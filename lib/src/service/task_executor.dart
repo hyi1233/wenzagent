@@ -4,6 +4,7 @@ import 'package:uuid/uuid.dart';
 
 import '../agent/adapter/llm_chat_adapter.dart';
 import '../agent/agent_state.dart';
+import '../agent/entity/entity.dart';
 import '../agent/tool/agent_tool.dart';
 import '../agent/tool/builtin/builtin_tools.dart';
 import '../agent/tool/tool_registry.dart';
@@ -142,10 +143,10 @@ class TaskExecutor {
 
       try {
         await for (final response
-            in adapter.streamMessage({
-              'content': '提醒内容：$taskPrompt',
-              'id': const Uuid().v4(),
-            }).timeout(timeout, onTimeout: (sink) {
+            in adapter.streamMessage(MessageInput(
+              content: '提醒内容：$taskPrompt',
+              id: const Uuid().v4(),
+            )).timeout(timeout, onTimeout: (sink) {
               sink.addError(TimeoutException(
                   'Task execution timed out', timeout));
               sink.close();

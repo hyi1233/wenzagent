@@ -76,9 +76,9 @@ Future<void> main() async {
     print('  用户: 你好，请介绍一下你自己');
     print('  助手: ');
 
-    await for (final response in adapter.streamMessage({
-      'content': '你好，请介绍一下你自己',
-    })) {
+    await for (final response in adapter.streamMessage(
+      MessageInput(content: '你好，请介绍一下你自己'),
+    )) {
       if (response.error != null) {
         print('\n  错误: ${response.error}');
         break;
@@ -109,9 +109,9 @@ Future<void> main() async {
     print('  用户: 你刚才说了什么？');
     print('  助手: ');
 
-    await for (final response in adapter.streamMessage({
-      'content': '你刚才说了什么？',
-    })) {
+    await for (final response in adapter.streamMessage(
+      MessageInput(content: '你刚才说了什么？'),
+    )) {
       if (response.error != null) {
         print('\n  错误: ${response.error}');
         break;

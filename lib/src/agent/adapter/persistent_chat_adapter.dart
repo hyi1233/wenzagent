@@ -190,7 +190,7 @@ class PersistentChatAdapter extends LlmChatAdapter {
 
   @override
   Stream<StreamResponse> streamMessage(
-    Map<String, dynamic> messageData, {
+    MessageInput message, {
     CancellationToken? cancellationToken,
   }) async* {
     final session = memoryManager.getSession(currentEmployeeUuid!);
@@ -198,7 +198,7 @@ class PersistentChatAdapter extends LlmChatAdapter {
 
     try {
       await for (final response in super.streamMessage(
-        messageData,
+        message,
         cancellationToken: cancellationToken,
       )) {
         yield response;

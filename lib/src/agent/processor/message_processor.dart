@@ -124,7 +124,7 @@ abstract class IChatAdapter {
 
   /// 流式发送消息
   Stream<StreamResponse> streamMessage(
-    Map<String, dynamic> messageData, {
+    MessageInput message, {
     CancellationToken? cancellationToken,
   });
 
@@ -162,9 +162,7 @@ abstract class IChatAdapter {
   void setPermissionManager(ToolPermissionManager? manager);
 
   /// 设置工具事件回调
-  void setToolEventCallback(
-    void Function(ToolEvent event)? callback,
-  );
+  void setToolEventCallback(void Function(ToolEvent event)? callback);
 
   /// 更新消息状态（用于持久化）
   void updateMessageStatus(
@@ -188,7 +186,7 @@ typedef MessageStatusCallback =
 typedef StreamMessageFunc =
     Stream<StreamResponse> Function(
       String messageId,
-      Map<String, dynamic> messageData, {
+      MessageInput message, {
       CancellationToken? cancellationToken,
     });
 
@@ -303,14 +301,19 @@ class MessageProcessor {
           );
           print('[MessageProcessor] interrupt judgment result: $result');
 
-          if (result.decision == InterruptDecision.interrupt && result.targetMessageId != null) {
+          if (result.decision == InterruptDecision.interrupt &&
+              result.targetMessageId != null) {
             // 验证 targetMessageId 仍然是当前处理的消息
             // 防止判断期间消息已经完成或状态变化导致打断错误的消息
             if (_currentProcessingMessageId == result.targetMessageId) {
-              print('[MessageProcessor] interrupting message: $_currentProcessingMessageId');
+              print(
+                '[MessageProcessor] interrupting message: $_currentProcessingMessageId',
+              );
               await interruptCurrentTask();
             } else {
-              print('[MessageProcessor] targetMessageId mismatch, skipping interrupt');
+              print(
+                '[MessageProcessor] targetMessageId mismatch, skipping interrupt',
+              );
             }
           }
         }
@@ -332,7 +335,10 @@ class MessageProcessor {
         _currentProcessingMessageId!,
         MessageProcessingStatus.interrupted.toAgentMessageStatus(),
       );
-      _tracker.updateStatus(_currentProcessingMessageId!, MessageProcessingStatus.interrupted);
+      _tracker.updateStatus(
+        _currentProcessingMessageId!,
+        MessageProcessingStatus.interrupted,
+      );
     }
 
     _currentProcessingMessageId = null;
@@ -394,20 +400,23 @@ class MessageProcessor {
       item.messageId,
       MessageProcessingStatus.processing.toAgentMessageStatus(),
     );
-    _tracker.updateStatus(item.messageId, MessageProcessingStatus.processing); // 同步追踪器状态
+    _tracker.updateStatus(
+      item.messageId,
+      MessageProcessingStatus.processing,
+    ); // 同步追踪器状态
 
-    _processMessage(item.messageId, item.messageData);
+    _processMessage(item.messageId, MessageInput.fromMap(item.messageData));
   }
 
   Future<void> _processMessage(
     String messageId,
-    Map<String, dynamic> messageData,
+    MessageInput messageInput,
   ) async {
     print('[MessageProcessor] _processMessage: $messageId');
     try {
       final stream = _streamMessage(
         messageId,
-        messageData,
+        messageInput,
         cancellationToken: _currentCancellationToken,
       );
 
