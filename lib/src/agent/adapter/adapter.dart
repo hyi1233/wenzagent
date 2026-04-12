@@ -4,7 +4,6 @@
 /// 支持多种 LLM 提供商（OpenAI、Anthropic、Google AI、Ollama 等）。
 library;
 
-export 'chat_msg.dart';
 export 'llm_chat_adapter.dart';
 export 'persistent_chat_adapter.dart';
 export 'session_memory_manager.dart';

@@ -683,7 +683,7 @@ class DeviceClient {
   Future<void> restoreUnreadStatus() =>
       _notificationManager.restoreUnreadStatus();
 
-  Future<List<AiEmployeeMessageEntity>> getLatestMessages({
+  Future<List<ChatMessage>> getLatestMessages({
     required String employeeId,
     required String deviceId,
     int limit = 2,

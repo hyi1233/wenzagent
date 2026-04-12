@@ -1,14 +1,12 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:uuid/uuid.dart';
-
 import '../agent_state.dart';
 import '../entity/entity.dart';
 import '../processor/cancellation_token.dart';
 import '../processor/message_processor.dart';
 import '../processor/persistence_queue.dart';
-import 'chat_msg.dart';
+import '../../shared/shared.dart';
 import 'llm_chat_adapter.dart';
 import 'session_memory_manager.dart';
 
@@ -95,11 +93,9 @@ class PersistentChatAdapter extends LlmChatAdapter {
         if (session != null) {
           for (final msgMap in messages) {
             try {
-              final wrapper = _mapToMessageWrapper(msgMap);
-              if (wrapper != null) {
-                session.addMessageWrapper('persistence', wrapper);
-                _persistedMessageIds.add(wrapper.uuid);
-              }
+              final chatMessage = ChatMessage.fromJson(msgMap);
+              session.addChatMessage('persistence', chatMessage);
+              _persistedMessageIds.add(chatMessage.id);
             } catch (e) {
               print(
                 '[PersistentChatAdapter] 加载消息失败: ${msgMap['id']}, $e',
@@ -170,11 +166,9 @@ class PersistentChatAdapter extends LlmChatAdapter {
 
           for (final msgMap in messages) {
             try {
-              final wrapper = _mapToMessageWrapper(msgMap);
-              if (wrapper != null) {
-                session.addMessageWrapper('persistence', wrapper);
-                _persistedMessageIds.add(wrapper.uuid);
-              }
+              final chatMessage = ChatMessage.fromJson(msgMap);
+              session.addChatMessage('persistence', chatMessage);
+              _persistedMessageIds.add(chatMessage.id);
             } catch (e) {
               print(
                 '[PersistentChatAdapter] loadRemainingMessages: 加载消息失败: ${msgMap['id']}, $e',
@@ -232,15 +226,16 @@ class PersistentChatAdapter extends LlmChatAdapter {
     if (session == null) return;
 
     final now = DateTime.now();
-    final wrapper = MessageWrapper(
-      uuid: messageId,
-      message: ChatMsg.assistant(content),
+    final chatMessage = ChatMessage.assistant(
+      id: messageId,
+      employeeId: currentEmployeeUuid!,
+      content: content,
       createdAt: now,
       metadata: {'status': 'completed'},
     );
-    session.addMessageWrapper(deviceIdentifier, wrapper);
+    session.addChatMessage(deviceIdentifier, chatMessage);
 
-    final messageMap = _messageWrapperToMap(wrapper);
+    final messageMap = chatMessage.toJson();
     _persistedMessageIds.add(messageId);
     await _persistMessageAndWait(messageMap);
   }
@@ -251,15 +246,19 @@ class PersistentChatAdapter extends LlmChatAdapter {
     if (session == null) return;
 
     final now = DateTime.now();
-    final wrapper = MessageWrapper(
-      uuid: messageId,
-      message: ChatMsg.system(content),
+    final chatMessage = ChatMessage.system(
+      id: messageId,
+      employeeId: currentEmployeeUuid!,
+      content: content,
       createdAt: now,
+    );
+    // metadata 放入 ChatMessage.metadata
+    final withMetadata = chatMessage.copyWith(
       metadata: {'status': 'completed', 'trigger': 'scheduled_task'},
     );
-    session.addMessageWrapper(deviceIdentifier, wrapper);
+    session.addChatMessage(deviceIdentifier, withMetadata);
 
-    final messageMap = _messageWrapperToMap(wrapper);
+    final messageMap = withMetadata.toJson();
     _persistedMessageIds.add(messageId);
     _persistMessage(messageMap);
   }
@@ -284,14 +283,14 @@ class PersistentChatAdapter extends LlmChatAdapter {
     }
 
     for (var i = messagesBefore; i < messagesNow; i++) {
-      final wrapper = allMessages[i];
-      final messageId = wrapper.uuid;
+      final msg = allMessages[i];
+      final messageId = msg.id;
 
       if (_persistedMessageIds.contains(messageId)) {
         continue;
       }
 
-      final messageMap = _messageWrapperToMap(wrapper);
+      final messageMap = msg.toJson();
       _persistMessage(messageMap);
       _persistedMessageIds.add(messageId);
       print(
@@ -390,7 +389,7 @@ class PersistentChatAdapter extends LlmChatAdapter {
         await deleteMessagesCallback!(currentSessionUuid!);
         print('[PersistentChatAdapter] clearCurrentSession: 已删除数据库中的消息');
       } catch (e) {
-        print('[PersistentChatAdapter] clearCurrentSession: 删除数据库消息失败: $e');
+        print('[PersistentChatAdapter] 删除数据库消息失败: $e');
       }
     }
 
@@ -408,124 +407,6 @@ class PersistentChatAdapter extends LlmChatAdapter {
   Future<void> setCurrentProjectUuid(String uuid) async {
     _cachedProjectUuid = uuid;
     _notifyPersistSession();
-  }
-
-  /// 从消息 Map 创建 MessageWrapper
-  MessageWrapper? _mapToMessageWrapper(Map<String, dynamic> map) {
-    try {
-      final uuid = map['id'] as String? ?? const Uuid().v4();
-      final role = map['role'] as String? ?? 'user';
-      final content = map['content'] as String? ?? '';
-      final createdAtStr = map['createdAt'] as String?;
-      final createdAt = createdAtStr != null
-          ? DateTime.parse(createdAtStr)
-          : DateTime.now();
-      final metadata = map['metadata'] as Map<String, dynamic>? ?? {};
-      final toolCallId = map['toolCallId'] as String?;
-      final toolCallsJson = map['toolCalls'] as String?;
-      final isError = map['isError'] as bool? ?? false;
-
-      // 创建对应的 ChatMsg
-      late ChatMsg message;
-      switch (role) {
-        case 'user':
-          message = ChatMsg.user(content);
-        case 'assistant':
-          if (toolCallsJson != null && toolCallsJson.isNotEmpty) {
-            final toolCalls = (jsonDecode(toolCallsJson) as List)
-                .map((tc) => ToolCallInfo.fromMap(tc as Map<String, dynamic>))
-                .toList();
-            message = ChatMsg.assistant(content, toolCalls: toolCalls);
-          } else {
-            message = ChatMsg.assistant(content);
-          }
-        case 'tool':
-          // 检查是否为分组格式
-          final toolResultsJson = map['toolResults'] as String?;
-          if (toolResultsJson != null && toolResultsJson.isNotEmpty) {
-            final results = (jsonDecode(toolResultsJson) as List)
-                .map((r) => ToolResultInfo.fromMap(r as Map<String, dynamic>))
-                .toList();
-            message = ChatMsg.toolResultGroup(results);
-          } else {
-            // 单条格式（向后兼容）
-            message = ChatMsg.toolResult(
-              toolCallId: toolCallId ?? '',
-              content: content,
-              isError: isError,
-              name: metadata['toolName'] as String?,
-            );
-          }
-        case 'system':
-          return MessageWrapper(
-            uuid: uuid,
-            message: ChatMsg.system(content),
-            createdAt: createdAt,
-            metadata: metadata,
-          );
-        default:
-          return null;
-      }
-
-      return MessageWrapper(
-        uuid: uuid,
-        message: message,
-        createdAt: createdAt,
-        metadata: metadata,
-      );
-    } catch (e) {
-      print('[PersistentChatAdapter] _mapToMessageWrapper failed: $e');
-      return null;
-    }
-  }
-
-  /// 将 MessageWrapper 转为 Map
-  Map<String, dynamic> _messageWrapperToMap(MessageWrapper wrapper) {
-    final map = <String, dynamic>{
-      'id': wrapper.uuid,
-      'role': _chatMsgToRole(wrapper.message),
-      'content': wrapper.message.content,
-      'type': 'text',
-      'createdAt': wrapper.createdAt.toIso8601String(),
-      'metadata': wrapper.metadata ?? {},
-    };
-
-    // 如果是 assistant 消息且包含 toolCalls，序列化
-    if (wrapper.message.role == ChatMsgRole.assistant && wrapper.message.toolCalls != null && wrapper.message.toolCalls!.isNotEmpty) {
-      map['toolCalls'] = jsonEncode(
-        wrapper.message.toolCalls!.map((tc) => {
-          'id': tc.id,
-          'name': tc.name,
-          'arguments': tc.arguments,
-        }).toList(),
-      );
-    }
-
-    // 如果是 tool 消息，序列化为分组格式或单条格式
-    if (wrapper.message.role == ChatMsgRole.tool) {
-      if (wrapper.message.isToolResultGroup) {
-        map['toolResults'] = jsonEncode(
-          wrapper.message.toolResults!.map((r) => r.toMap()).toList(),
-        );
-      } else {
-        map['toolCallId'] = wrapper.message.toolCallId;
-        if (wrapper.message.isError) {
-          map['isError'] = true;
-        }
-      }
-    }
-
-    return map;
-  }
-
-  /// 从 ChatMsg 获取角色
-  String _chatMsgToRole(ChatMsg message) {
-    return switch (message.role) {
-      ChatMsgRole.user => 'user',
-      ChatMsgRole.assistant => 'assistant',
-      ChatMsgRole.tool => 'tool',
-      ChatMsgRole.system => 'system',
-    };
   }
 
   @override

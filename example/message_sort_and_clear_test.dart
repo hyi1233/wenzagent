@@ -99,18 +99,18 @@ class MessageSortAndClearTest {
     print('  添加 10 条乱序消息到数据库...');
 
     final baseTime = DateTime.now();
-    final messages = <AiEmployeeMessageEntity>[];
+    final messages = <ChatMessage>[];
 
     // 创建 10 条消息，时间间隔 1 秒
     for (int i = 0; i < 10; i++) {
-      final message = AiEmployeeMessageEntity(
-        uuid: const Uuid().v4(),
+      final message = ChatMessage(
+        id: const Uuid().v4(),
         employeeId: employeeId,
-        role: i % 2 == 0 ? 'user' : 'assistant',
+        role: i % 2 == 0 ? MessageRole.user : MessageRole.assistant,
         type: 'text',
         content: 'DB Message $i',
-        createTime: baseTime.add(Duration(seconds: i)),
-        updateTime: baseTime.add(Duration(seconds: i)),
+        createdAt: baseTime.add(Duration(seconds: i)),
+        updatedAt: baseTime.add(Duration(seconds: i)),
       );
       messages.add(message);
     }
@@ -132,8 +132,8 @@ class MessageSortAndClearTest {
     // 验证排序
     bool isSorted = true;
     for (int i = 1; i < loadedMessages.length; i++) {
-      if (loadedMessages[i].createTime.isBefore(
-        loadedMessages[i - 1].createTime,
+      if (loadedMessages[i].createdAt.isBefore(
+        loadedMessages[i - 1].createdAt,
       )) {
         isSorted = false;
         break;
@@ -264,17 +264,17 @@ class MessageSortAndClearTest {
 
     // 添加消息到数据库
     final baseTime = DateTime.now();
-    final messages = <AiEmployeeMessageEntity>[];
+    final messages = <ChatMessage>[];
     for (int i = 0; i < 5; i++) {
       messages.add(
-        AiEmployeeMessageEntity(
-          uuid: const Uuid().v4(),
+        ChatMessage(
+          id: const Uuid().v4(),
           employeeId: testEmployeeId,
-          role: 'user',
+          role: MessageRole.user,
           type: 'text',
           content: 'DB Clear Test $i',
-          createTime: baseTime.add(Duration(seconds: i)),
-          updateTime: baseTime.add(Duration(seconds: i)),
+          createdAt: baseTime.add(Duration(seconds: i)),
+          updatedAt: baseTime.add(Duration(seconds: i)),
         ),
       );
     }
@@ -310,17 +310,17 @@ class MessageSortAndClearTest {
     print('  步骤 1: 添加消息到数据库...');
     // 添加消息到数据库
     final baseTime = DateTime.now();
-    final messages = <AiEmployeeMessageEntity>[];
+    final messages = <ChatMessage>[];
     for (int i = 0; i < 5; i++) {
       messages.add(
-        AiEmployeeMessageEntity(
-          uuid: const Uuid().v4(),
+        ChatMessage(
+          id: const Uuid().v4(),
           employeeId: testEmployeeId,
-          role: 'user',
+          role: MessageRole.user,
           type: 'text',
           content: 'Reload Test $i',
-          createTime: baseTime.add(Duration(seconds: i)),
-          updateTime: baseTime.add(Duration(seconds: i)),
+          createdAt: baseTime.add(Duration(seconds: i)),
+          updatedAt: baseTime.add(Duration(seconds: i)),
         ),
       );
     }

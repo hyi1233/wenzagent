@@ -4,11 +4,10 @@ import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 import 'package:uuid/uuid.dart';
 
-import 'package:wenzagent/src/agent/entity/entity.dart';
 import 'package:wenzagent/src/persistence/database_manager.dart';
-import 'package:wenzagent/src/persistence/entities/entities.dart';
 import 'package:wenzagent/src/persistence/stores/message_store.dart';
 import 'package:wenzagent/src/persistence/stores/sync_watermark_store.dart';
+import 'package:wenzagent/src/shared/shared.dart';
 
 /// 消息收发与 LSN 增量同步测试
 ///
@@ -63,40 +62,36 @@ void main() {
     clientWatermarkStore = SyncWatermarkStore(dbManager: dbManager);
   });
 
-  /// 辅助：创建测试消息实体
-  AiEmployeeMessageEntity createMessage({
+  /// 辅助：创建测试消息
+  ChatMessage createMessage({
     required String uuid,
     required String role,
     String content = '',
     String type = 'text',
     String processingStatus = 'completed',
+    String? empId,
   }) {
-    final now = DateTime.now();
-    return AiEmployeeMessageEntity(
-      uuid: uuid,
-      employeeId: employeeId,
-      role: role,
+    return ChatMessage(
+      id: uuid,
+      employeeId: empId ?? employeeId,
+      role: MessageRole.fromString(role),
       type: type,
       content: content,
-      processingStatus: processingStatus,
-      isRead: role == 'user' ? 1 : 0,
-      deleted: 0,
-      createTime: now,
-      updateTime: now,
-      seq: 0, // 0 表示自动分配
+      status: MessageStatus.fromString(processingStatus),
+      createdAt: DateTime.now(),
     );
   }
 
   /// 辅助：模拟 Host 发送消息（写入 messages 表，自动分配 seq）
-  Future<AiEmployeeMessageEntity> hostSend(String role, String content) async {
+  Future<ChatMessage> hostSend(String role, String content) async {
     final uuid = const Uuid().v4();
-    final entity = createMessage(uuid: uuid, role: role, content: content);
-    await hostMessageStore.add(entity);
-    return entity;
+    final message = createMessage(uuid: uuid, role: role, content: content);
+    await hostMessageStore.add(message);
+    return message;
   }
 
   /// 辅助：模拟 Client 增量拉取（基于水位线）
-  Future<List<AiEmployeeMessageEntity>> clientPull({int limit = 20}) async {
+  Future<List<ChatMessage>> clientPull({int limit = 20}) async {
     final lastSeq = clientWatermarkStore.getLastSeq(employeeId);
     return hostMessageStore.getMessagesAfterSeq(employeeId, lastSeq, limit: limit);
   }
@@ -124,21 +119,21 @@ void main() {
       final uuid = const Uuid().v4();
 
       // 第一次添加
-      final entity = createMessage(uuid: uuid, role: 'assistant', content: '草稿');
-      await hostMessageStore.add(entity);
-      final seq1 = entity.seq;
+      final message = createMessage(uuid: uuid, role: 'assistant', content: '草稿');
+      await hostMessageStore.add(message);
+      final seq1 = message.seq;
 
       // 更新同一条消息（同 uuid）
-      final updated = entity.copyWith(
+      final updated = message.copyWith(
         content: '正式版本',
-        processingStatus: 'completed',
-        updateTime: DateTime.now(),
+        status: MessageStatus.completed,
+        updatedAt: DateTime.now(),
       );
       await hostMessageStore.update(updated);
 
       // 从数据库读取验证
       final messages = await hostMessageStore.getMessages(null, employeeId);
-      final stored = messages.firstWhere((m) => m.uuid == uuid);
+      final stored = messages.firstWhere((m) => m.id == uuid);
       expect(stored.seq, equals(seq1), reason: '更新后 seq 应保持不变');
       expect(stored.content, equals('正式版本'));
     });
@@ -360,18 +355,15 @@ void main() {
       const empB = 'employee-B';
 
       // Host 为 empA 发 2 条
-      final msgA1 = createMessage(uuid: const Uuid().v4(), role: 'user', content: 'A的消息1');
-      msgA1.employeeId = empA;
+      final msgA1 = createMessage(uuid: const Uuid().v4(), role: 'user', content: 'A的消息1', empId: empA);
       await hostMessageStore.add(msgA1);
 
-      final msgA2 = createMessage(uuid: const Uuid().v4(), role: 'assistant', content: 'A回复');
-      msgA2.employeeId = empA;
+      final msgA2 = createMessage(uuid: const Uuid().v4(), role: 'assistant', content: 'A回复', empId: empA);
       await hostMessageStore.add(msgA2);
 
       // Host 为 empB 发 3 条
       for (int i = 0; i < 3; i++) {
-        final msg = createMessage(uuid: const Uuid().v4(), role: 'user', content: 'B的消息$i');
-        msg.employeeId = empB;
+        final msg = createMessage(uuid: const Uuid().v4(), role: 'user', content: 'B的消息$i', empId: empB);
         await hostMessageStore.add(msg);
       }
 
@@ -425,12 +417,10 @@ void main() {
       const empA = 'max-emp-A';
       const empB = 'max-emp-B';
 
-      final msgA = createMessage(uuid: const Uuid().v4(), role: 'user', content: 'A');
-      msgA.employeeId = empA;
+      final msgA = createMessage(uuid: const Uuid().v4(), role: 'user', content: 'A', empId: empA);
       await hostMessageStore.add(msgA);
 
-      final msgB = createMessage(uuid: const Uuid().v4(), role: 'user', content: 'B');
-      msgB.employeeId = empB;
+      final msgB = createMessage(uuid: const Uuid().v4(), role: 'user', content: 'B', empId: empB);
       await hostMessageStore.add(msgB);
 
       // empA 和 empB 各只有 1 条，maxSeq 各为 1（同一个表自增）
@@ -455,26 +445,26 @@ void main() {
       clientUpdateWatermark(init.last.seq); // lastSeq = 3
 
       // Host 软删除第 2 条
-      hostMessageStore.softDeleteForSync(msgToDelete.uuid);
+      hostMessageStore.softDeleteForSync(msgToDelete.id);
 
       // 验证：被删除消息获得新 seq
-      final deletedMsg = await hostMessageStore.find(null, msgToDelete.uuid);
-      expect(deletedMsg!.deleted, equals(1));
+      final deletedMsg = await hostMessageStore.find(null, msgToDelete.id);
+      expect(deletedMsg!.deleted, isTrue);
       expect(deletedMsg.seq, greaterThan(3), reason: '删除后 seq 应大于原值');
 
       // Client 增量拉取：应能拉到删除事件
       final delta = await clientPull();
       expect(delta.length, equals(1));
-      expect(delta.first.deleted, equals(1));
-      expect(delta.first.uuid, equals(msgToDelete.uuid));
+      expect(delta.first.deleted, isTrue);
+      expect(delta.first.id, equals(msgToDelete.id));
     });
 
     test('softDeleteBySessionForSync 批量删除并更新 seq', () async {
       // Host 发送 5 条
-      final uuids = <String>[];
+      final ids = <String>[];
       for (int i = 0; i < 5; i++) {
         final msg = await hostSend('user', '消息$i');
-        uuids.add(msg.uuid);
+        ids.add(msg.id);
       }
 
       // Client 拉取全部并更新水位线
@@ -488,7 +478,7 @@ void main() {
       // Client 增量拉取：应能拉到 5 条删除事件
       final delta = await clientPull();
       expect(delta.length, equals(5));
-      expect(delta.every((m) => m.deleted == 1), isTrue,
+      expect(delta.every((m) => m.deleted), isTrue,
           reason: '所有消息都应是删除状态');
 
       // 验证 seq 都大于 5
@@ -502,14 +492,14 @@ void main() {
 
       // 软删除第 1 条（更新 seq）
       final all = await hostMessageStore.getMessages(null, employeeId);
-      hostMessageStore.softDeleteForSync(all.first.uuid);
+      hostMessageStore.softDeleteForSync(all.first.id);
 
       // getMessagesAfterSeq 应包含被删除的消息
       final pulled = await hostMessageStore.getMessagesAfterSeq(employeeId, 0);
       expect(pulled.length, equals(2));
 
-      // 其中一条 deleted=1
-      final deletedCount = pulled.where((m) => m.deleted == 1).length;
+      // 其中一条 deleted=true
+      final deletedCount = pulled.where((m) => m.deleted).length;
       expect(deletedCount, equals(1));
     });
 
@@ -520,13 +510,13 @@ void main() {
       final originalSeq = msg.seq;
 
       await hostMessageStore.update(msg.copyWith(
-        deleted: 1,
-        updateTime: DateTime.now(),
+        deleted: true,
+        updatedAt: DateTime.now(),
       ));
 
-      final updated = await hostMessageStore.find(null, msg.uuid);
+      final updated = await hostMessageStore.find(null, msg.id);
       expect(updated!.seq, equals(originalSeq), reason: '普通更新 seq 不变');
-      expect(updated.deleted, equals(1));
+      expect(updated.deleted, isTrue);
     });
 
     test('完整流程：Host 删 → Client 增量拉取 → 本地也删除', () async {
@@ -551,25 +541,25 @@ void main() {
       final hostAll = await hostMessageStore.getMessages(null, employeeId);
       final toDelete = hostAll.where((m) => m.seq == 2 || m.seq == 4).toList();
       for (final msg in toDelete) {
-        hostMessageStore.softDeleteForSync(msg.uuid);
+        hostMessageStore.softDeleteForSync(msg.id);
       }
 
       // 5. Client 增量拉取
       final delta = await clientPull();
       expect(delta.length, equals(2));
-      expect(delta.every((m) => m.deleted == 1), isTrue);
+      expect(delta.every((m) => m.deleted), isTrue);
 
       // 6. Client 更新水位线
       clientUpdateWatermark(delta.last.seq);
 
       // 7. 模拟 Client 同步删除：从本地也删除
       for (final msg in delta) {
-        await clientMessageStore.softDeleteForSync(msg.uuid);
+        await clientMessageStore.softDeleteForSync(msg.id);
       }
 
       // 8. 验证 Client 本地只剩 3 条有效消息
       clientMessages = await clientMessageStore.getMessages(null, employeeId);
-      final activeMessages = clientMessages.where((m) => m.deleted == 0).toList();
+      final activeMessages = clientMessages.where((m) => !m.deleted).toList();
       expect(activeMessages.length, equals(3));
     });
   });

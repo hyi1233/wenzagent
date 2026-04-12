@@ -301,7 +301,7 @@ void registerHostRpcMethods({
   rpcServer.register(HostRpcConfig.methodSyncMessages, (params) async {
     final messagesData = params['messages'] as List;
     final messages = messagesData
-        .map((m) => AiEmployeeMessageEntity.fromMap(m as Map<String, dynamic>))
+        .map((m) => ChatMessage.fromJson(m as Map<String, dynamic>))
         .toList();
 
     await messageStore.addMessages(messages);

@@ -11,6 +11,7 @@ import 'package:wenzagent/src/persistence/stores/message_store.dart';
 import 'package:wenzagent/src/persistence/stores/skill_store.dart';
 import 'package:wenzagent/src/persistence/stores/device_config_store.dart';
 import 'package:wenzagent/src/persistence/stores/scheduled_task_store.dart';
+import 'package:wenzagent/src/shared/shared.dart';
 
 /// 数据库 CRUD 测试
 ///
@@ -297,17 +298,17 @@ void main() {
       employeeId = 'msg-test-${DateTime.now().millisecondsSinceEpoch}';
     });
 
-    AiEmployeeMessageEntity createMessage(String uuid, String role, String content,
+    ChatMessage createMessage(String uuid, String role, String content,
         {DateTime? time}) {
       final now = time ?? DateTime.now();
-      return AiEmployeeMessageEntity(
-        uuid: uuid,
+      return ChatMessage(
+        id: uuid,
         employeeId: employeeId,
-        role: role,
+        role: MessageRole.fromString(role),
         type: 'text',
         content: content,
-        createTime: now,
-        updateTime: now,
+        createdAt: now,
+        updatedAt: now,
       );
     }
 
@@ -317,7 +318,7 @@ void main() {
 
       final result = await store.find(null, 'msg-001');
       expect(result, isNotNull);
-      expect(result!.role, equals('user'));
+      expect(result!.role, equals(MessageRole.user));
       expect(result.content, equals('你好'));
     });
 
@@ -365,9 +366,9 @@ void main() {
       final result = await store.find(null, 'msg-upd');
       expect(result!.content, equals('已更新'));
 
-      await store.updateStatus(null, 'msg-upd', 'completed', error: null);
+      await store.updateStatus(null, 'msg-upd', MessageStatus.completed, error: null);
       final updated = await store.find(null, 'msg-upd');
-      expect(updated!.processingStatus, equals('completed'));
+      expect(updated!.status, equals(MessageStatus.completed));
     });
 
     test('删: delete 单条 + deleteBySession', () async {
@@ -396,7 +397,7 @@ void main() {
 
       final last = await store.getLastMessage(null, employeeId);
       expect(last, isNotNull);
-      expect(last!.role, equals('assistant'));
+      expect(last!.role, equals(MessageRole.assistant));
     });
 
     test('batchUpdateWithDeviceId 事务', () async {

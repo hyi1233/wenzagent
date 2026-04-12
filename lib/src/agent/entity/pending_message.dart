@@ -1,3 +1,4 @@
+import '../../shared/chat_message.dart';
 import 'agent_message.dart';
 
 /// 待确认消息状态
@@ -45,15 +46,13 @@ class PendingMessage extends AgentMessage {
 
   /// 从 Map 创建（兼容旧格式）
   factory PendingMessage.fromMap(Map<String, dynamic> map) {
-    // 解析 status
+    // 解析 status（序列化后始终为String）
     PendingMessageStatus pendingStatus = PendingMessageStatus.pending;
     if (map['status'] is String) {
       pendingStatus = PendingMessageStatus.values.firstWhere(
         (e) => e.name == map['status'],
         orElse: () => PendingMessageStatus.pending,
       );
-    } else if (map['status'] is PendingMessageStatus) {
-      pendingStatus = map['status'] as PendingMessageStatus;
     }
 
     return PendingMessage(

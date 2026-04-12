@@ -1,4 +1,4 @@
-import 'chat_msg.dart';
+import '../../shared/shared.dart';
 
 /// Token 估算器抽象基类
 ///
@@ -7,15 +7,15 @@ abstract class TokenEstimator {
   /// 估算文本的 token 数量
   int estimateTokens(String text);
 
-  /// 估算单条 ChatMsg 的 token 数量
+  /// 估算单条 ChatMessage 的 token 数量
   ///
   /// 包含消息角色 overhead（约 4 tokens）和内容。
   /// 对于 assistant 消息会额外计算 toolCalls 元数据。
   /// 对于 tool 消息会额外计算 toolCallId。
-  int estimateMessageTokens(ChatMsg message);
+  int estimateMessageTokens(ChatMessage message);
 
   /// 估算消息列表的总 token 数量
-  int estimateMessagesTotal(List<ChatMsg> messages) {
+  int estimateMessagesTotal(List<ChatMessage> messages) {
     var total = 0;
     for (final message in messages) {
       total += estimateMessageTokens(message);
@@ -53,31 +53,28 @@ class CharBasedTokenEstimator extends TokenEstimator {
   }
 
   @override
-  int estimateMessageTokens(ChatMsg message) {
+  int estimateMessageTokens(ChatMessage message) {
     var tokens = _messageOverhead;
 
     // 内容文本
-    tokens += estimateTokens(message.content);
+    tokens += estimateTokens(message.content ?? '');
 
     // assistant 消息额外计算 toolCalls 元数据
-    if (message.role == ChatMsgRole.assistant && message.toolCalls != null && message.toolCalls!.isNotEmpty) {
+    if (message.role == MessageRole.assistant &&
+        message.toolCalls != null &&
+        message.toolCalls!.isNotEmpty) {
       for (final tc in message.toolCalls!) {
         // tool call ID
         tokens += estimateTokens(tc.id);
         // tool name
         tokens += estimateTokens(tc.name);
         // arguments JSON
-        try {
-          final argsJson = tc.argumentsJson;
-          tokens += estimateTokens(argsJson);
-        } catch (_) {
-          tokens += 20; // fallback
-        }
+        tokens += estimateTokens(tc.argumentsJson);
       }
     }
 
     // tool 消息额外计算 toolCallId
-    if (message.role == ChatMsgRole.tool) {
+    if (message.role == MessageRole.tool) {
       if (message.isToolResultGroup) {
         // 分组格式：估算每个 result 的 token
         for (final r in message.toolResults!) {

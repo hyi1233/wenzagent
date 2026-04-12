@@ -158,12 +158,12 @@ class MessagePersistenceTest {
     // 读取每条消息的详细信息
     for (final msg in messages) {
       print('  消息详情:');
-      print('    UUID: ${msg.uuid}');
+      print('    UUID: ${msg.id}');
       print('    Role: ${msg.role}');
       print('    Type: ${msg.type}');
       print('    Content: ${msg.content?.substring(0, msg.content!.length > 50 ? 50 : msg.content!.length)}...');
-      print('    CreateTime: ${msg.createTime}');
-      print('    ProcessingStatus: ${msg.processingStatus}');
+      print('    CreateTime: ${msg.createdAt}');
+      print('    ProcessingStatus: ${msg.status}');
     }
 
     print('  ✓ 消息持久化验证完成');
@@ -182,7 +182,7 @@ class MessagePersistenceTest {
     }
 
     // 检查是否有重复的消息 UUID
-    final uuids = messages.map((m) => m.uuid).toList();
+    final uuids = messages.map((m) => m.id).toList();
     final uniqueUuids = uuids.toSet();
     if (uniqueUuids.length != uuids.length) {
       print('  ❌ 发现重复的消息 UUID！');
@@ -193,8 +193,8 @@ class MessagePersistenceTest {
 
     // 检查消息 ID 格式
     for (final msg in messages) {
-      if (!msg.uuid.startsWith('msg-')) {
-        print('  ⚠️  消息 UUID 格式不正确: ${msg.uuid}');
+      if (!msg.id.startsWith('msg-')) {
+        print('  ⚠️  消息 UUID 格式不正确: ${msg.id}');
       }
     }
 

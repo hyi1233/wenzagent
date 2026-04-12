@@ -351,7 +351,7 @@ class MessagePersistenceFullTest {
     // 打印所有消息
     final messages = await messageStore.getMessages(deviceId, employeeId);
     if (messages.isNotEmpty) {
-      print('  数据库消息 UUIDs: ${messages.map((m) => m.uuid).join(", ")}');
+      print('  数据库消息 UUIDs: ${messages.map((m) => m.id).join(", ")}');
     }
   }
 

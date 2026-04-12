@@ -1,12 +1,12 @@
 import 'package:sqlite3/sqlite3.dart';
 
+import '../../shared/shared.dart';
 import '../database_manager.dart';
-import '../entities/message_entity.dart';
 
 /// 消息数据存储
 ///
-/// 使用 SQLite 实现，保持与原 Hive 版本完全相同的公共 API。
-/// 不再需要 session_messages 索引表，通过 SQL 直接查询。
+/// 使用 SQLite 实现，所有方法直接返回 [ChatMessage]，
+/// 通过 [MessageMapper] 统一处理行数据转换。
 class MessageStore {
   final DatabaseManager _dbManager;
 
@@ -15,61 +15,18 @@ class MessageStore {
 
   Database get _db => _dbManager.db;
 
-  /// 从数据库行解码为实体
-  AiEmployeeMessageEntity _rowToEntity(Row row) {
-    final map = <String, dynamic>{
-      'uuid': row['uuid'],
-      'employeeId': row['employee_id'],
-      'role': row['role'],
-      'type': row['type'],
-      'content': row['content'],
-      'toolCallId': row['tool_call_id'],
-      'toolName': row['tool_name'],
-      'toolArguments': row['tool_arguments'],
-      'toolResult': row['tool_result'],
-      'toolCalls': row['tool_calls'],
-      'processingStatus': row['processing_status'],
-      'processingError': row['processing_error'],
-      'inputTokens': row['input_tokens'],
-      'outputTokens': row['output_tokens'],
-      'isRead': row['is_read'],
-      'deleted': row['deleted'],
-      'createTime': row['create_time'],
-      'updateTime': row['update_time'],
-      'jsonData': row['json_data'],
-      'seq': row['seq'],
-    };
-    return AiEmployeeMessageEntity.fromMessageMap(map);
+  /// 从数据库行解码为 ChatMessage
+  ChatMessage _rowToMessage(Row row) {
+    return MessageMapper.fromRow(row);
   }
 
-  /// 将实体转换为数据库插入参数
-  List<Object?> _entityToParams(AiEmployeeMessageEntity e) {
-    return [
-      e.uuid,
-      e.employeeId,
-      e.role,
-      e.type,
-      e.content,
-      e.toolCallId,
-      e.toolName,
-      e.toolArguments,
-      e.toolResult,
-      e.toolCalls,
-      e.processingStatus,
-      e.processingError,
-      e.inputTokens,
-      e.outputTokens,
-      e.isRead,
-      e.deleted,
-      e.createTime.millisecondsSinceEpoch,
-      e.updateTime.millisecondsSinceEpoch,
-      e.jsonData,
-      e.seq,
-    ];
+  /// 将 ChatMessage 转换为数据库插入参数
+  List<Object?> _messageToParams(ChatMessage msg) {
+    return MessageMapper.toSqlParams(msg);
   }
 
   /// 获取会话的消息列表
-  Future<List<AiEmployeeMessageEntity>> getMessages(
+  Future<List<ChatMessage>> getMessages(
     String? deviceId,
     String employeeId, {
     int? limit,
@@ -95,11 +52,11 @@ class MessageStore {
       params.add(offset);
     }
 
-    return _db.select(sql, params).map(_rowToEntity).toList();
+    return _db.select(sql, params).map(_rowToMessage).toList();
   }
 
   /// 获取最后 N 条消息
-  Future<List<AiEmployeeMessageEntity>> _getLastNMessages(
+  Future<List<ChatMessage>> _getLastNMessages(
     String employeeId,
     int limit,
   ) async {
@@ -107,74 +64,76 @@ class MessageStore {
       'SELECT * FROM messages WHERE employee_id = ? AND deleted = 0 ORDER BY create_time DESC LIMIT ?',
       [employeeId, limit],
     );
-    final messages = resultSet.map(_rowToEntity).toList();
+    final messages = resultSet.map(_rowToMessage).toList();
     messages.sort((a, b) {
-      final timeCompare = a.createTime.compareTo(b.createTime);
+      final timeCompare = a.createdAt.compareTo(b.createdAt);
       if (timeCompare != 0) return timeCompare;
-      return a.uuid.compareTo(b.uuid);
+      return a.id.compareTo(b.id);
     });
     return messages;
   }
 
   /// 获取单条消息
-  Future<AiEmployeeMessageEntity?> find(String? deviceId, String uuid) async {
+  Future<ChatMessage?> find(String? deviceId, String uuid) async {
     final resultSet = _db.select(
       'SELECT * FROM messages WHERE uuid = ?',
       [uuid],
     );
     for (final row in resultSet) {
-      return _rowToEntity(row);
+      return _rowToMessage(row);
     }
     return null;
   }
 
   /// 添加消息
-  Future<void> add(AiEmployeeMessageEntity entity) async {
+  Future<void> add(ChatMessage message) async {
     await addWithDeviceId(
-      entity.employeeId.split('-').firstOrNull,
-      entity,
+      message.employeeId.split('-').firstOrNull,
+      message,
     );
   }
 
-  /// 使用明确deviceId添加消息
+  /// 使用明确 deviceId 添加消息
   Future<void> addWithDeviceId(
     String? deviceId,
-    AiEmployeeMessageEntity entity,
+    ChatMessage message,
   ) async {
     // 如果 seq 为 0，自动分配下一个序列号
-    if (entity.seq == 0) {
-      entity.seq = getNextSeq();
+    var msg = message;
+    if (msg.seq == 0) {
+      msg = msg.copyWith(seq: getNextSeq());
     }
     _db.execute('''
       INSERT OR REPLACE INTO messages (
         uuid, employee_id, role, type, content,
         tool_call_id, tool_name, tool_arguments, tool_result, tool_calls,
         processing_status, processing_error, input_tokens, output_tokens,
-        is_read, deleted, create_time, update_time, json_data, seq
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ''', _entityToParams(entity));
+        is_read, deleted, create_time, update_time, seq
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ''', _messageToParams(msg));
   }
 
   /// 更新消息
-  Future<void> update(AiEmployeeMessageEntity entity) async {
+  Future<void> update(ChatMessage message) async {
     await updateWithDeviceId(
-      entity.employeeId.split('-').firstOrNull,
-      entity,
+      message.employeeId.split('-').firstOrNull,
+      message,
     );
   }
 
-  /// 使用明确deviceId更新消息
+  /// 使用明确 deviceId 更新消息
   Future<void> updateWithDeviceId(
     String? deviceId,
-    AiEmployeeMessageEntity entity,
+    ChatMessage message,
   ) async {
-    // 更新时保留原有 seq（如果当前 entity 的 seq 为 0 则从 DB 读取）
-    if (entity.seq == 0) {
-      final existing = await find(deviceId, entity.uuid);
+    // 更新时保留原有 seq（如果当前 message 的 seq 为 0 则从 DB 读取）
+    var msg = message;
+    if (msg.seq == 0) {
+      final existing = await find(deviceId, msg.id);
       if (existing != null) {
-        entity = entity.copyWith(seq: existing.seq);
+        msg = msg.copyWith(seq: existing.seq);
       } else {
-        entity.seq = getNextSeq();
+        msg = msg.copyWith(seq: getNextSeq());
       }
     }
     _db.execute('''
@@ -182,24 +141,24 @@ class MessageStore {
         uuid, employee_id, role, type, content,
         tool_call_id, tool_name, tool_arguments, tool_result, tool_calls,
         processing_status, processing_error, input_tokens, output_tokens,
-        is_read, deleted, create_time, update_time, json_data, seq
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ''', _entityToParams(entity));
+        is_read, deleted, create_time, update_time, seq
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ''', _messageToParams(msg));
   }
 
   /// 更新消息状态
   Future<void> updateStatus(
     String? deviceId,
     String uuid,
-    String status, {
+    MessageStatus status, {
     String? error,
   }) async {
     final msg = await find(deviceId, uuid);
     if (msg != null) {
       final updated = msg.copyWith(
-        processingStatus: status,
+        status: status,
         processingError: error,
-        updateTime: DateTime.now(),
+        updatedAt: DateTime.now(),
       );
       await updateWithDeviceId(deviceId, updated);
     }
@@ -219,7 +178,7 @@ class MessageStore {
   }
 
   /// 获取最后一条消息
-  Future<AiEmployeeMessageEntity?> getLastMessage(
+  Future<ChatMessage?> getLastMessage(
     String? deviceId,
     String employeeId,
   ) async {
@@ -228,7 +187,7 @@ class MessageStore {
       [employeeId],
     );
     for (final row in resultSet) {
-      return _rowToEntity(row);
+      return _rowToMessage(row);
     }
     return null;
   }
@@ -247,22 +206,22 @@ class MessageStore {
   /// 使用事务确保原子性。
   Future<void> batchUpdateWithDeviceId(
     String? deviceId,
-    List<AiEmployeeMessageEntity> entities,
+    List<ChatMessage> messages,
   ) async {
     _db.execute('BEGIN');
     try {
-      for (final entity in entities) {
-        if (entity.seq == 0) {
-          entity.seq = getNextSeq();
+      for (var msg in messages) {
+        if (msg.seq == 0) {
+          msg = msg.copyWith(seq: getNextSeq());
         }
         _db.execute('''
           INSERT OR REPLACE INTO messages (
             uuid, employee_id, role, type, content,
             tool_call_id, tool_name, tool_arguments, tool_result, tool_calls,
             processing_status, processing_error, input_tokens, output_tokens,
-            is_read, deleted, create_time, update_time, json_data, seq
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', _entityToParams(entity));
+            is_read, deleted, create_time, update_time, seq
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', _messageToParams(msg));
       }
       _db.execute('COMMIT');
     } catch (e) {
@@ -296,7 +255,7 @@ class MessageStore {
   ///
   /// 用于客户端增量同步，按 seq 升序返回。
   /// 注意：包含 deleted=1 的消息，Client 端需根据 deleted 字段执行本地删除。
-  Future<List<AiEmployeeMessageEntity>> getMessagesAfterSeq(
+  Future<List<ChatMessage>> getMessagesAfterSeq(
     String employeeId,
     int lastSeq, {
     int limit = 20,
@@ -305,7 +264,7 @@ class MessageStore {
       'SELECT * FROM messages WHERE employee_id = ? AND seq > ? ORDER BY seq ASC LIMIT ?',
       [employeeId, lastSeq, limit],
     );
-    return resultSet.map(_rowToEntity).toList();
+    return resultSet.map(_rowToMessage).toList();
   }
 
   /// 统计指定员工的未读消息数量（assistant 且 is_read=0）

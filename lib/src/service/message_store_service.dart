@@ -16,7 +16,7 @@ class MessageChangeEvent {
   final MessageChangeType type;
   final String messageUuid;
   final String employeeId;
-  final AiEmployeeMessageEntity? message;
+  final ChatMessage? message;
 
   MessageChangeEvent({
     required this.type,
@@ -42,14 +42,14 @@ abstract class MessageStoreService {
   static void removeInstance(String deviceId) => _instances.remove(deviceId);
 
   /// 获取会话消息列表（使用默认 deviceId）
-  Future<List<AiEmployeeMessageEntity>> getMessages(
+  Future<List<ChatMessage>> getMessages(
     String employeeId, {
     int? limit,
     int? offset,
   });
 
   /// 获取会话消息列表（指定 deviceId）
-  Future<List<AiEmployeeMessageEntity>> getMessagesWithDeviceId(
+  Future<List<ChatMessage>> getMessagesWithDeviceId(
     String? deviceId,
     String employeeId, {
     int? limit,
@@ -57,30 +57,30 @@ abstract class MessageStoreService {
   });
 
   /// 获取单条消息
-  Future<AiEmployeeMessageEntity?> getMessage(String uuid, {String? deviceId});
+  Future<ChatMessage?> getMessage(String uuid, {String? deviceId});
 
   /// 添加消息
-  Future<AiEmployeeMessageEntity> addMessage(
-    AiEmployeeMessageEntity message, {
+  Future<ChatMessage> addMessage(
+    ChatMessage message, {
     String? deviceId,
   });
 
   /// 批量添加消息
   Future<void> addMessages(
-    List<AiEmployeeMessageEntity> messages, {
+    List<ChatMessage> messages, {
     String? deviceId,
   });
 
   /// 更新消息
   Future<void> updateMessage(
-    AiEmployeeMessageEntity message, {
+    ChatMessage message, {
     String? deviceId,
   });
 
   /// 更新消息状态
   Future<void> updateMessageStatus(
     String uuid,
-    String status, {
+    MessageStatus status, {
     String? error,
   });
 
@@ -89,7 +89,7 @@ abstract class MessageStoreService {
   /// 适用于 markAllAsRead 等场景，内部逐条更新但不逐条广播变更事件，
   /// 只在最后发送一次聚合通知。
   Future<void> batchUpdateMessages(
-    List<AiEmployeeMessageEntity> messages, {
+    List<ChatMessage> messages, {
     String? deviceId,
   });
 
@@ -116,7 +116,7 @@ abstract class MessageStoreService {
   Future<void> hardDeleteMessage(String uuid, {String? deviceId});
 
   /// 获取最后一条消息
-  Future<AiEmployeeMessageEntity?> getLastMessage(String employeeId);
+  Future<ChatMessage?> getLastMessage(String employeeId);
 
   /// 统计指定员工的未读消息数量（assistant 且 is_read=0 且 deleted=0）
   int getUnreadCount(String employeeId);
@@ -141,7 +141,7 @@ class MessageStoreServiceImpl implements MessageStoreService {
         _deviceId = deviceId;
 
   @override
-  Future<List<AiEmployeeMessageEntity>> getMessages(
+  Future<List<ChatMessage>> getMessages(
     String employeeId, {
     int? limit,
     int? offset,
@@ -151,7 +151,7 @@ class MessageStoreServiceImpl implements MessageStoreService {
   }
 
   @override
-  Future<List<AiEmployeeMessageEntity>> getMessagesWithDeviceId(
+  Future<List<ChatMessage>> getMessagesWithDeviceId(
     String? deviceId,
     String employeeId, {
     int? limit,
@@ -162,7 +162,7 @@ class MessageStoreServiceImpl implements MessageStoreService {
   }
 
   @override
-  Future<AiEmployeeMessageEntity?> getMessage(
+  Future<ChatMessage?> getMessage(
     String uuid, {
     String? deviceId,
   }) async {
@@ -170,8 +170,8 @@ class MessageStoreServiceImpl implements MessageStoreService {
   }
 
   @override
-  Future<AiEmployeeMessageEntity> addMessage(
-    AiEmployeeMessageEntity message, {
+  Future<ChatMessage> addMessage(
+    ChatMessage message, {
     String? deviceId,
   }) async {
     await _store.addWithDeviceId(deviceId ?? _deviceId, message);
@@ -181,7 +181,7 @@ class MessageStoreServiceImpl implements MessageStoreService {
 
   @override
   Future<void> addMessages(
-    List<AiEmployeeMessageEntity> messages, {
+    List<ChatMessage> messages, {
     String? deviceId,
   }) async {
     for (final message in messages) {
@@ -192,11 +192,11 @@ class MessageStoreServiceImpl implements MessageStoreService {
 
   @override
   Future<void> updateMessage(
-    AiEmployeeMessageEntity message, {
+    ChatMessage message, {
     String? deviceId,
   }) async {
     final updated = message.copyWith(
-      updateTime: DateTime.now(),
+      updatedAt: DateTime.now(),
     );
     await _store.updateWithDeviceId(deviceId ?? _deviceId, updated);
     _notifyChange(MessageChangeType.updated, updated);
@@ -205,7 +205,7 @@ class MessageStoreServiceImpl implements MessageStoreService {
   @override
   Future<void> updateMessageStatus(
     String uuid,
-    String status, {
+    MessageStatus status, {
     String? error,
   }) async {
     await _store.updateStatus(_deviceId, uuid, status, error: error);
@@ -217,11 +217,11 @@ class MessageStoreServiceImpl implements MessageStoreService {
 
   @override
   Future<void> batchUpdateMessages(
-    List<AiEmployeeMessageEntity> messages, {
+    List<ChatMessage> messages, {
     String? deviceId,
   }) async {
     final now = DateTime.now();
-    final updated = messages.map((m) => m.copyWith(updateTime: now)).toList();
+    final updated = messages.map((m) => m.copyWith(updatedAt: now)).toList();
     await _store.batchUpdateWithDeviceId(deviceId ?? _deviceId, updated);
     // 只广播一次聚合事件，而非逐条广播
     if (updated.isNotEmpty) {
@@ -238,9 +238,9 @@ class MessageStoreServiceImpl implements MessageStoreService {
   Future<void> softDeleteMessage(String uuid) async {
     _store.softDeleteForSync(uuid);
     // 查找实体用于通知
-    final entity = await _store.find(_deviceId, uuid);
-    if (entity != null) {
-      _notifyChange(MessageChangeType.deleted, entity);
+    final message = await _store.find(_deviceId, uuid);
+    if (message != null) {
+      _notifyChange(MessageChangeType.deleted, message);
     }
   }
 
@@ -255,7 +255,7 @@ class MessageStoreServiceImpl implements MessageStoreService {
   }
 
   @override
-  Future<AiEmployeeMessageEntity?> getLastMessage(String employeeId) async {
+  Future<ChatMessage?> getLastMessage(String employeeId) async {
     return _store.getLastMessage(_deviceId, employeeId);
   }
 
@@ -273,48 +273,50 @@ class MessageStoreServiceImpl implements MessageStoreService {
   Stream<MessageChangeEvent> get onMessageChanged =>
       _changeController.stream;
 
-  void _notifyChange(MessageChangeType type, AiEmployeeMessageEntity message) {
+  void _notifyChange(MessageChangeType type, ChatMessage message) {
     _changeController.add(MessageChangeEvent(
       type: type,
-      messageUuid: message.uuid,
+      messageUuid: message.id,
       employeeId: message.employeeId,
       message: message,
     ));
   }
 
-  /// 创建新消息实体
-  AiEmployeeMessageEntity createMessage({
+  /// 创建新消息
+  ChatMessage createMessage({
     required String employeeId,
-    required String role,
-    required String type,
+    required MessageRole role,
+    String type = 'text',
     String? content,
     String? toolCallId,
     String? toolName,
-    String? toolArguments,
+    Map<String, dynamic>? toolArguments,
     String? toolResult,
-    String? toolCalls,
+    List<ToolCall>? toolCalls,
+    String? deviceId,
   }) {
     final uuid = const Uuid().v4();
     final now = DateTime.now();
-    return AiEmployeeMessageEntity(
-      uuid: uuid,
+    return ChatMessage(
+      id: uuid,
       employeeId: employeeId,
       role: role,
       type: type,
       content: content,
+      createdAt: now,
+      updatedAt: now,
       toolCallId: toolCallId,
       toolName: toolName,
       toolArguments: toolArguments,
       toolResult: toolResult,
       toolCalls: toolCalls,
-      createTime: now,
-      updateTime: now,
+      deviceId: deviceId,
     );
   }
 
-  /// 从Map创建消息实体
-  AiEmployeeMessageEntity fromMap(Map<String, dynamic> map) {
-    return AiEmployeeMessageEntity.fromMap(map);
+  /// 从 JSON Map 创建消息
+  ChatMessage fromJson(Map<String, dynamic> json) {
+    return ChatMessage.fromJson(json);
   }
 
   /// 释放资源

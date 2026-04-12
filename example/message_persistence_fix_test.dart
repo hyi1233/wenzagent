@@ -98,45 +98,39 @@ class MessagePersistenceFixTest {
 
     // 创建3条测试消息
     final messages = [
-      {
-        'id': uuid.v4(),
-        'employeeId': employeeId,
-        'role': 'user',
-        'type': 'text',
-        'content': 'Hello',
-        'createdAt': DateTime.now().toIso8601String(),
-      },
-      {
-        'id': uuid.v4(),
-        'employeeId': employeeId,
-        'role': 'assistant',
-        'type': 'text',
-        'content': 'Hi there!',
-        'createdAt': DateTime.now().toIso8601String(),
-      },
-      {
-        'id': uuid.v4(),
-        'employeeId': employeeId,
-        'role': 'user',
-        'type': 'text',
-        'content': 'How are you?',
-        'createdAt': DateTime.now().toIso8601String(),
-      },
+      ChatMessage(
+        id: uuid.v4(),
+        employeeId: employeeId,
+        role: MessageRole.user,
+        type: 'text',
+        content: 'Hello',
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+      ),
+      ChatMessage(
+        id: uuid.v4(),
+        employeeId: employeeId,
+        role: MessageRole.assistant,
+        type: 'text',
+        content: 'Hi there!',
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+      ),
+      ChatMessage(
+        id: uuid.v4(),
+        employeeId: employeeId,
+        role: MessageRole.user,
+        type: 'text',
+        content: 'How are you?',
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+      ),
     ];
 
     // 持久化消息
     for (final msg in messages) {
-      final entity = AiEmployeeMessageEntity(
-        uuid: msg['id'] as String,
-        employeeId: msg['employeeId'] as String,
-        role: msg['role'] as String,
-        type: msg['type'] as String,
-        content: msg['content'] as String,
-        createTime: DateTime.now(),
-        updateTime: DateTime.now(),
-      );
-      await messageStore.addMessage(entity);
-      print('  ✓ 持久化消息: ${msg['id']}');
+      await messageStore.addMessage(msg);
+      print('  ✓ 持久化消息: ${msg.id}');
     }
 
     print('  ✓ 共持久化 ${messages.length} 条消息');
@@ -153,7 +147,7 @@ class MessagePersistenceFixTest {
     print('  数据库中的消息数量: ${messages.length}');
 
     // 验证消息ID唯一性
-    final ids = messages.map((m) => m.uuid).toSet();
+    final ids = messages.map((m) => m.id).toSet();
     print('  唯一ID数量: ${ids.length}');
 
     if (messages.length != ids.length) {

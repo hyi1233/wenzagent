@@ -6,8 +6,8 @@ import 'package:uuid/uuid.dart';
 /// 消息排序测试
 ///
 /// 测试场景：
-/// 1. 测试消息按 createTime 排序
-/// 2. 测试相同 createTime 的消息按 uuid 排序（稳定性保证）
+/// 1. 测试消息按 createdAt 排序
+/// 2. 测试相同 createdAt 的消息按 id 排序（稳定性保证）
 /// 3. 测试消息加载后的排序顺序是否正确
 /// 4. 模拟 wenzflow 中的排序逻辑，验证数据层返回的消息是否需要额外排序
 ///
@@ -37,13 +37,13 @@ class MessageSortingTest {
       print('\n[阶段 1] 初始化 Hive 存储...');
       await _initializeStorage();
 
-      // ===== 阶段 2: 测试按 createTime 排序 =====
-      print('\n[阶段 2] 测试按 createTime 排序...');
-      await _testSortByCreateTime();
+      // ===== 阶段 2: 测试按 createdAt 排序 =====
+      print('\n[阶段 2] 测试按 createdAt 排序...');
+      await _testSortByCreatedAt();
 
-      // ===== 阶段 3: 测试相同时间按 uuid 排序 =====
-      print('\n[阶段 3] 测试相同 createTime 按 uuid 排序...');
-      await _testSortByUuidWhenSameTime();
+      // ===== 阶段 3: 测试相同时间按 id 排序 =====
+      print('\n[阶段 3] 测试相同 createdAt 按 id 排序...');
+      await _testSortByIdWhenSameTime();
 
       // ===== 阶段 4: 测试逆序添加消息的排序 =====
       print('\n[阶段 4] 测试逆序添加消息的排序...');
@@ -83,23 +83,23 @@ class MessageSortingTest {
     print('  ✓ Hive 初始化完成');
   }
 
-  /// 测试按 createTime 排序
-  Future<void> _testSortByCreateTime() async {
+  /// 测试按 createdAt 排序
+  Future<void> _testSortByCreatedAt() async {
     print('  添加 5 条不同时间的消息...');
 
     final baseTime = DateTime.now();
-    final messages = <AiEmployeeMessageEntity>[];
+    final messages = <ChatMessage>[];
 
     // 创建 5 条消息，时间间隔 1 秒
     for (int i = 0; i < 5; i++) {
-      final message = AiEmployeeMessageEntity(
-        uuid: const Uuid().v4(),
+      final message = ChatMessage(
+        id: const Uuid().v4(),
         employeeId: employeeId,
-        role: i % 2 == 0 ? 'user' : 'assistant',
+        role: i % 2 == 0 ? MessageRole.user : MessageRole.assistant,
         type: 'text',
         content: 'Message $i',
-        createTime: baseTime.add(Duration(seconds: i)),
-        updateTime: baseTime.add(Duration(seconds: i)),
+        createdAt: baseTime.add(Duration(seconds: i)),
+        updatedAt: baseTime.add(Duration(seconds: i)),
       );
       messages.add(message);
     }
@@ -114,11 +114,11 @@ class MessageSortingTest {
     final loadedMessages = await messageStoreService.getMessages(employeeId);
     print('  加载的消息顺序: ${loadedMessages.map((m) => m.content).join(", ")}');
 
-    // 验证是否按 createTime 排序
+    // 验证是否按 createdAt 排序
     bool isSorted = true;
     for (int i = 1; i < loadedMessages.length; i++) {
-      if (loadedMessages[i].createTime.isBefore(
-        loadedMessages[i - 1].createTime,
+      if (loadedMessages[i].createdAt.isBefore(
+        loadedMessages[i - 1].createdAt,
       )) {
         isSorted = false;
         print(
@@ -129,29 +129,29 @@ class MessageSortingTest {
     }
 
     if (isSorted) {
-      print('  ✓ 消息已按 createTime 正确排序');
+      print('  ✓ 消息已按 createdAt 正确排序');
     } else {
-      throw StateError('消息未按 createTime 排序！');
+      throw StateError('消息未按 createdAt 排序！');
     }
   }
 
-  /// 测试相同 createTime 按 uuid 排序
-  Future<void> _testSortByUuidWhenSameTime() async {
+  /// 测试相同 createdAt 按 id 排序
+  Future<void> _testSortByIdWhenSameTime() async {
     print('  添加 5 条相同时间的消息...');
 
     final sameTime = DateTime.now();
-    final messages = <AiEmployeeMessageEntity>[];
+    final messages = <ChatMessage>[];
 
     // 创建 5 条消息，时间相同
     for (int i = 0; i < 5; i++) {
-      final message = AiEmployeeMessageEntity(
-        uuid: const Uuid().v4(),
+      final message = ChatMessage(
+        id: const Uuid().v4(),
         employeeId: employeeId,
-        role: 'user',
+        role: MessageRole.user,
         type: 'text',
         content: 'SameTime Message $i',
-        createTime: sameTime,
-        updateTime: sameTime,
+        createdAt: sameTime,
+        updatedAt: sameTime,
       );
       messages.add(message);
     }
@@ -166,24 +166,24 @@ class MessageSortingTest {
 
     print('  加载的相同时间消息顺序:');
     for (var msg in sameTimeMessages) {
-      print('    ${msg.content} - uuid: ${msg.uuid.substring(0, 8)}...');
+      print('    ${msg.content} - id: ${msg.id.substring(0, 8)}...');
     }
 
-    // 验证是否按 uuid 排序（稳定性保证）
+    // 验证是否按 id 排序（稳定性保证）
     bool isStableSorted = true;
     for (int i = 1; i < sameTimeMessages.length; i++) {
-      if (sameTimeMessages[i].uuid.compareTo(sameTimeMessages[i - 1].uuid) <
+      if (sameTimeMessages[i].id.compareTo(sameTimeMessages[i - 1].id) <
           0) {
         isStableSorted = false;
-        print('  ❌ 稳定性排序错误: uuid 顺序不正确');
+        print('  ❌ 稳定性排序错误: id 顺序不正确');
         break;
       }
     }
 
     if (isStableSorted) {
-      print('  ✓ 相同时间的消息已按 uuid 稳定排序');
+      print('  ✓ 相同时间的消息已按 id 稳定排序');
     } else {
-      print('  ⚠ 相同时间的消息未按 uuid 排序（可能需要在应用层排序）');
+      print('  ⚠ 相同时间的消息未按 id 排序（可能需要在应用层排序）');
     }
   }
 
@@ -193,18 +193,18 @@ class MessageSortingTest {
     print('  逆序添加 5 条消息...');
 
     final baseTime = DateTime.now();
-    final messages = <AiEmployeeMessageEntity>[];
+    final messages = <ChatMessage>[];
 
     // 创建 5 条消息，从新到旧
     for (int i = 4; i >= 0; i--) {
-      final message = AiEmployeeMessageEntity(
-        uuid: const Uuid().v4(),
+      final message = ChatMessage(
+        id: const Uuid().v4(),
         employeeId: testEmployeeId,
-        role: 'user',
+        role: MessageRole.user,
         type: 'text',
         content: 'Reverse Message $i',
-        createTime: baseTime.add(Duration(seconds: i)),
-        updateTime: baseTime.add(Duration(seconds: i)),
+        createdAt: baseTime.add(Duration(seconds: i)),
+        updatedAt: baseTime.add(Duration(seconds: i)),
       );
       messages.add(message);
     }
@@ -243,18 +243,18 @@ class MessageSortingTest {
     print('  模拟 wenzflow 中的排序逻辑...');
 
     final baseTime = DateTime.now();
-    final messages = <AiEmployeeMessageEntity>[];
+    final messages = <ChatMessage>[];
 
     // 创建 10 条消息
     for (int i = 0; i < 10; i++) {
-      final message = AiEmployeeMessageEntity(
-        uuid: const Uuid().v4(),
+      final message = ChatMessage(
+        id: const Uuid().v4(),
         employeeId: testEmployeeId,
-        role: i % 2 == 0 ? 'user' : 'assistant',
+        role: i % 2 == 0 ? MessageRole.user : MessageRole.assistant,
         type: 'text',
         content: 'Sort Test Message $i',
-        createTime: baseTime.add(Duration(seconds: i)),
-        updateTime: baseTime.add(Duration(seconds: i)),
+        createdAt: baseTime.add(Duration(seconds: i)),
+        updatedAt: baseTime.add(Duration(seconds: i)),
       );
       messages.add(message);
     }
@@ -269,12 +269,12 @@ class MessageSortingTest {
     );
 
     // 应用 wenzflow 中的排序逻辑
-    final sortedMessages = List<AiEmployeeMessageEntity>.from(loadedMessages);
+    final sortedMessages = List<ChatMessage>.from(loadedMessages);
     sortedMessages.sort((a, b) {
-      final timeCompare = a.createTime.compareTo(b.createTime);
+      final timeCompare = a.createdAt.compareTo(b.createdAt);
       if (timeCompare != 0) return timeCompare;
-      // 时间相同时按 uuid 排序，保证排序稳定性
-      return a.uuid.compareTo(b.uuid);
+      // 时间相同时按 id 排序，保证排序稳定性
+      return a.id.compareTo(b.id);
     });
 
     print('  加载的消息数量: ${loadedMessages.length}');
@@ -283,16 +283,16 @@ class MessageSortingTest {
     // 验证排序后是否正确
     bool isCorrectlySorted = true;
     for (int i = 1; i < sortedMessages.length; i++) {
-      final timeCompare = sortedMessages[i].createTime.compareTo(
-        sortedMessages[i - 1].createTime,
+      final timeCompare = sortedMessages[i].createdAt.compareTo(
+        sortedMessages[i - 1].createdAt,
       );
       if (timeCompare < 0) {
         isCorrectlySorted = false;
         print('  ❌ 排序错误');
         break;
       } else if (timeCompare == 0) {
-        // 时间相同，检查 uuid
-        if (sortedMessages[i].uuid.compareTo(sortedMessages[i - 1].uuid) < 0) {
+        // 时间相同，检查 id
+        if (sortedMessages[i].id.compareTo(sortedMessages[i - 1].id) < 0) {
           isCorrectlySorted = false;
           print('  ❌ 稳定性排序错误');
           break;
@@ -314,18 +314,18 @@ class MessageSortingTest {
     print('  添加 $messageCount 条消息...');
 
     final baseTime = DateTime.now();
-    final messages = <AiEmployeeMessageEntity>[];
+    final messages = <ChatMessage>[];
 
     // 创建 100 条消息
     for (int i = 0; i < messageCount; i++) {
-      final message = AiEmployeeMessageEntity(
-        uuid: const Uuid().v4(),
+      final message = ChatMessage(
+        id: const Uuid().v4(),
         employeeId: testEmployeeId,
-        role: i % 2 == 0 ? 'user' : 'assistant',
+        role: i % 2 == 0 ? MessageRole.user : MessageRole.assistant,
         type: 'text',
         content: 'Large Test Message $i',
-        createTime: baseTime.add(Duration(milliseconds: i * 100)),
-        updateTime: baseTime.add(Duration(milliseconds: i * 100)),
+        createdAt: baseTime.add(Duration(milliseconds: i * 100)),
+        updatedAt: baseTime.add(Duration(milliseconds: i * 100)),
       );
       messages.add(message);
     }
@@ -357,8 +357,8 @@ class MessageSortingTest {
     stopwatch.reset();
     bool isSorted = true;
     for (int i = 1; i < loadedMessages.length; i++) {
-      if (loadedMessages[i].createTime.isBefore(
-        loadedMessages[i - 1].createTime,
+      if (loadedMessages[i].createdAt.isBefore(
+        loadedMessages[i - 1].createdAt,
       )) {
         isSorted = false;
         break;
@@ -374,11 +374,11 @@ class MessageSortingTest {
 
       // 测试应用层排序性能
       stopwatch.reset();
-      final sortedMessages = List<AiEmployeeMessageEntity>.from(loadedMessages);
+      final sortedMessages = List<ChatMessage>.from(loadedMessages);
       sortedMessages.sort((a, b) {
-        final timeCompare = a.createTime.compareTo(b.createTime);
+        final timeCompare = a.createdAt.compareTo(b.createdAt);
         if (timeCompare != 0) return timeCompare;
-        return a.uuid.compareTo(b.uuid);
+        return a.id.compareTo(b.id);
       });
       final appSortTime = stopwatch.elapsedMilliseconds;
       print('  应用层排序耗时: ${appSortTime}ms');

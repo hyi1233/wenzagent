@@ -736,11 +736,11 @@ class DeviceAgentManager {
     };
 
     adapter.persistMessage = (message) async {
-      var entity = AiEmployeeMessageEntity.fromMessageMap(message);
-      if (entity.role == 'assistant' && _notificationManager.currentOpenSession?.employeeId == employeeId) {
-        entity = entity.copyWith(isRead: 1);
+      var msg = ChatMessage.fromJson(message);
+      if (msg.role == MessageRole.assistant && _notificationManager.currentOpenSession?.employeeId == employeeId) {
+        msg = msg.copyWith(isRead: true);
       }
-      await _messageStoreService.addMessage(entity);
+      await _messageStoreService.addMessage(msg);
     };
 
     adapter.loadSession = (employeeId) async {
@@ -778,13 +778,13 @@ class DeviceAgentManager {
         employeeId,
         limit: limit,
       );
-      return messages.map((m) => m.toMessageMap()).toList();
+      return messages.map((m) => m.toJson()).toList();
     };
 
     adapter.updateMessageStatusCallback = (messageId, status, {error}) async {
       await _messageStoreService.updateMessageStatus(
         messageId,
-        status,
+        MessageStatus.fromString(status),
         error: error,
       );
     };

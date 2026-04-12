@@ -265,8 +265,8 @@ class ReconnectTest {
       print('  Device-B 消息数量（同步前）: ${messagesB.length}');
 
       // 只添加 Device-B 没有的消息
-      final messageIdsB = messagesB.map((m) => m.uuid).toSet();
-      final newMessages = messagesA.where((m) => !messageIdsB.contains(m.uuid)).toList();
+      final messageIdsB = messagesB.map((m) => m.id).toSet();
+      final newMessages = messagesA.where((m) => !messageIdsB.contains(m.id)).toList();
 
       if (newMessages.isNotEmpty) {
         await deviceB.messageStore.addMessages(newMessages);

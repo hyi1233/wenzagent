@@ -1,3 +1,4 @@
+import '../../shared/chat_message.dart';
 import 'agent_message.dart';
 
 /// 消息处理状态

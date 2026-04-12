@@ -2,6 +2,7 @@
 
 import 'package:wenzagent/wenzagent.dart';
 import 'package:uuid/uuid.dart';
+import 'package:wenzagent/src/agent/tool/agent_tool.dart' as agent_tool show ToolResult;
 
 /// 测试计算工具
 class TestCalculatorTool extends AgentTool {
@@ -24,12 +25,12 @@ class TestCalculatorTool extends AgentTool {
   };
 
   @override
-  Future<ToolResult> execute(Map<String, dynamic> arguments) async {
+  Future<agent_tool.ToolResult> execute(Map<String, dynamic> arguments) async {
     final expression = arguments['expression'] as String?;
     if (expression == null || expression.isEmpty) {
-      return ToolResult.error('表达式不能为空');
+      return agent_tool.ToolResult.error('表达式不能为空');
     }
-    return ToolResult.success('计算结果: $expression = 42');
+    return agent_tool.ToolResult.success('计算结果: $expression = 42');
   }
 }
 
@@ -217,7 +218,7 @@ class ToolCallPersistenceTest {
     // 读取并分析每条消息
     for (var i = 0; i < messages.length; i++) {
       final msg = messages[i];
-      print('  消息 ${i + 1} (${msg.uuid}):');
+      print('  消息 ${i + 1} (${msg.id}):');
       print('    - role: ${msg.role}');
       print('    - type: ${msg.type}');
       print('    - has toolCalls: ${msg.toolCalls != null}');

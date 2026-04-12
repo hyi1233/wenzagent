@@ -613,7 +613,7 @@ class DeviceRpcHandler {
     rpcServer.register(HostRpcConfig.methodSyncMessages, (params) async {
       final request = SyncMessagesRequest.fromMap(params);
       final messages = request.messages
-          .map((m) => AiEmployeeMessageEntity.fromMap(m))
+          .map((m) => ChatMessage.fromJson(m))
           .toList();
       await _messageStoreService.addMessages(messages);
       return {'count': messages.length};

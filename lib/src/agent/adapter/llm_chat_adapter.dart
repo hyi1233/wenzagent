@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:llm_dart/llm_dart.dart' as llm;
 import 'package:meta/meta.dart';
+import 'package:uuid/uuid.dart';
 
 import '../agent_state.dart';
 import '../entity/entity.dart';
@@ -12,7 +13,7 @@ import '../tool/agent_tool.dart';
 import '../tool/cancellable_tool_executor.dart';
 import '../tool/permission_manager.dart';
 import '../tool/tool_registry.dart';
-import 'chat_msg.dart';
+import '../../shared/shared.dart' as shared;
 import 'context_compressor.dart';
 import 'session_memory_manager.dart';
 
@@ -103,7 +104,7 @@ class _DuplicateCheckResult {
 /// 工具执行汇总结果（内部使用）
 class _ToolExecSummary {
   final bool cancelled;
-  final List<ToolResultInfo> results;
+  final List<shared.ToolResult> results;
 
   const _ToolExecSummary({required this.cancelled, required this.results});
 }
@@ -168,7 +169,7 @@ class LlmChatAdapter implements IChatAdapter {
     final session = memoryManager.getSession(currentEmployeeUuid!);
     if (session == null) return [];
 
-    return session.allMessages.map(_messageWrapperToMap).toList();
+    return session.allMessages.map((m) => m.toJson()).toList();
   }
 
   @override
@@ -274,7 +275,11 @@ class LlmChatAdapter implements IChatAdapter {
               memoryManager.addMessage(
                 currentEmployeeUuid!,
                 deviceId ?? 'default',
-                ChatMsg.assistant(aiContent),
+                shared.ChatMessage.assistant(
+                  id: const Uuid().v4(),
+                  employeeId: currentEmployeeUuid!,
+                  content: aiContent,
+                ),
               );
             }
             print('[LlmChatAdapter] tool use empty, stop tool calling loop');
@@ -412,7 +417,7 @@ class LlmChatAdapter implements IChatAdapter {
     final session = memoryManager.getSession(employeeId);
     if (session == null) return [];
 
-    final messages = session.allMessages.map(_messageWrapperToMap).toList();
+    final messages = session.allMessages.map((m) => m.toJson()).toList();
     return messages.map((m) => AgentMessage.fromMap(m)).toList();
   }
 
@@ -566,23 +571,17 @@ class LlmChatAdapter implements IChatAdapter {
 
   /// 添加用户消息到会话历史
   void _addUserMessage(MessageInput message) {
-    final userMessage = ChatMsg.user(message.content);
-    if (message.id != null) {
-      print('[LlmChatAdapter] 使用客户端提供的消息ID: ${message.id}');
-      memoryManager.addMessage(
-        currentEmployeeUuid!,
-        deviceId ?? 'default',
-        userMessage,
-        messageId: message.id,
-      );
-    } else {
-      print('[LlmChatAdapter] 没有提供消息ID，自动生成');
-      memoryManager.addMessage(
-        currentEmployeeUuid!,
-        deviceId ?? 'default',
-        userMessage,
-      );
-    }
+    final id = message.id ?? const Uuid().v4();
+    final userMessage = shared.ChatMessage.user(
+      id: id,
+      employeeId: currentEmployeeUuid!,
+      content: message.content,
+    );
+    memoryManager.addMessage(
+      currentEmployeeUuid!,
+      deviceId ?? 'default',
+      userMessage,
+    );
   }
 
   /// 准备上下文压缩
@@ -590,12 +589,10 @@ class LlmChatAdapter implements IChatAdapter {
     if (_compressor == null) return;
     final session = memoryManager.getSession(currentEmployeeUuid!);
     if (session == null) return;
-    final chatMsgs = session.allMessages
-        .map((wrapper) => wrapper.message)
-        .toList();
+    final allMsgs = session.allMessages;
     await _compressor!.prepareCompression(
       employeeId: currentEmployeeUuid!,
-      allMessages: chatMsgs,
+      allMessages: allMsgs,
       session: session,
       systemPrompt: systemPrompt,
     );
@@ -612,11 +609,10 @@ class LlmChatAdapter implements IChatAdapter {
     void Function(String chunk)? onChunk,
   }) async {
     // 构建消息列表
-    final List<ChatMsg> chatMsgs;
+    final List<shared.ChatMessage> chatMsgs;
     if (_compressor != null) {
       final session = memoryManager.getSession(currentEmployeeUuid!);
-      final allMsgs =
-          session?.allMessages.map((wrapper) => wrapper.message).toList() ?? [];
+      final allMsgs = session?.allMessages ?? [];
       chatMsgs = _compressor!.buildCompressedMessages(
         employeeId: currentEmployeeUuid!,
         allMessages: allMsgs,
@@ -629,7 +625,7 @@ class LlmChatAdapter implements IChatAdapter {
       );
     }
 
-    final llmMessages = chatMsgs.map((m) => m.toLlmDart()).toList();
+    final llmMessages = shared.LlmMessageMapper.toLlmDartList(chatMsgs);
 
     // 构建工具列表
     final List<llm.Tool>? llmTools;
@@ -713,13 +709,22 @@ class LlmChatAdapter implements IChatAdapter {
     String aiContent,
     List<llm.ToolCall> toolCalls,
   ) {
-    final toolCallInfos = toolCalls
-        .map((tc) => ToolCallInfo.fromLlmDart(tc))
+    final chatToolCalls = toolCalls
+        .map((tc) => shared.ToolCall(
+              id: tc.id,
+              name: tc.function.name,
+              arguments: _parseArguments(tc.function.arguments),
+            ))
         .toList();
     memoryManager.addMessage(
       currentEmployeeUuid!,
       deviceId ?? 'default',
-      ChatMsg.assistant(aiContent, toolCalls: toolCallInfos),
+      shared.ChatMessage.assistant(
+        id: const Uuid().v4(),
+        employeeId: currentEmployeeUuid!,
+        content: aiContent,
+        toolCalls: chatToolCalls,
+      ),
     );
   }
 
@@ -762,7 +767,7 @@ class LlmChatAdapter implements IChatAdapter {
     // Phase 1: 权限检查（串行）+ 收集待执行工具
     final pendingExecutions =
         <({llm.ToolCall call, AgentTool tool, Map<String, dynamic> args})>[];
-    final allToolResults = <ToolResultInfo>[];
+    final allToolResults = <shared.ToolResult>[];
 
     for (final toolCall in toolCalls) {
       if (streamCancelled || cancellationToken?.isCancelled == true) {
@@ -797,7 +802,7 @@ class LlmChatAdapter implements IChatAdapter {
       if (tool == null) {
         final errorResult = '工具 "$toolName" 未注册';
         allToolResults.add(
-          ToolResultInfo(
+          shared.ToolResult(
             toolCallId: toolCallId,
             content: errorResult,
             isError: true,
@@ -826,7 +831,7 @@ class LlmChatAdapter implements IChatAdapter {
               _permissionManager!.lastDenyMessage ??
               '权限被拒绝: 用户拒绝了工具 "$toolName" 的执行';
           allToolResults.add(
-            ToolResultInfo(
+            shared.ToolResult(
               toolCallId: toolCallId,
               content: denyResult,
               isError: true,
@@ -870,7 +875,7 @@ class LlmChatAdapter implements IChatAdapter {
       for (final r in results) {
         if (r.wasCancelled) {
           allToolResults.add(
-            ToolResultInfo(
+            shared.ToolResult(
               toolCallId: r.toolCall.id,
               content: r.result.content,
               isError: true,
@@ -886,7 +891,7 @@ class LlmChatAdapter implements IChatAdapter {
     // 收集执行结果
     for (final r in results) {
       allToolResults.add(
-        ToolResultInfo(
+        shared.ToolResult(
           toolCallId: r.toolCall.id,
           content: r.result.content,
           isError: r.result.isError,
@@ -938,13 +943,17 @@ class LlmChatAdapter implements IChatAdapter {
   }
 
   /// 将工具结果合并写入会话历史
-  void _persistToolResults(List<ToolResultInfo> results) {
+  void _persistToolResults(List<shared.ToolResult> results) {
     if (results.isEmpty) return;
+    final msg = shared.ChatMessage.toolResultGroup(
+      id: const Uuid().v4(),
+      employeeId: currentEmployeeUuid!,
+      results: results,
+    ).copyWith(metadata: {'toolNames': results.map((r) => r.name).toList()});
     memoryManager.addMessage(
       currentEmployeeUuid!,
       deviceId ?? 'default',
-      ChatMsg.toolResultGroup(results),
-      metadata: {'toolNames': results.map((r) => r.name).toList()},
+      msg,
     );
   }
 
@@ -1046,74 +1055,13 @@ class LlmChatAdapter implements IChatAdapter {
     return parts.isEmpty ? null : parts.join('\n\n');
   }
 
-  /// 将 MessageWrapper 转换为 Map（用于持久化）
-  Map<String, dynamic> _messageWrapperToMap(MessageWrapper wrapper) {
-    final message = wrapper.message;
-
-    final roleStr = switch (message.role) {
-      ChatMsgRole.system => 'system',
-      ChatMsgRole.user => 'user',
-      ChatMsgRole.assistant => 'assistant',
-      ChatMsgRole.tool => 'tool',
-    };
-
-    final map = <String, dynamic>{
-      'uuid': wrapper.uuid,
-      'id': wrapper.uuid,
-      'role': roleStr,
-      'content': message.content,
-      'createdAt': wrapper.createdAt.toIso8601String(),
-    };
-
-    // assistant 消息附加 toolCalls 信息
-    if (message.role == ChatMsgRole.assistant &&
-        message.toolCalls != null &&
-        message.toolCalls!.isNotEmpty) {
-      map['toolCalls'] = message.toolCalls!
-          .map(
-            (tc) => {'id': tc.id, 'name': tc.name, 'arguments': tc.arguments},
-          )
-          .toList();
+  /// 解析工具参数 JSON 字符串为 Map
+  static Map<String, dynamic> _parseArguments(String argumentsJson) {
+    if (argumentsJson.isEmpty) return {};
+    try {
+      return jsonDecode(argumentsJson) as Map<String, dynamic>;
+    } catch (_) {
+      return {};
     }
-
-    // tool 消息附加 toolCallId、toolName 和 type
-    if (message.role == ChatMsgRole.tool) {
-      map['type'] = 'functionResult';
-      if (message.isToolResultGroup && message.toolResults != null) {
-        // 分组格式：将 toolResults 序列化到 map 顶层
-        // 前端 _loadMessages 通过 message.metadata['toolResults'] 解析分组数据
-        // 同时确保 AgentMessage.fromMap 能将 toolResults 转入 metadata
-        map['toolResults'] = message.toolResults!
-            .map((r) => r.toMap())
-            .toList();
-      } else {
-        // 单条格式（向后兼容）
-        map['toolCallId'] = message.toolCallId;
-        final toolName = wrapper.metadata?['toolName'] as String?;
-        if (toolName != null) {
-          map['toolName'] = toolName;
-        }
-      }
-      if (message.isError) {
-        map['isError'] = true;
-      }
-    }
-
-    // 从 wrapper.metadata 读取 status
-    if (wrapper.metadata != null && wrapper.metadata!['status'] != null) {
-      map['status'] = wrapper.metadata!['status'];
-    }
-
-    // 将 wrapper.metadata 中的 toolNames 等额外信息合并到 map 的 metadata
-    if (wrapper.metadata != null && wrapper.metadata!.isNotEmpty) {
-      final existingMetadata = map['metadata'] as Map<String, dynamic>?;
-      if (existingMetadata != null) {
-        map['metadata'] = {...existingMetadata, ...wrapper.metadata!};
-      } else {
-        map['metadata'] = Map<String, dynamic>.from(wrapper.metadata!);
-      }
-    }
-
-    return map;
   }
 }

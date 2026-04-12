@@ -10,8 +10,8 @@ export 'src/lan/lan.dart';
 // RPC
 export 'src/rpc/rpc.dart';
 
-// Agent
-export 'src/agent/agent.dart';
+// Agent (hide ToolResult to avoid conflict with shared/chat_message.dart)
+export 'src/agent/agent.dart' hide ToolResult;
 
 // Device
 export 'src/device/device.dart';

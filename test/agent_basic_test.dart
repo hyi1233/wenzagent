@@ -78,17 +78,17 @@ void main() {
     
     // 设置持久化回调
     adapter.persistMessage = (messageData) async {
-      final entity = AiEmployeeMessageEntity.fromMap(messageData);
-      await messageStore.addMessage(entity, deviceId: deviceId);
+      final chatMsg = ChatMessage.fromJson(messageData as Map<String, dynamic>);
+      await messageStore.addMessage(chatMsg, deviceId: deviceId);
     };
     
     adapter.loadMessages = (employeeId, {int? limit}) async {
       final messages = await messageStore.getMessages(employeeId);
-      return messages.map((m) => m.toMap()).toList();
+      return messages.map((m) => m.toJson()).toList();
     };
     
     adapter.updateMessageStatusCallback = (messageId, status, {error}) async {
-      await messageStore.updateMessageStatus(messageId, status, error: error);
+      await messageStore.updateMessageStatus(messageId, MessageStatus.values.byName(status), error: error);
     };
     
     adapter.deleteMessagesCallback = (employeeId) async {

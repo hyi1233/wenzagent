@@ -1,3 +1,5 @@
+import '../../shared/chat_message.dart' show ToolCall;
+
 /// Agent 消息基类
 ///
 /// 所有 Agent 相关消息的统一基类，提供标准字段和序列化方法
@@ -143,35 +145,6 @@ class AgentMessage {
   @override
   String toString() {
     return 'AgentMessage(id: $id, role: $role, type: $type, content: ${content?.substring(0, content!.length.clamp(0, 20))})';
-  }
-}
-
-/// 工具调用
-class ToolCall {
-  final String id;
-  final String name;
-  final Map<String, dynamic> arguments;
-
-  const ToolCall({
-    required this.id,
-    required this.name,
-    required this.arguments,
-  });
-
-  factory ToolCall.fromMap(Map<String, dynamic> map) {
-    return ToolCall(
-      id: map['id'] as String,
-      name: map['name'] as String,
-      arguments: Map<String, dynamic>.from(map['arguments'] as Map),
-    );
-  }
-
-  Map<String, dynamic> toMap() {
-    return {
-      'id': id,
-      'name': name,
-      'arguments': arguments,
-    };
   }
 }
 

@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:uuid/uuid.dart';
 
@@ -7,7 +6,8 @@ import 'agent_proxy.dart';
 import '../entity/entity.dart';
 import '../agent_state.dart';
 import '../tool/agent_tool.dart';
-import '../../persistence/entities/message_entity.dart';
+import '../../shared/chat_message.dart' show ToolCall;
+import '../../shared/shared.dart' as shared;
 import '../../persistence/stores/sync_watermark_store.dart';
 import '../../service/message_store_service.dart';
 
@@ -200,7 +200,7 @@ class CachedAgentProxy {
       );
 
       // 按用户消息计数统计
-      final allMessages = messageEntities.map(_entityToMessage).toList();
+      final allMessages = messageEntities.map(_chatMessageToAgentMessage).toList();
 
       if (allMessages.isEmpty) {
         _cachedMessages = [];
@@ -270,8 +270,8 @@ class CachedAgentProxy {
         _cachedMessages.add(message);
         final forceRead = message.role == 'assistant' &&
             (shouldSaveAsReadCallback?.call() ?? false);
-        final entity = _messageToEntity(message, forceRead: forceRead);
-        await _messageStore.addMessage(entity, deviceId: _deviceId);
+        final chatMsg = _agentMessageToChatMessage(message, forceRead: forceRead);
+        await _messageStore.addMessage(chatMsg, deviceId: _deviceId);
         print('[CachedAgentProxy] 添加新消息: ${message.id}');
       } else {
         // 已存在，根据updateTime更新
@@ -282,8 +282,8 @@ class CachedAgentProxy {
         if (newUpdateTime.isAfter(existingUpdateTime)) {
           // 更新消息
           _cachedMessages[existingIndex] = message;
-          final entity = _messageToEntity(message);
-          await _messageStore.updateMessage(entity, deviceId: _deviceId);
+          final chatMsg = _agentMessageToChatMessage(message);
+          await _messageStore.updateMessage(chatMsg, deviceId: _deviceId);
           print('[CachedAgentProxy] 更新消息: ${message.id}');
         }
       }
@@ -572,8 +572,8 @@ class CachedAgentProxy {
     // 本地模式：DB 不需要临时工具调用消息
     if (!_needCache) return;
     try {
-      final entity = _agentMessageToEntity(message);
-      await _messageStore.addMessage(entity, deviceId: _deviceId);
+      final chatMsg = _agentMessageToChatMessage(message);
+      await _messageStore.addMessage(chatMsg, deviceId: _deviceId);
     } catch (e) {
       print('[CachedAgentProxy] 保存工具调用消息失败: $e');
     }
@@ -582,31 +582,11 @@ class CachedAgentProxy {
   /// 更新数据库中的工具调用消息
   Future<void> _updateToolCallMessageInDb(AgentMessage message) async {
     try {
-      final entity = _agentMessageToEntity(message);
-      await _messageStore.updateMessage(entity);
+      final chatMsg = _agentMessageToChatMessage(message);
+      await _messageStore.updateMessage(chatMsg);
     } catch (e) {
       print('[CachedAgentProxy] 更新工具调用消息失败: $e');
     }
-  }
-
-  /// 将 AgentMessage 转换为 AiEmployeeMessageEntity
-  AiEmployeeMessageEntity _agentMessageToEntity(AgentMessage message) {
-    final map = <String, dynamic>{
-      'uuid': message.id,
-      'employeeId': _employeeId,
-      'role': message.role,
-      'type': message.type,
-      'content': message.content,
-      'toolCallId': message.toolCallId,
-      'toolName': message.toolName,
-      'toolArguments': message.toolArguments,
-      'toolResult': message.toolResult,
-      'toolCalls': message.toolCalls?.map((tc) => tc.toMap()).toList(),
-      'processingStatus': message.status ?? 'none',
-      'createTime': message.createdAt.millisecondsSinceEpoch,
-      'metadata': message.metadata,
-    };
-    return AiEmployeeMessageEntity.fromMessageMap(map);
   }
 
   /// 处理权限请求事件
@@ -846,8 +826,8 @@ class CachedAgentProxy {
       final shouldSaveAsRead = shouldSaveAsReadCallback?.call() ?? false;
       for (final message in remoteMessages) {
         final forceRead = message.role == 'assistant' && shouldSaveAsRead;
-        final entity = _messageToEntity(message, forceRead: forceRead);
-        await _messageStore.addMessage(entity, deviceId: _deviceId);
+        final chatMsg = _agentMessageToChatMessage(message, forceRead: forceRead);
+        await _messageStore.addMessage(chatMsg, deviceId: _deviceId);
         _cachedMessages.add(message);
       }
 
@@ -927,9 +907,7 @@ class CachedAgentProxy {
       // 4. 同步远程技能配置
       try {
         final skills = await _proxy.getSkillsConfigAsync();
-        if (skills != null) {
-          print('[CachedAgentProxy] 远程技能配置: ${skills.length} 个');
-        }
+        print('[CachedAgentProxy] 远程技能配置: ${skills.length} 个');
       } catch (e) {
         print('[CachedAgentProxy] 同步远程技能配置失败: $e');
       }
@@ -937,9 +915,7 @@ class CachedAgentProxy {
       // 5. 同步远程 MCP 配置
       try {
         final mcpConfigs = await _proxy.getMcpConfigsAsync();
-        if (mcpConfigs != null) {
-          print('[CachedAgentProxy] 远程 MCP 配置: ${mcpConfigs.length} 个');
-        }
+        print('[CachedAgentProxy] 远程 MCP 配置: ${mcpConfigs.length} 个');
       } catch (e) {
         print('[CachedAgentProxy] 同步远程 MCP 配置失败: $e');
       }
@@ -992,14 +968,10 @@ class CachedAgentProxy {
 
   /// 获取消息的更新时间
   DateTime _getMessageUpdateTime(AgentMessage message) {
-    // 优先使用metadata中的updateTime
-    if (message.metadata?['updateTime'] != null) {
-      final updateTime = message.metadata!['updateTime'];
-      if (updateTime is String) {
-        return DateTime.parse(updateTime);
-      } else if (updateTime is DateTime) {
-        return updateTime;
-      }
+    // 优先使用metadata中的updateTime（始终为ISO8601字符串）
+    final updateTime = message.metadata?['updateTime'];
+    if (updateTime is String) {
+      return DateTime.parse(updateTime);
     }
 
     // 其次使用createdAt
@@ -1049,8 +1021,8 @@ class CachedAgentProxy {
     try {
       final forceRead = message.role == 'assistant' &&
           (shouldSaveAsReadCallback?.call() ?? false);
-      final entity = _messageToEntity(message, forceRead: forceRead);
-      await _messageStore.addMessage(entity, deviceId: _deviceId);
+      final chatMsg = _agentMessageToChatMessage(message, forceRead: forceRead);
+      await _messageStore.addMessage(chatMsg, deviceId: _deviceId);
     } catch (e) {
       print('保存消息到数据库失败: $e');
     }
@@ -1059,30 +1031,11 @@ class CachedAgentProxy {
   /// 更新数据库中的消息
   Future<void> _updateMessageInDatabase(AgentMessage message) async {
     try {
-      final entity = _messageToEntity(message);
-      await _messageStore.updateMessage(entity, deviceId: _deviceId);
+      final chatMsg = _agentMessageToChatMessage(message);
+      await _messageStore.updateMessage(chatMsg, deviceId: _deviceId);
     } catch (e) {
       print('更新数据库消息失败: $e');
     }
-  }
-
-  /// 应用分页
-  List<AgentMessage> _applyPagination(
-    List<AgentMessage> messages,
-    int? limit,
-    int? offset,
-  ) {
-    var result = messages;
-
-    if (offset != null && offset > 0) {
-      result = result.skip(offset).toList();
-    }
-
-    if (limit != null && limit > 0) {
-      result = result.take(limit).toList();
-    }
-
-    return result;
   }
 
   /// 更新缓存状态
@@ -1105,96 +1058,64 @@ class CachedAgentProxy {
 
   // ===== 转换方法 =====
 
-  AgentMessage _entityToMessage(AiEmployeeMessageEntity entity) {
-    // 从 entity.toMessageMap() 还原完整消息数据
-    // toMessageMap() 以 jsonData 为基础还原，确保 toolResults 等扩展字段不丢失
-    final messageMap = entity.toMessageMap();
+  /// ChatMessage → AgentMessage 桥接（MessageStore 返回 ChatMessage，缓存使用 AgentMessage）
+  AgentMessage _chatMessageToAgentMessage(shared.ChatMessage cm) {
+    final metadata = <String, dynamic>{};
 
-    // 解析 toolCalls（可能是 JSON 字符串或已解析的 List）
-    List<ToolCall>? toolCalls;
-    final rawToolCalls = messageMap['toolCalls'];
-    if (rawToolCalls != null) {
-      if (rawToolCalls is String && rawToolCalls.isNotEmpty) {
-        toolCalls = (jsonDecode(rawToolCalls) as List)
-            .map((tc) => ToolCall.fromMap(tc as Map<String, dynamic>))
-            .toList();
-      } else if (rawToolCalls is List) {
-        toolCalls = rawToolCalls
-            .map((tc) => ToolCall.fromMap(tc as Map<String, dynamic>))
-            .toList();
-      }
+    // 系统字段放入 metadata（AgentMessage 的兼容层）
+    if (cm.seq > 0) metadata['seq'] = cm.seq;
+    if (cm.deleted) metadata['deleted'] = 1;
+    if (cm.updatedAt != null) {
+      metadata['updateTime'] = cm.updatedAt!.toIso8601String();
+    }
+    if (cm.isRead) metadata['isRead'] = true;
+
+    // 合并用户自定义 metadata
+    if (cm.metadata != null) {
+      metadata.addAll(cm.metadata!);
     }
 
-    // 解析 toolArguments（可能是 JSON 字符串或已解析的 Map）
-    Map<String, dynamic>? toolArguments;
-    final rawToolArgs = messageMap['toolArguments'];
-    if (rawToolArgs != null) {
-      if (rawToolArgs is String && rawToolArgs.isNotEmpty) {
-        toolArguments = jsonDecode(rawToolArgs) as Map<String, dynamic>;
-      } else if (rawToolArgs is Map) {
-        toolArguments = Map<String, dynamic>.from(rawToolArgs);
-      }
-    }
-
-    // 构建 metadata：保留 toMessageMap() 中的 toolResults 等扩展字段
-    final metadata = <String, dynamic>{
-      'updateTime': entity.updateTime.toIso8601String(),
-    };
-
-    // 从 messageMap 中提取 toolResults 等扩展字段到 metadata
-    final mapMetadata = messageMap['metadata'] as Map<String, dynamic>?;
-    if (mapMetadata != null) {
-      metadata.addAll(mapMetadata);
-    }
-    // toMessageMap() 中 toolResults 可能是 JSON 字符串（来自 PersistentChatAdapter 的 jsonEncode）
-    if (messageMap['toolResults'] != null && !metadata.containsKey('toolResults')) {
-      final rawToolResults = messageMap['toolResults'];
-      if (rawToolResults is String && rawToolResults.isNotEmpty) {
-        try {
-          metadata['toolResults'] = jsonDecode(rawToolResults);
-        } catch (_) {
-          // 解析失败，保留原始值
-          metadata['toolResults'] = rawToolResults;
-        }
-      } else if (rawToolResults is List) {
-        metadata['toolResults'] = rawToolResults;
-      }
+    // toolResults 合并到 metadata（AgentMessage 消费者从 metadata 读取）
+    if (cm.toolResults != null) {
+      metadata['toolResults'] = cm.toolResults!.map((r) => r.toMap()).toList();
     }
 
     return AgentMessage(
-      id: entity.uuid,
-      role: entity.role,
-      type: entity.type,
-      content: entity.content,
-      createdAt: entity.createTime,
-      toolCallId: entity.toolCallId,
-      toolName: entity.toolName,
-      toolArguments: toolArguments,
-      toolResult: entity.toolResult,
-      toolCalls: toolCalls,
-      status: entity.processingStatus,
-      metadata: metadata,
+      id: cm.id,
+      role: cm.role.name,
+      type: cm.type,
+      content: cm.content,
+      createdAt: cm.createdAt,
+      toolCallId: cm.toolCallId,
+      toolName: cm.toolName,
+      toolArguments: cm.toolArguments,
+      toolResult: cm.toolResult,
+      toolCalls: cm.toolCalls?.map((tc) => ToolCall(id: tc.id, name: tc.name, arguments: tc.arguments)).toList(),
+      status: cm.status != shared.MessageStatus.none ? cm.status.name : null,
+      metadata: metadata.isNotEmpty ? metadata : null,
     );
   }
 
-  AiEmployeeMessageEntity _messageToEntity(AgentMessage message, {bool? forceRead}) {
-    final map = <String, dynamic>{
-      'uuid': message.id,
-      'employeeId': _employeeId,
-      'role': message.role,
-      'type': message.type,
-      'content': message.content,
-      'toolCallId': message.toolCallId,
-      'toolName': message.toolName,
-      'toolArguments': message.toolArguments,
-      'toolResult': message.toolResult,
-      'toolCalls': message.toolCalls?.map((tc) => tc.toMap()).toList(),
-      'processingStatus': message.status ?? 'none',
-      'createTime': message.createdAt.millisecondsSinceEpoch,
-      'updateTime': _getMessageUpdateTime(message).millisecondsSinceEpoch,
-      'isRead': (forceRead == true) ? 1 : null,
-    };
-    return AiEmployeeMessageEntity.fromMessageMap(map);
+  /// AgentMessage → ChatMessage 桥接（缓存 AgentMessage 保存到 MessageStore）
+  shared.ChatMessage _agentMessageToChatMessage(AgentMessage am, {bool forceRead = false}) {
+    return shared.ChatMessage(
+      id: am.id,
+      employeeId: _employeeId,
+      role: shared.MessageRole.fromString(am.role),
+      type: am.type,
+      content: am.content,
+      createdAt: am.createdAt,
+      updatedAt: _getMessageUpdateTime(am),
+      toolCallId: am.toolCallId,
+      toolName: am.toolName,
+      toolArguments: am.toolArguments,
+      toolResult: am.toolResult,
+      toolCalls: am.toolCalls?.map((tc) => shared.ToolCall(id: tc.id, name: tc.name, arguments: tc.arguments)).toList(),
+      status: shared.MessageStatus.fromString(am.status ?? 'none'),
+      isRead: forceRead,
+      deviceId: _deviceId,
+      metadata: am.metadata,
+    );
   }
 
   // ===== 代理方法（智能透传） =====

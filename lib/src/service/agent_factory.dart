@@ -291,12 +291,12 @@ class AgentFactoryImpl implements AgentFactory {
     // 持久化消息回调
     adapter.persistMessage = (message) async {
       // 使用 fromMessageMap 将整个 Map 序列化为 JSON 字符串存入数据库
-      var entity = AiEmployeeMessageEntity.fromMessageMap(message);
+      var msg = ChatMessage.fromJson(message);
       // 如果当前正在查看该会话，直接写入已读状态（避免重启后因 DB 未更新而误显示未读）
-      if (entity.role == 'assistant' && shouldMarkMessageAsRead?.call(employeeId) == true) {
-        entity = entity.copyWith(isRead: 1);
+      if (msg.role == MessageRole.assistant && shouldMarkMessageAsRead?.call(employeeId) == true) {
+        msg = msg.copyWith(isRead: true);
       }
-      await _messageStore.addMessage(entity);
+      await _messageStore.addMessage(msg);
     };
 
     // 加载会话回调
@@ -317,14 +317,14 @@ class AgentFactoryImpl implements AgentFactory {
     adapter.loadMessages = (employeeId, {int? limit}) async {
       final messages = await _messageStore.getMessages(employeeId, limit: limit);
       // 优先从 jsonData 无损还原完整消息数据
-      return messages.map((m) => m.toMessageMap()).toList();
+      return messages.map((m) => m.toJson()).toList();
     };
 
     // 更新消息状态回调
     adapter.updateMessageStatusCallback = (messageId, status, {error}) async {
       await _messageStore.updateMessageStatus(
         messageId,
-        status,
+        MessageStatus.fromString(status),
         error: error,
       );
     };

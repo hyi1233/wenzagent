@@ -23,7 +23,6 @@ class MessageSchema {
         deleted           INTEGER DEFAULT 0,
         create_time       INTEGER NOT NULL,
         update_time       INTEGER NOT NULL,
-        json_data         TEXT,
         seq               INTEGER NOT NULL
       );
     ''');

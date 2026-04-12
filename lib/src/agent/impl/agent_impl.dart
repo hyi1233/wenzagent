@@ -678,16 +678,21 @@ class AgentImpl implements IAgent {
     int limit = 20,
   }) async {
     final store = MessageStore(deviceId: deviceId);
-    final entities = await store.getMessagesAfterSeq(employeeId, lastSeq, limit: limit);
+    final chatMessages = await store.getMessagesAfterSeq(employeeId, lastSeq, limit: limit);
 
-    final messages = entities.map((e) {
-      final msgMap = e.toMessageMap();
+    final messages = chatMessages.map((cm) {
+      final map = cm.toJson();
       // 将 seq 和 deleted 注入 metadata，供客户端增量同步使用
-      final metadata = Map<String, dynamic>.from(msgMap['metadata'] as Map? ?? {});
-      metadata['seq'] = e.seq;
-      metadata['deleted'] = e.deleted;
-      msgMap['metadata'] = metadata;
-      return AgentMessage.fromMap(msgMap);
+      final metadata = Map<String, dynamic>.from(
+        (map['metadata'] as Map<String, dynamic>?) ?? {},
+      );
+      if (cm.seq > 0) metadata['seq'] = cm.seq;
+      if (cm.deleted) metadata['deleted'] = 1;
+      if (cm.updatedAt != null) {
+        metadata['updateTime'] = cm.updatedAt!.toIso8601String();
+      }
+      map['metadata'] = metadata.isNotEmpty ? metadata : null;
+      return AgentMessage.fromMap(map);
     }).toList();
 
     print(
@@ -766,14 +771,10 @@ class AgentImpl implements IAgent {
 
   /// 获取消息的更新时间
   DateTime _getMessageUpdateTime(AgentMessage message) {
-    // 优先使用metadata中的updateTime
-    if (message.metadata?['updateTime'] != null) {
-      final updateTime = message.metadata!['updateTime'];
-      if (updateTime is String) {
-        return DateTime.parse(updateTime);
-      } else if (updateTime is DateTime) {
-        return updateTime;
-      }
+    // 优先使用metadata中的updateTime（始终为ISO8601字符串）
+    final updateTime = message.metadata?['updateTime'];
+    if (updateTime is String) {
+      return DateTime.parse(updateTime);
     }
 
     // 其次使用createdAt
@@ -857,10 +858,8 @@ class AgentImpl implements IAgent {
   Future<void> setProvider(ProviderConfig providerConfig) async {
     _touch();
     await _withLock(() async {
-      // 如果是 PersistentChatAdapter，使用 saveProviderConfig 来同时持久化到 Session
-      if (_chatAdapter is PersistentChatAdapter) {
-        await (_chatAdapter as PersistentChatAdapter)
-            .saveProviderConfig(providerConfig);
+      if (_chatAdapter case final PersistentChatAdapter adapter) {
+        await adapter.saveProviderConfig(providerConfig);
       } else {
         await _chatAdapter.updateProvider(providerConfig.toMap());
       }

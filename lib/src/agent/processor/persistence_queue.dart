@@ -187,15 +187,13 @@ class PersistenceQueue {
         _currentTask!.taskId.contains(messageId)) {
       target = _currentTask;
     }
-    if (target == null) {
-      target = _queue.cast<PersistenceTask?>().firstWhere(
+    target ??= _queue.cast<PersistenceTask?>().firstWhere(
         (t) =>
             t != null &&
             t.type == PersistenceTaskType.message &&
             t.taskId.contains(messageId),
         orElse: () => null,
       );
-    }
 
     if (target == null || target.completer.isCompleted) return;
 

@@ -1,8 +1,7 @@
 import '../../agent/entity/agent_message.dart';
 import '../../agent/notification/agent_notification_hub.dart';
 import '../../entity/lan_message.dart';
-import '../../persistence/entities/message_entity.dart';
-import '../../persistence/persistence.dart';
+import '../../shared/shared.dart';
 import '../../service/service.dart';
 import '../device_client.dart';
 import 'device_connection_manager.dart';
@@ -150,9 +149,9 @@ class DeviceNotificationManager {
         final isRead = entry.value;
         if (isRead) {
           _messageStoreService.getMessage(messageId).then((message) {
-            if (message != null && message.isRead == 0) {
+            if (message != null && !message.isRead) {
               _messageStoreService.updateMessage(
-                message.copyWith(isRead: 1, jsonData: null),
+                message.copyWith(isRead: true),
               );
             }
           }).catchError((_) {});
@@ -180,7 +179,7 @@ class DeviceNotificationManager {
         final employeeId = session.employeeId;
         final messages = await _messageStoreService.getMessages(employeeId);
         final unreadMessages = messages
-            .where((m) => m.role == 'assistant' && m.isRead == 0)
+            .where((m) => m.role == MessageRole.assistant && !m.isRead)
             .toList();
         final unreadCount = unreadMessages.length;
 
@@ -199,10 +198,10 @@ class DeviceNotificationManager {
               : _deviceId;
 
           final unreadItems = unreadMessages.map((entity) {
-            final msgMap = entity.toMessageMap();
+            final msgMap = entity.toJson();
             final msg = AgentMessage.fromMap(msgMap);
             return (
-              messageId: entity.uuid,
+              messageId: entity.id,
               fromDeviceId: messageDeviceId,
               message: msg,
             );
@@ -223,7 +222,7 @@ class DeviceNotificationManager {
           final messageDeviceId = rawDeviceId;
 
           final latestEntity = messages.last;
-          final latestMap = latestEntity.toMessageMap();
+          final latestMap = latestEntity.toJson();
           final latestMsg = AgentMessage.fromMap(latestMap);
 
           final key = '$employeeId:$messageDeviceId';
@@ -240,7 +239,7 @@ class DeviceNotificationManager {
     } catch (_) {}
   }
 
-  Future<List<AiEmployeeMessageEntity>> getLatestMessages({
+  Future<List<ChatMessage>> getLatestMessages({
     required String employeeId,
     required String deviceId,
     int limit = 2,
