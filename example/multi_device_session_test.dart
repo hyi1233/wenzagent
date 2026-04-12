@@ -23,8 +23,8 @@ Future<void> main() async {
 }
 
 class MultiDeviceSessionTest {
-  late DeviceClientImpl deviceA;
-  late DeviceClientImpl deviceB;
+  late DeviceClient deviceA;
+  late DeviceClient deviceB;
   
   final String deviceAId = 'device-alpha';
   final String deviceBId = 'device-beta';
@@ -83,14 +83,14 @@ class MultiDeviceSessionTest {
     print('  临时目录: ${tempDir.path}');
 
     // 初始化 Hive
-    await DatabaseManager.instance.initialize(storagePath: tempDir.path);
+    await DatabaseManager.getInstance('test').initialize(storagePath: tempDir.path);
     print('  ✓ Hive 初始化完成');
   }
 
   /// 创建设备客户端
   Future<void> _createDeviceClients() async {
     // Device-A
-    deviceA = DeviceClientImpl(
+    deviceA = DeviceClient.create(
       deviceId: deviceAId,
       deviceName: 'Device Alpha',
       host: 'localhost',
@@ -98,7 +98,7 @@ class MultiDeviceSessionTest {
     );
     
     // Device-B
-    deviceB = DeviceClientImpl(
+    deviceB = DeviceClient.create(
       deviceId: deviceBId,
       deviceName: 'Device Beta',
       host: 'localhost',

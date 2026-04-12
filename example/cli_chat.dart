@@ -33,7 +33,7 @@ void main() async {
   }
 
   // 2. 初始化适配器
-  final adapter = LangChainChatAdapter();
+  final adapter = LlmChatAdapter();
   await adapter.initSession(employeeId: 'cli-user');
 
   try {
@@ -108,7 +108,7 @@ void main() async {
 // 消息处理
 // ============================================================
 
-Future<void> _processMessage(LangChainChatAdapter adapter, String input) async {
+Future<void> _processMessage(LlmChatAdapter adapter, String input) async {
   stdout.write('\n助手: ');
 
   final messageData = {
@@ -248,7 +248,7 @@ enum _CommandResult { handled, quit }
 _CommandResult _handleCommand(
   String command,
   ToolRegistry registry,
-  LangChainChatAdapter adapter,
+  LlmChatAdapter adapter,
 ) {
   switch (command.toLowerCase()) {
     case '/quit':

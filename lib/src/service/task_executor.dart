@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:uuid/uuid.dart';
 
-import '../agent/adapter/langchain_chat_adapter.dart';
+import '../agent/adapter/llm_chat_adapter.dart';
 import '../agent/agent_state.dart';
 import '../agent/tool/agent_tool.dart';
 import '../agent/tool/builtin/builtin_tools.dart';
@@ -83,7 +83,7 @@ class TaskExecutor {
     }
 
     // ② 创建临时 Adapter（不持久化，纯内存）
-    final adapter = LangChainChatAdapter();
+    final adapter = LlmChatAdapter();
     final tempSessionId =
         '__task_${DateTime.now().millisecondsSinceEpoch}';
 

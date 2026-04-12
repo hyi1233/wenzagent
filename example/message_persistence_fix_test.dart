@@ -16,7 +16,7 @@ Future<void> main() async {
 }
 
 class MessagePersistenceFixTest {
-  late DeviceClientImpl device;
+  late DeviceClient device;
   late String employeeId;
   late String tempDirPath;
 
@@ -58,13 +58,13 @@ class MessagePersistenceFixTest {
     tempDirPath = tempDir.path;
     print('  临时目录: $tempDirPath');
 
-    await DatabaseManager.instance.initialize(storagePath: tempDirPath);
+    await DatabaseManager.getInstance('test').initialize(storagePath: tempDirPath);
     print('  ✓ Hive 初始化完成');
   }
 
   /// 创建设备和员工
   Future<void> _createDeviceAndEmployee() async {
-    device = DeviceClientImpl(
+    device = DeviceClient.create(
       deviceId: deviceId,
       deviceName: 'Test Device',
       host: 'localhost',

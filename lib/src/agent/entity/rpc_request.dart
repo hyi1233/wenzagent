@@ -140,15 +140,25 @@ class GetUnreceivedMessagesRequest {
   /// 接收设备的ID（本机设备ID）
   final String receiverDeviceId;
 
+  /// 偏移量（跳过的消息数），默认0
+  final int offset;
+
+  /// 每批数量限制，默认20条
+  final int limit;
+
   const GetUnreceivedMessagesRequest({
     required this.employeeId,
     required this.receiverDeviceId,
+    this.offset = 0,
+    this.limit = 20,
   });
 
   Map<String, dynamic> toMap() {
     return {
       'employeeId': employeeId,
       'receiverDeviceId': receiverDeviceId,
+      'offset': offset,
+      'limit': limit,
     };
   }
 
@@ -156,6 +166,8 @@ class GetUnreceivedMessagesRequest {
     return GetUnreceivedMessagesRequest(
       employeeId: map['employeeId'] as String,
       receiverDeviceId: map['receiverDeviceId'] as String,
+      offset: map['offset'] as int? ?? 0,
+      limit: map['limit'] as int? ?? 20,
     );
   }
 }
@@ -218,6 +230,70 @@ class MessageReceiveInfo {
     return MessageReceiveInfo(
       messageId: map['messageId'] as String,
       updateTime: DateTime.parse(map['updateTime'] as String),
+    );
+  }
+}
+
+/// 增量拉取消息请求（基于 LSN）
+///
+/// 客户端通过 lastSeq 获取 seq > lastSeq 的消息
+class GetMessagesAfterSeqRequest {
+  final String employeeId;
+
+  /// 客户端已同步到的最大 seq
+  final int lastSeq;
+
+  /// 每批数量限制，默认20条
+  final int limit;
+
+  const GetMessagesAfterSeqRequest({
+    required this.employeeId,
+    this.lastSeq = 0,
+    this.limit = 20,
+  });
+
+  Map<String, dynamic> toMap() {
+    return {
+      'employeeId': employeeId,
+      'lastSeq': lastSeq,
+      'limit': limit,
+    };
+  }
+
+  factory GetMessagesAfterSeqRequest.fromMap(Map<String, dynamic> map) {
+    return GetMessagesAfterSeqRequest(
+      employeeId: map['employeeId'] as String,
+      lastSeq: map['lastSeq'] as int? ?? 0,
+      limit: map['limit'] as int? ?? 20,
+    );
+  }
+}
+
+/// 更新同步水位线请求
+///
+/// 客户端同步完成后更新本地水位线
+class UpdateSyncWatermarkRequest {
+  final String employeeId;
+
+  /// 已同步到的最大 seq
+  final int lastSeq;
+
+  const UpdateSyncWatermarkRequest({
+    required this.employeeId,
+    required this.lastSeq,
+  });
+
+  Map<String, dynamic> toMap() {
+    return {
+      'employeeId': employeeId,
+      'lastSeq': lastSeq,
+    };
+  }
+
+  factory UpdateSyncWatermarkRequest.fromMap(Map<String, dynamic> map) {
+    return UpdateSyncWatermarkRequest(
+      employeeId: map['employeeId'] as String,
+      lastSeq: map['lastSeq'] as int,
     );
   }
 }

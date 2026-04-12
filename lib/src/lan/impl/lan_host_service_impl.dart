@@ -41,11 +41,10 @@ class LanHostServiceImpl implements LanHostService {
   final LanFileCacheService _cacheService = LanFileCacheService();
   final _uuid = const Uuid();
 
-  /// Ping 探测定时器
-  Timer? _pingTimer;
-  static const Duration _pingInterval = Duration(seconds: 5);
-  /// Pong 超时时间：超过此时间未收到 pong 则判定掉线
-  static const Duration _pongTimeout = Duration(seconds: 15);
+  /// 心跳检测定时器
+  Timer? _heartbeatTimer;
+  /// 客户端 ping 超时时间：超过此时间未收到 ping 则判定掉线
+  static const Duration _pingTimeout = Duration(seconds: 10);
 
   @override
   bool get isRunning => _isRunning;
@@ -81,7 +80,7 @@ class LanHostServiceImpl implements LanHostService {
     _server = await shelf_io.serve(handler, InternetAddress.anyIPv4, port);
     _port = _server?.port ?? port; // 使用实际分配的端口
 
-    _startPingTimer();
+    _startHeartbeatTimer();
     _addSystemMessage('服务端已启动，IP: $_localIp:$_port');
   }
 
@@ -90,7 +89,7 @@ class LanHostServiceImpl implements LanHostService {
     if (!_isRunning) return;
 
     _isRunning = false;
-    _stopPingTimer();
+    _stopHeartbeatTimer();
 
     final channels = List<WebSocketChannel>.from(_clientChannels);
     _clientChannels.clear();
@@ -118,7 +117,9 @@ class LanHostServiceImpl implements LanHostService {
       }
       try {
         _clientChannels[i].sink.add(data);
-      } catch (_) {}
+      } catch (e) {
+        _markClientOffline(i, reason: '广播消息失败');
+      }
     }
     _messageController.add(message);
   }
@@ -150,14 +151,21 @@ class LanHostServiceImpl implements LanHostService {
     final idx = _clients.indexWhere((c) => c.id == clientId);
     if (idx == -1) return;
 
+    // 先保存 client 引用和 channel 引用
+    final client = _clients[idx];
+    final channel = _clientChannels[idx];
+    final clientName = client.name;
+
     try {
-      _clientChannels[idx].sink.close();
+      channel.sink.close();
     } catch (_) {}
 
-    final client = _clients[idx];
-    final clientName = client.name;
-    _clients.removeAt(idx);
-    _clientChannels.removeAt(idx);
+    // 关闭后重新查找（sink.close 可能同步触发 onDone 已移除 client）
+    final newIdx = _clients.indexOf(client);
+    if (newIdx == -1) return; // 已被 onDone 移除
+
+    _clients.removeAt(newIdx);
+    _clientChannels.remove(channel);
     _addSystemMessage('客户端 ${clientName ?? clientId} 已断开');
 
     // 广播设备下线
@@ -340,11 +348,11 @@ class LanHostServiceImpl implements LanHostService {
   void _handleClientMessage(String clientId, LanMessage msg) {
     msg.fromId ??= clientId;
 
-    // 处理 Client 对 ping 的 pong 响应
-    if (msg.type == LanMessageType.pong) {
+    // 处理 Client 发来的 ping，更新 lastPingTime
+    if (msg.type == LanMessageType.ping) {
       final idx = _clients.indexWhere((c) => c.id == clientId);
       if (idx != -1) {
-        _clients[idx] = _clients[idx].copyWith(lastPongTime: DateTime.now());
+        _clients[idx] = _clients[idx].copyWith(lastPingTime: DateTime.now());
       }
       return;
     }
@@ -361,11 +369,19 @@ class LanHostServiceImpl implements LanHostService {
         final newDeviceId = msg.fileName;
 
         // 断线重连时清理同一 deviceId 的旧连接
+        // 注意：移除旧连接后 _clients 列表会变化，需要重新查找索引
         if (newDeviceId != null && newDeviceId.isNotEmpty) {
           _removeStaleClientsWithDeviceId(
             newDeviceId,
             excludeClientId: clientId,
           );
+        }
+
+        // 重新查找索引（_removeStaleClientsWithDeviceId 可能已修改 _clients）
+        final newIdx = _clients.indexWhere((c) => c.id == clientId);
+        if (newIdx == -1) {
+          _messageController.add(msg);
+          return;
         }
 
         // 从 content JSON 中解析设备信息
@@ -375,7 +391,7 @@ class LanHostServiceImpl implements LanHostService {
           clientIp = contentData['ip'] as String?;
         } catch (_) {}
 
-        _clients[idx] = _clients[idx].copyWith(
+        _clients[newIdx] = _clients[newIdx].copyWith(
           ip: clientIp,
           name: msg.fromName,
           deviceId: msg.fileName,
@@ -387,7 +403,7 @@ class LanHostServiceImpl implements LanHostService {
             newDeviceId != null &&
             newDeviceId.isNotEmpty;
         if (isNewDevice) {
-          _broadcastDeviceOnline(_clients[idx]);
+          _broadcastDeviceOnline(_clients[newIdx]);
         }
       }
       _messageController.add(msg);
@@ -461,7 +477,8 @@ class LanHostServiceImpl implements LanHostService {
         try {
           _clientChannels[idx].sink.add(data);
         } catch (e) {
-          // 转发失败
+          // 转发失败，标记客户端离线
+          _markClientOffline(idx, reason: '消息转发失败');
         }
       }
     } else {
@@ -471,7 +488,9 @@ class LanHostServiceImpl implements LanHostService {
         if (topic != null && _clients[i].topic != topic) continue;
         try {
           _clientChannels[i].sink.add(data);
-        } catch (_) {}
+        } catch (e) {
+          _markClientOffline(i, reason: '消息转发失败');
+        }
       }
     }
   }
@@ -486,18 +505,18 @@ class LanHostServiceImpl implements LanHostService {
     String deviceId, {
     required String excludeClientId,
   }) {
-    final staleIndices = <int>[];
+    // 收集需要踢掉的 client 及其 channel（使用快照避免并发问题）
+    final staleEntries = <(LanClient client, WebSocketChannel channel)>[];
     for (int i = 0; i < _clients.length; i++) {
       if (_clients[i].deviceId == deviceId &&
           _clients[i].id != excludeClientId) {
-        staleIndices.add(i);
+        staleEntries.add((_clients[i], _clientChannels[i]));
       }
     }
 
-    if (staleIndices.isEmpty) return;
+    if (staleEntries.isEmpty) return;
 
-    for (final idx in staleIndices.reversed) {
-      final staleChannel = _clientChannels[idx];
+    for (final (staleClient, staleChannel) in staleEntries) {
       // 先发送被踢下线消息
       try {
         _sendToChannel(
@@ -510,8 +529,11 @@ class LanHostServiceImpl implements LanHostService {
           ),
         );
       } catch (_) {}
-      _clients.removeAt(idx);
-      _clientChannels.removeAt(idx);
+
+      // 按引用移除（避免索引错位）
+      _clients.remove(staleClient);
+      _clientChannels.remove(staleChannel);
+
       // 延迟关闭连接，确保消息能被接收
       Future.delayed(const Duration(milliseconds: 100), () {
         try {
@@ -567,90 +589,126 @@ class LanHostServiceImpl implements LanHostService {
     );
   }
 
-  // ===== Ping 探测机制 =====
+  // ===== 心跳检测机制 =====
 
-  /// 启动定时 ping
-  void _startPingTimer() {
-    _stopPingTimer();
-    _pingTimer = Timer.periodic(_pingInterval, (_) {
+  /// 启动心跳检测定时器
+  void _startHeartbeatTimer() {
+    _stopHeartbeatTimer();
+    _heartbeatTimer = Timer.periodic(const Duration(seconds: 5), (_) {
       if (!_isRunning) {
-        _stopPingTimer();
+        _stopHeartbeatTimer();
         return;
       }
-      _doPingCheck();
+      _doHeartbeatCheck();
     });
   }
 
-  /// 停止定时 ping
-  void _stopPingTimer() {
-    _pingTimer?.cancel();
-    _pingTimer = null;
+  /// 停止心跳检测定时器
+  void _stopHeartbeatTimer() {
+    _heartbeatTimer?.cancel();
+    _heartbeatTimer = null;
   }
 
-  /// 向所有已注册设备的 Client 发送 ping，并检查超时
-  void _doPingCheck() {
+  /// 检查所有已注册 Client 的心跳超时
+  void _doHeartbeatCheck() {
     final now = DateTime.now();
-    final pingMsg = LanMessage(
-      id: _uuid.v4(),
-      type: LanMessageType.ping,
-      fromId: _myId,
-      fromName: 'Host',
-      timestamp: now,
-    );
-    final pingData = jsonEncode(pingMsg.toJson());
 
-    // 收集超时的 Client（从后往前遍历以便安全删除）
-    final timedOutIndices = <int>[];
+    // 收集超时的 Client（使用快照避免并发修改问题）
+    final timedOutEntries = <({LanClient client, WebSocketChannel? channel})>[];
 
     for (int i = 0; i < _clients.length; i++) {
       final client = _clients[i];
-      // 只对已注册 deviceId 的 Client 做 ping 检测
+      // 只对已注册 deviceId 的 Client 做心跳检测
       if (client.deviceId == null || client.deviceId!.isEmpty) continue;
 
-      // 发送 ping
-      try {
-        _clientChannels[i].sink.add(pingData);
-      } catch (_) {
-        timedOutIndices.add(i);
-        continue;
+      WebSocketChannel? channel;
+      if (i < _clientChannels.length) {
+        channel = _clientChannels[i];
       }
 
-      // 检查超时：从未响应过或超过超时时间
-      final lastPong = client.lastPongTime;
-      if (lastPong == null || now.difference(lastPong) > _pongTimeout) {
-        timedOutIndices.add(i);
+      // 检查超时：
+      // - 已有 lastPingTime 的客户端，超过 _pingTimeout 未收到 ping 则判定超时
+      // - 刚连接的客户端（lastPingTime == null），连接超过 _pingTimeout 才判定超时
+      final lastPing = client.lastPingTime;
+      if (lastPing != null && now.difference(lastPing) > _pingTimeout) {
+        timedOutEntries.add((client: client, channel: channel));
+      } else if (lastPing == null && client.connectedAt != null &&
+                 now.difference(client.connectedAt!) > _pingTimeout) {
+        timedOutEntries.add((client: client, channel: channel));
       }
     }
 
-    // 从后往前移除超时的 Client
-    for (final idx in timedOutIndices.reversed) {
-      final client = _clients[idx];
-      final channel = _clientChannels[idx];
+    // 按对象引用移除超时的 Client
+    for (final entry in timedOutEntries) {
+      // 先关闭通道（sink.close 可能同步触发 onDone 回调移除 client）
+      if (entry.channel != null) {
+        try {
+          entry.channel!.sink.close();
+        } catch (_) {}
+      }
 
-      try {
-        channel.sink.close();
-      } catch (_) {}
+      // 关闭后重新查找索引（sink.close 的 onDone 可能已移除了该 client）
+      final idx = _clients.indexOf(entry.client);
+      if (idx == -1) continue;
 
-      final clientName = client.name;
-      final clientDeviceId = client.deviceId;
+      final clientName = entry.client.name;
+      final clientDeviceId = entry.client.deviceId;
 
       _clients.removeAt(idx);
-      _clientChannels.removeAt(idx);
+      if (entry.channel != null) {
+        _clientChannels.remove(entry.channel);
+      }
 
-      _addSystemMessage('客户端 ${clientName ?? "unknown"} ping 超时，已断开');
+      _addSystemMessage('客户端 ${clientName ?? "unknown"} 心跳超时，已断开');
 
       // 广播设备下线
       if (clientDeviceId != null && clientDeviceId.isNotEmpty) {
         _broadcastDeviceOffline(
           LanDeviceInfo(
             id: clientDeviceId,
-            name: client.name ?? '',
-            ip: client.ip ?? '',
+            name: entry.client.name ?? '',
+            ip: entry.client.ip ?? '',
             status: 'offline',
-            connectedAt: client.connectedAt,
+            connectedAt: entry.client.connectedAt,
           ),
         );
       }
+    }
+  }
+
+  /// 标记客户端离线并移除
+  void _markClientOffline(int clientIndex, {required String reason}) {
+    if (clientIndex < 0 || clientIndex >= _clients.length) return;
+    if (clientIndex >= _clientChannels.length) return;
+
+    final client = _clients[clientIndex];
+    final channel = _clientChannels[clientIndex];
+    final clientName = client.name;
+    final clientDeviceId = client.deviceId;
+
+    try {
+      channel.sink.close();
+    } catch (_) {}
+
+    // 关闭后重新查找（sink.close 的 onDone 可能已移除）
+    final newIdx = _clients.indexOf(client);
+    if (newIdx == -1) return;
+
+    _clients.removeAt(newIdx);
+    _clientChannels.remove(channel);
+
+    _addSystemMessage('客户端 ${clientName ?? "unknown"} $reason，已断开');
+
+    if (clientDeviceId != null && clientDeviceId.isNotEmpty) {
+      _broadcastDeviceOffline(
+        LanDeviceInfo(
+          id: clientDeviceId,
+          name: client.name ?? '',
+          ip: client.ip ?? '',
+          status: 'offline',
+          connectedAt: client.connectedAt,
+        ),
+      );
     }
   }
 

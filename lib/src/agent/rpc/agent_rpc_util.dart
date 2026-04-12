@@ -67,6 +67,27 @@ class AgentRpcUtil {
     return _rpcCall(AgentRpcConfig.methodMarkMessagesAsReceived, request.toMap());
   }
 
+  /// 增量拉取消息（基于 LSN）
+  Future<Map<String, dynamic>> getMessagesAfterSeq(
+    GetMessagesAfterSeqRequest request,
+  ) async {
+    return _rpcCall(AgentRpcConfig.methodGetMessagesAfterSeq, request.toMap());
+  }
+
+  /// 更新同步水位线
+  Future<Map<String, dynamic>> updateSyncWatermark(
+    UpdateSyncWatermarkRequest request,
+  ) async {
+    return _rpcCall(AgentRpcConfig.methodUpdateSyncWatermark, request.toMap());
+  }
+
+  /// 获取最大 seq
+  Future<Map<String, dynamic>> getMaxSeq(
+    GetSessionMessagesRequest request,
+  ) async {
+    return _rpcCall(AgentRpcConfig.methodGetMaxSeq, request.toMap());
+  }
+
   /// 标记消息为已读
   Future<Map<String, dynamic>> markMessagesAsRead(
     MarkMessagesAsReadRequest request,

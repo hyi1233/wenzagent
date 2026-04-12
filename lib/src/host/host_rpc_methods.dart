@@ -190,9 +190,9 @@ void registerHostRpcMethods({
         .toList();
 
     for (final employee in employees) {
-      final existing = await employeeManager.getEmployee(employee.uuid);
+      final existing = await employeeManager.getEmployeeIncludingDeleted(employee.uuid);
       if (existing == null) {
-        // 本地不存在 → 直接保存，保留原始 deviceId 和时间戳
+        // 本地不存在（含已删除） → 直接保存，保留原始 deviceId 和时间戳
         await employeeManager.saveEmployee(employee);
       } else {
         // 合并：deleteTime 独立比较，数据按 updateTime 合并

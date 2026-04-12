@@ -2,7 +2,7 @@
 
 import 'package:wenzagent/wenzagent.dart';
 
-/// LangChain ChatAdapter 使用示例
+/// LLM ChatAdapter 使用示例
 ///
 /// 运行前请设置环境变量:
 /// ```
@@ -35,8 +35,8 @@ Future<void> main() async {
 
   try {
     // 1. 创建 LangChainChatAdapter
-    print('【步骤1】创建 LangChainChatAdapter...');
-    final adapter = LangChainChatAdapter();
+    print('【步骤1】创建 LlmChatAdapter...');
+    final adapter = LlmChatAdapter();
     print('  ✓ Adapter 已创建\n');
 
     // 2. 配置 Provider (OpenAI)

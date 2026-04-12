@@ -9,8 +9,8 @@ import '../entities/skill_entity.dart';
 class SkillStore {
   final DatabaseManager _dbManager;
 
-  SkillStore({DatabaseManager? dbManager})
-      : _dbManager = dbManager ?? DatabaseManager.instance;
+  SkillStore({String? deviceId, DatabaseManager? dbManager})
+      : _dbManager = dbManager ?? DatabaseManager.getInstance(deviceId ?? '');
 
   Database get _db => _dbManager.db;
 

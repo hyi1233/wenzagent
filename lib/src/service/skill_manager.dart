@@ -28,6 +28,19 @@ class SkillChangeEvent {
 
 /// 技能管理器接口
 abstract class SkillManager {
+  static final Map<String, SkillManager> _instances = {};
+
+  /// 按 deviceId 获取单例，不存在则自动创建
+  static SkillManager getInstance(String deviceId) {
+    return _instances.putIfAbsent(
+      deviceId,
+      () => SkillManagerImpl(deviceId: deviceId),
+    );
+  }
+
+  /// 移除指定 deviceId 的实例
+  static void removeInstance(String deviceId) => _instances.remove(deviceId);
+
   /// 获取员工的技能列表
   Future<List<AiEmployeeSkillEntity>> getSkills(String employeeId);
 
@@ -59,7 +72,7 @@ class SkillManagerImpl implements SkillManager {
   SkillManagerImpl({
     SkillStore? store,
     String? deviceId,
-  })  : _store = store ?? SkillStore(),
+  })  : _store = store ?? SkillStore(deviceId: deviceId),
         _deviceId = deviceId;
 
   @override

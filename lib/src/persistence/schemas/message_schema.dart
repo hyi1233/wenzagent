@@ -23,12 +23,17 @@ class MessageSchema {
         deleted           INTEGER DEFAULT 0,
         create_time       INTEGER NOT NULL,
         update_time       INTEGER NOT NULL,
-        json_data         TEXT
+        json_data         TEXT,
+        seq               INTEGER NOT NULL
       );
     ''');
     db.execute('''
       CREATE INDEX IF NOT EXISTS idx_messages_employee
         ON messages(employee_id, create_time);
+    ''');
+    db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_messages_seq
+        ON messages(seq);
     ''');
   }
 }

@@ -57,7 +57,7 @@ void main() {
     );
     
     // 初始化数据库（指定存储路径）
-    await DatabaseManager.instance.initialize(
+    await DatabaseManager.getInstance('test').initialize(
       storagePath: 'D:\\project\\GitHub\\wenzagent\\test_db',
     );
     
@@ -88,7 +88,7 @@ void main() {
     };
     
     adapter.updateMessageStatusCallback = (messageId, status, {error}) async {
-      await messageStore.updateMessageStatus(messageId, status.name, error: error);
+      await messageStore.updateMessageStatus(messageId, status, error: error);
     };
     
     adapter.deleteMessagesCallback = (employeeId) async {
@@ -130,7 +130,7 @@ void main() {
   });
   
   tearDownAll(() async {
-    await DatabaseManager.instance.close();
+    await DatabaseManager.getInstance('test').close();
   });
   
   group('基础功能测试', () {

@@ -12,8 +12,8 @@ import '../entities/session_entity.dart';
 class SessionStore {
   final DatabaseManager _dbManager;
 
-  SessionStore({DatabaseManager? dbManager})
-      : _dbManager = dbManager ?? DatabaseManager.instance;
+  SessionStore({String? deviceId, DatabaseManager? dbManager})
+      : _dbManager = dbManager ?? DatabaseManager.getInstance(deviceId ?? '');
 
   Database get _db => _dbManager.db;
 

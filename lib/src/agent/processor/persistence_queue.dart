@@ -35,6 +35,9 @@ class PersistenceTask {
   /// 创建时间
   final DateTime createdAt;
 
+  /// 任务完成 Completer（用于外部等待特定任务完成）
+  final Completer<void> completer;
+
   PersistenceTask({
     required this.type,
     required this.taskId,
@@ -43,7 +46,9 @@ class PersistenceTask {
     this.sessionData,
     this.retryCount = 0,
     this.maxRetries = 3,
-  }) : createdAt = DateTime.now();
+    Completer<void>? completer,
+  })  : completer = completer ?? Completer<void>(),
+       createdAt = DateTime.now();
 
   /// 获取任务数据
   Map<String, dynamic>? get data {
@@ -68,6 +73,8 @@ class PersistenceTask {
       sessionData: sessionData,
       retryCount: retryCount + 1,
       maxRetries: maxRetries,
+      // 重试时复用原始 completer，确保外部 await 不会被丢弃
+      completer: completer,
     );
   }
 }
@@ -100,7 +107,7 @@ class PersistenceQueue {
   /// 任务最终失败回调（重试耗尽后触发）
   void Function(PersistenceTask task, Object error)? onTaskFailed;
 
-  /// 添加消息持久化任务
+  /// 添加消息持久化任务（fire-and-forget）
   ///
   /// [messageData] 消息数据
   /// [persistFunc] 持久化函数
@@ -119,6 +126,28 @@ class PersistenceQueue {
     );
 
     _addTask(task);
+  }
+
+  /// 添加消息持久化任务（可等待完成）
+  ///
+  /// 返回一个 Future，在消息持久化完成（含重试）后完成。
+  /// 用于需要确保持久化完成后再继续的场景。
+  Future<void> addMessageTaskAndWait(
+    Map<String, dynamic> messageData,
+    Future<void> Function(Map<String, dynamic> data) persistFunc,
+  ) {
+    if (_disposed) return Future.value();
+
+    final task = PersistenceTask(
+      type: PersistenceTaskType.message,
+      taskId:
+          'msg_${messageData['id']}_${DateTime.now().millisecondsSinceEpoch}',
+      messageData: messageData,
+      persistFunc: persistFunc,
+    );
+
+    _addTask(task);
+    return task.completer.future;
   }
 
   /// 添加会话持久化任务
@@ -140,6 +169,41 @@ class PersistenceQueue {
     );
 
     _addTask(task);
+  }
+
+  /// 等待指定消息ID的持久化任务完成
+  ///
+  /// 扫描队列中 taskId 包含指定 messageId 的任务，
+  /// 如果找到则等待其 completer 完成，否则直接返回。
+  /// 超时后自动返回（不阻塞）。
+  Future<void> waitForMessage(
+    String messageId, {
+    Duration timeout = const Duration(seconds: 5),
+  }) async {
+    // 扫描队列和当前任务
+    PersistenceTask? target;
+    if (_currentTask != null &&
+        _currentTask!.type == PersistenceTaskType.message &&
+        _currentTask!.taskId.contains(messageId)) {
+      target = _currentTask;
+    }
+    if (target == null) {
+      target = _queue.cast<PersistenceTask?>().firstWhere(
+        (t) =>
+            t != null &&
+            t.type == PersistenceTaskType.message &&
+            t.taskId.contains(messageId),
+        orElse: () => null,
+      );
+    }
+
+    if (target == null || target.completer.isCompleted) return;
+
+    try {
+      await target.completer.future.timeout(timeout);
+    } catch (_) {
+      // 超时或其他错误，不阻塞
+    }
   }
 
   /// 添加任务到队列
@@ -198,6 +262,10 @@ class PersistenceQueue {
           '[PersistenceQueue] Task completed: ${task.type} (${task.taskId})',
         );
       }
+      // 标记完成（不报错，即使 data 为 null 也算完成）
+      if (!task.completer.isCompleted) {
+        task.completer.complete();
+      }
     } catch (e) {
       print(
         '[PersistenceQueue] Task failed: ${task.type} (${task.taskId}), error: $e',
@@ -219,6 +287,10 @@ class PersistenceQueue {
         );
         // 通知上层任务最终失败
         onTaskFailed?.call(task, e);
+        // 标记失败
+        if (!task.completer.isCompleted) {
+          task.completer.completeError(e);
+        }
       }
     } finally {
       _currentTask = null;

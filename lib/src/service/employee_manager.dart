@@ -33,14 +33,33 @@ class EmployeeStats {
 
 /// 员工管理器接口
 abstract class EmployeeManager {
+  static final Map<String, EmployeeManager> _instances = {};
+
+  /// 按 deviceId 获取单例，不存在则自动创建
+  static EmployeeManager getInstance(String deviceId) {
+    return _instances.putIfAbsent(
+      deviceId,
+      () => EmployeeManagerImpl(deviceId: deviceId),
+    );
+  }
+
+  /// 移除指定 deviceId 的实例
+  static void removeInstance(String deviceId) => _instances.remove(deviceId);
+
   /// 获取员工列表
+  /// [allDevices] 为 true 时返回所有设备的员工（跨设备同步场景），
+  /// 为 false 时仅返回本设备的员工（默认行为）
   Future<List<AiEmployeeEntity>> getEmployees({
     String? keyword,
     String? status,
+    bool allDevices = false,
   });
 
   /// 获取单个员工
   Future<AiEmployeeEntity?> getEmployee(String uuid);
+
+  /// 获取单个员工（包含已删除的，用于同步合并场景）
+  Future<AiEmployeeEntity?> getEmployeeIncludingDeleted(String uuid);
 
   /// 创建员工
   Future<AiEmployeeEntity> createEmployee(AiEmployeeEntity employee);
@@ -73,20 +92,26 @@ class EmployeeManagerImpl implements EmployeeManager {
   EmployeeManagerImpl({
     EmployeeStore? store,
     String deviceId = 'default',
-  })  : _store = store ?? EmployeeStore(),
+  })  : _store = store ?? EmployeeStore(deviceId: deviceId),
         _deviceId = deviceId;
 
   @override
   Future<List<AiEmployeeEntity>> getEmployees({
     String? keyword,
     String? status,
+    bool allDevices = false,
   }) async {
-    return _store.findAll(_deviceId, keyword: keyword, status: status);
+    return _store.findAll(allDevices ? null : _deviceId, keyword: keyword, status: status);
   }
 
   @override
   Future<AiEmployeeEntity?> getEmployee(String uuid) async {
-    return _store.find(_deviceId, uuid);
+    return _store.find(null, uuid);
+  }
+
+  @override
+  Future<AiEmployeeEntity?> getEmployeeIncludingDeleted(String uuid) async {
+    return _store.findIncludingDeleted(uuid);
   }
 
   @override

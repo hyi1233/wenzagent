@@ -5,9 +5,9 @@ library;
 
 import 'dart:io';
 
+import 'package:wenzagent/src/device/device.dart';
 import 'package:wenzagent/src/persistence/entities/device_config_entity.dart';
 import 'package:wenzagent/src/persistence/database_manager.dart';
-import 'package:wenzagent/src/device/impl/device_client_impl.dart';
 
 Future<void> main() async {
   print('========== 设备配置使用示例 ==========\n');
@@ -15,10 +15,10 @@ Future<void> main() async {
   // 1. 初始化持久化层
   final testPath = '${Directory.systemTemp.path}/device_config_example';
   await Directory(testPath).create(recursive: true);
-  await DatabaseManager.instance.initialize(storagePath: testPath);
+  await DatabaseManager.getInstance('test').initialize(storagePath: testPath);
 
   // 2. 创建设备客户端
-  final deviceClient = DeviceClientImpl(
+  final deviceClient = DeviceClient.create(
     deviceId: 'device-example-001',
     deviceName: '示例设备',
     host: 'localhost',
@@ -136,7 +136,7 @@ Future<void> main() async {
   } finally {
     // 清理资源
     await deviceClient.dispose();
-    await DatabaseManager.instance.close();
+    await DatabaseManager.getInstance('test').close();
 
     // 删除测试目录
     try {

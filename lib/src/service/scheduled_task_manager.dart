@@ -82,8 +82,8 @@ class ScheduledTaskManagerImpl implements ScheduledTaskManager {
 
   bool _started = false;
 
-  ScheduledTaskManagerImpl({ScheduledTaskStore? store})
-      : _store = store ?? ScheduledTaskStore();
+  ScheduledTaskManagerImpl({ScheduledTaskStore? store, String? deviceId})
+      : _store = store ?? ScheduledTaskStore(deviceId: deviceId);
 
   // ===== CRUD =====
 

@@ -1,4 +1,4 @@
-import 'package:langchain_core/tools.dart';
+import 'package:llm_dart/llm_dart.dart' as llm;
 
 /// 工具执行结果
 class ToolResult {
@@ -47,7 +47,7 @@ class ToolResult {
 /// Agent 工具基类
 ///
 /// 所有工具必须继承此类并实现 [execute] 方法。
-/// 通过 [toToolSpec] 转换为 LangChain 的 ToolSpec 传递给 LLM。
+/// 通过 [toLlmDartTool] 转换为 llm_dart 的 Tool 传递给 LLM。
 abstract class AgentTool {
   /// 工具唯一标识名称（如 file_read, command_execute）
   String get name;
@@ -83,12 +83,60 @@ abstract class AgentTool {
     // 默认空实现，子类可重写
   }
 
-  /// 转换为 LangChain ToolSpec
-  ToolSpec toToolSpec() {
-    return ToolSpec(
+  /// 转换为 llm_dart Tool
+  ///
+  /// 将 [inputJsonSchema] 转换为 llm_dart 的 [ParametersSchema]。
+  /// Anthropic provider 要求 schema.type 必须为 "object"。
+  llm.Tool toLlmDartTool() {
+    final schema = inputJsonSchema;
+    final propertiesRaw = schema['properties'] as Map<String, dynamic>? ?? {};
+    final requiredList = (schema['required'] as List?)?.cast<String>() ?? [];
+
+    final properties = <String, llm.ParameterProperty>{};
+    for (final entry in propertiesRaw.entries) {
+      final propSchema = entry.value as Map<String, dynamic>;
+      properties[entry.key] = _parseParameterProperty(propSchema);
+    }
+
+    return llm.Tool.function(
       name: name,
       description: description,
-      inputJsonSchema: inputJsonSchema,
+      parameters: llm.ParametersSchema(
+        schemaType: 'object',
+        properties: properties,
+        required: requiredList,
+      ),
+    );
+  }
+
+  /// 解析 JSON Schema 属性为 llm_dart ParameterProperty
+  static llm.ParameterProperty _parseParameterProperty(Map<String, dynamic> schema) {
+    final typeStr = schema['type'] as String? ?? 'string';
+    final description = schema['description'] as String? ?? '';
+    final enumList = (schema['enum'] as List?)?.cast<String>();
+    final itemsSchema = schema['items'] as Map<String, dynamic>?;
+    final propertiesSchema = schema['properties'] as Map<String, dynamic>?;
+    final requiredList = (schema['required'] as List?)?.cast<String>();
+
+    llm.ParameterProperty? items;
+    if (itemsSchema != null) {
+      items = _parseParameterProperty(itemsSchema);
+    }
+
+    Map<String, llm.ParameterProperty>? properties;
+    if (propertiesSchema != null) {
+      properties = propertiesSchema.map(
+        (key, value) => MapEntry(key, _parseParameterProperty(value as Map<String, dynamic>)),
+      );
+    }
+
+    return llm.ParameterProperty(
+      propertyType: typeStr,
+      description: description,
+      enumList: enumList,
+      items: items,
+      properties: properties,
+      required: requiredList,
     );
   }
 

@@ -1,27 +1,16 @@
-import 'package:langchain_core/chat_models.dart';
-
-/// 支持错误状态标记的工具消息
+/// 支持错误状态标记的工具消息（已废弃）
 ///
-/// 继承 [ToolChatMessage]，额外携带 [isError] 字段，
-/// 用于将工具执行错误传播到 LLM API（如 Anthropic 的 tool_result.is_error）。
-///
-/// 当 [isError] 为 true 时，自定义的 Anthropic ChatModel
-/// 会将此标记映射到 API 的 is_error 字段，使 Claude 能正确
-/// 识别工具调用失败，避免死循环重试。
-class ErrorToolChatMessage extends ToolChatMessage {
-  /// 是否为错误结果
+/// 此类保留仅为向后兼容，新代码应使用 [ChatMsg.toolResult] 代替。
+/// [ChatMsg] 通过 [isError] 字段原生支持错误状态标记。
+@Deprecated('Use ChatMsg.toolResult() instead')
+class ErrorToolChatMessage {
+  final String toolCallId;
+  final String content;
   final bool isError;
 
   ErrorToolChatMessage({
-    required super.toolCallId,
-    required super.content,
+    required this.toolCallId,
+    required this.content,
     this.isError = false,
   });
-
-  /// Converts this ChatMessage to a map along with a type hint for deserialization.
-  @override
-  Map<String, dynamic> toMap() => {
-    ...super.toMap(),
-    'isError': isError,
-  };
 }

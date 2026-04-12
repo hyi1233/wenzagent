@@ -62,6 +62,12 @@ class AiEmployeeMessageEntity {
   /// 优先级高于各独立字段。
   String? jsonData;
 
+  /// 消息递增序列号（LSN），用于增量同步
+  ///
+  /// 仅 DB 层使用，不参与 toMessageMap() 输出。
+  /// 由数据库在消息持久化时分配，客户端通过 seq 做增量拉取。
+  int seq;
+
   AiEmployeeMessageEntity({
     required this.uuid,
     required this.employeeId,
@@ -82,6 +88,7 @@ class AiEmployeeMessageEntity {
     required this.createTime,
     required this.updateTime,
     this.jsonData,
+    this.seq = 0,
   });
 
   /// 从原始消息 Map 直接创建实体（统一 JSON 格式存储）
@@ -143,6 +150,7 @@ class AiEmployeeMessageEntity {
       createTime: createTime,
       updateTime: now,
       jsonData: jsonData,
+      seq: (messageMap['seq'] as int?) ?? 0,
     );
   }
 
@@ -172,6 +180,7 @@ class AiEmployeeMessageEntity {
           ? map['updateTime'] as DateTime
           : DateTime.fromMillisecondsSinceEpoch(map['updateTime'] as int? ?? 0),
       jsonData: map['jsonData'] as String?,
+      seq: map['seq'] as int? ?? 0,
     );
   }
 
@@ -212,6 +221,7 @@ class AiEmployeeMessageEntity {
     baseMap['createTime'] = createTime.millisecondsSinceEpoch;
     baseMap['updateTime'] = updateTime.millisecondsSinceEpoch;
     baseMap.remove('jsonData');
+    baseMap.remove('seq');
 
     return baseMap;
   }
@@ -238,6 +248,7 @@ class AiEmployeeMessageEntity {
       'createTime': createTime.millisecondsSinceEpoch,
       'updateTime': updateTime.millisecondsSinceEpoch,
       'jsonData': jsonData,
+      'seq': seq,
     };
   }
 
@@ -262,6 +273,7 @@ class AiEmployeeMessageEntity {
     DateTime? createTime,
     DateTime? updateTime,
     String? jsonData,
+    int? seq,
   }) {
     return AiEmployeeMessageEntity(
       uuid: uuid ?? this.uuid,
@@ -283,6 +295,7 @@ class AiEmployeeMessageEntity {
       createTime: createTime ?? this.createTime,
       updateTime: updateTime ?? this.updateTime,
       jsonData: jsonData ?? this.jsonData,
+      seq: seq ?? this.seq,
     );
   }
 

@@ -6,6 +6,7 @@ import 'package:sqlite3/sqlite3.dart';
 import 'migrations/migration.dart';
 import 'migrations/v1_migration.dart';
 import 'migrations/v2_migration.dart';
+import 'migrations/v3_migration.dart';
 
 /// 数据库管理器
 ///
@@ -42,10 +43,18 @@ import 'migrations/v2_migration.dart';
 /// }
 /// ```
 class DatabaseManager {
-  static DatabaseManager? _instance;
+  static final Map<String, DatabaseManager> _instances = {};
 
   /// 获取单例实例
-  static DatabaseManager get instance => _instance ??= DatabaseManager._();
+  static DatabaseManager getInstance(String deviceId) {
+    return _instances.putIfAbsent(
+      deviceId,
+      () => DatabaseManager._(),
+    );
+  }
+
+  /// 移除指定设备的实例
+  static void removeInstance(String deviceId) => _instances.remove(deviceId);
 
   DatabaseManager._();
 
@@ -53,7 +62,7 @@ class DatabaseManager {
   bool _initialized = false;
 
   /// 当前 schema 版本号
-  static const int currentVersion = 2;
+  static const int currentVersion = 3;
 
   /// 版本迁移注册表
   ///
@@ -61,6 +70,7 @@ class DatabaseManager {
   static final List<Migration> _migrations = [
     V1Migration(),
     V2Migration(),
+    V3Migration(),
   ];
 
   /// 获取数据库连接

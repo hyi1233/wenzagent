@@ -352,6 +352,37 @@ class AgentNotificationHub {
     }
   }
 
+  /// 从数据库恢复未读消息映射（用于 App 重启后建立 messageId → isRead 内存表）
+  ///
+  /// 此方法将未读的 assistant 消息逐一加入 [_unreadMessages]，
+  /// 使得 [isMessageRead] 在重启后仍能正确判断单条消息的已读状态。
+  ///
+  /// [employeeId] 员工ID
+  /// [unreadMessages] 未读消息列表，每项包含 messageId、fromDeviceId 和 message
+  void restoreUnreadMessages({
+    required String employeeId,
+    required List<({String messageId, String fromDeviceId, AgentMessage message})> unreadMessages,
+  }) {
+    _unreadMessages.putIfAbsent(employeeId, () => {});
+
+    for (final item in unreadMessages) {
+      final event = AgentMessageArrivedEvent(
+        message: item.message,
+        fromDeviceId: item.fromDeviceId,
+        toDeviceId: '',
+        employeeId: employeeId,
+        isRemote: true,
+      );
+      _unreadMessages[employeeId]![item.messageId] = event;
+
+      // 标记为已处理，避免后续重复通知
+      _addProcessedId(item.messageId);
+    }
+
+    // 重新计算未读计数（确保与 _unreadMessages 一致）
+    _recalculateUnreadCount(employeeId);
+  }
+
   /// 标记所有员工的所有消息为已读
   void markAllAsReadGlobal() {
     for (final employeeId in _unreadMessages.keys.toList()) {

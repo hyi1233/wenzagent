@@ -319,7 +319,7 @@ class AgentFactoryImpl implements AgentFactory {
     adapter.updateMessageStatusCallback = (messageId, status, {error}) async {
       await _messageStore.updateMessageStatus(
         messageId,
-        status.name,
+        status,
         error: error,
       );
     };

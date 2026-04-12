@@ -24,9 +24,9 @@ Future<void> main() async {
 
 class TopicFilterTest {
   late LanHostServiceImpl host;
-  late DeviceClientImpl deviceA;
-  late DeviceClientImpl deviceB;
-  late DeviceClientImpl deviceC;
+  late DeviceClient deviceA;
+  late DeviceClient deviceB;
+  late DeviceClient deviceC;
 
   Future<void> run() async {
     try {
@@ -71,7 +71,7 @@ class TopicFilterTest {
       'wenzagent_topic_filter_',
     );
     print('  临时目录: ${tempDir.path}');
-    await DatabaseManager.instance.initialize(storagePath: tempDir.path);
+    await DatabaseManager.getInstance('test').initialize(storagePath: tempDir.path);
     print('  ✓ Hive 初始化完成');
   }
 
@@ -84,7 +84,7 @@ class TopicFilterTest {
 
   /// Device-A 连接 (topic: group1)
   Future<void> _connectDeviceA() async {
-    deviceA = DeviceClientImpl(
+    deviceA = DeviceClient.create(
       deviceId: 'device-alpha',
       deviceName: 'Device Alpha',
       host: host.localIp!,
@@ -100,7 +100,7 @@ class TopicFilterTest {
 
   /// Device-B 连接 (topic: group1)
   Future<void> _connectDeviceB() async {
-    deviceB = DeviceClientImpl(
+    deviceB = DeviceClient.create(
       deviceId: 'device-beta',
       deviceName: 'Device Beta',
       host: host.localIp!,
@@ -116,7 +116,7 @@ class TopicFilterTest {
 
   /// Device-C 连接 (topic: group2)
   Future<void> _connectDeviceC() async {
-    deviceC = DeviceClientImpl(
+    deviceC = DeviceClient.create(
       deviceId: 'device-gamma',
       deviceName: 'Device Gamma',
       host: host.localIp!,

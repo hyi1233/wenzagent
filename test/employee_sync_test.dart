@@ -40,7 +40,7 @@ void main() {
   });
 
   setUp(() async {
-    final instance = DatabaseManager.instance;
+    final instance = DatabaseManager.getInstance('test');
     if (instance.isInitialized) await instance.close();
     await instance.initialize(storagePath: dbDir);
     dbManager = instance;

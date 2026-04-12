@@ -14,7 +14,7 @@ void main() async {
   print('=== WenzAgent Tool Calling 示例 ===\n');
 
   // 1. 创建 Agent
-  final adapter = LangChainChatAdapter();
+  final adapter = LlmChatAdapter();
   final agent = AgentImpl(
     employeeId: 'test-employee-001',
     chatAdapter: adapter,

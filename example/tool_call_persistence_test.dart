@@ -52,7 +52,7 @@ Future<void> main() async {
 }
 
 class ToolCallPersistenceTest {
-  late DeviceClientImpl device;
+  late DeviceClient device;
   late String employeeId;
   late String tempDirPath;
 
@@ -105,14 +105,14 @@ class ToolCallPersistenceTest {
     tempDirPath = tempDir.path;
     print('  临时目录: $tempDirPath');
 
-    await DatabaseManager.instance.initialize(storagePath: tempDirPath);
+    await DatabaseManager.getInstance('test').initialize(storagePath: tempDirPath);
     print('  ✓ 数据库初始化完成');
   }
 
   /// 创建测试环境
   Future<void> _setupTestEnvironment() async {
     // 创建 DeviceClient
-    device = DeviceClientImpl(
+    device = DeviceClient.create(
       deviceId: deviceId,
       deviceName: 'Test Device',
       host: 'localhost',
@@ -290,7 +290,7 @@ class ToolCallPersistenceTest {
     } catch (_) {}
 
     try {
-      await DatabaseManager.instance.close();
+      await DatabaseManager.getInstance('test').close();
       print('  ✓ 数据库已关闭');
     } catch (_) {}
 

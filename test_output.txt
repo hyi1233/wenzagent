@@ -1,0 +1,381 @@
+﻿00:00 +0: loading test/database_crud_test.dart
+00:00 +0: test/database_crud_test.dart: (setUpAll)
+00:00 +0: test/database_crud_test.dart: EmployeeStore 增: save + find
+[DatabaseManager] 迁移到版本 1 ...
+[DatabaseManager] 迁移到版本 1 完成
+[DatabaseManager] 迁移到版本 2 ...
+[DatabaseManager] 迁移到版本 2 完成
+[DatabaseManager] 迁移到版本 3 ...
+[DatabaseManager] 迁移到版本 3 完成
+00:00 +1: test/session_manager_test.dart: getOrCreateSession 新 employeeId 创建会话
+[DatabaseManager] 迁移到版本 1 ...
+[DatabaseManager] 迁移到版本 1 完成
+[DatabaseManager] 迁移到版本 2 ...
+[DatabaseManager] 迁移到版本 2 完成
+[DatabaseManager] 迁移到版本 3 ...
+[DatabaseManager] 迁移到版本 3 完成
+00:00 +1 -1: test/database_crud_test.dart: EmployeeStore 查: findAll + keyword 过滤
+00:00 +2 -1: test/message_lsn_sync_test.dart: (setUpAll)
+00:00 +3 -1: test/message_lsn_sync_test.dart: (setUpAll)
+00:00 +3 -1: test/session_manager_test.dart: getOrCreateSession 新 employeeId 创建会话 [E]
+  'package:wenzagent/src/persistence/database_manager.dart': Failed assertion: line 78 pos 12: '_db != null': DatabaseManager 未初始化，请先调用 initialize()
+  dart:core                                                          _AssertionError._throwNew
+  package:wenzagent/src/persistence/database_manager.dart 78:12      DatabaseManager.db
+  package:wenzagent/src/persistence/stores/session_store.dart 18:34  SessionStore._db
+  package:wenzagent/src/persistence/stores/session_store.dart 50:23  SessionStore.find
+  package:wenzagent/src/persistence/stores/session_store.dart 64:25  SessionStore.getOrCreate
+  package:wenzagent/src/service/session_manager.dart 86:41           SessionManagerImpl.getOrCreateSession
+  test\session_manager_test.dart 52:44                               main.<fn>.<fn>
+  
+00:00 +3 -1: test/database_crud_test.dart: EmployeeStore 删: 软删除 + findAll 过滤
+00:00 +3 -2: test/database_crud_test.dart: EmployeeStore 删: 软删除 + findAll 过滤
+00:00 +3 -2: test/session_manager_test.dart: getOrCreateSession 已存在的 employeeId 返回现有记录 [E]
+  'package:wenzagent/src/persistence/database_manager.dart': Failed assertion: line 78 pos 12: '_db != null': DatabaseManager 未初始化，请先调用 initialize()
+  dart:core                                                          _AssertionError._throwNew
+  package:wenzagent/src/persistence/database_manager.dart 78:12      DatabaseManager.db
+  package:wenzagent/src/persistence/stores/session_store.dart 18:34  SessionStore._db
+  package:wenzagent/src/persistence/stores/session_store.dart 50:23  SessionStore.find
+  package:wenzagent/src/persistence/stores/session_store.dart 64:25  SessionStore.getOrCreate
+  package:wenzagent/src/service/session_manager.dart 86:41           SessionManagerImpl.getOrCreateSession
+  test\session_manager_test.dart 60:39                               main.<fn>.<fn>
+  
+00:00 +4 -2: test/message_lsn_sync_test.dart: 消息发送与 seq 分配 消息发送后自动分配递增 seq
+00:00 +4 -3: test/message_lsn_sync_test.dart: 消息发送与 seq 分配 消息发送后自动分配递增 seq
+00:00 +4 -3: test/session_manager_test.dart: getOrCreateSession 已删除的会话自动复活（deleted 重置为 0） [E]
+  'package:wenzagent/src/persistence/database_manager.dart': Failed assertion: line 78 pos 12: '_db != null': DatabaseManager 未初始化，请先调用 initialize()
+  dart:core                                                          _AssertionError._throwNew
+  package:wenzagent/src/persistence/database_manager.dart 78:12      DatabaseManager.db
+  package:wenzagent/src/persistence/stores/session_store.dart 18:34  SessionStore._db
+  package:wenzagent/src/persistence/stores/session_store.dart 50:23  SessionStore.find
+  package:wenzagent/src/persistence/stores/session_store.dart 64:25  SessionStore.getOrCreate
+  package:wenzagent/src/service/session_manager.dart 86:41           SessionManagerImpl.getOrCreateSession
+  test\session_manager_test.dart 70:28                               main.<fn>.<fn>
+  
+00:00 +5 -3: test/message_lsn_sync_test.dart: 消息发送与 seq 分配 消息发送后自动分配递增 seq
+00:00 +5 -4: test/message_lsn_sync_test.dart: 消息发送与 seq 分配 消息发送后自动分配递增 seq
+00:00 +5 -4: test/session_manager_test.dart: getSession 存在的会话返回实体 [E]
+  'package:wenzagent/src/persistence/database_manager.dart': Failed assertion: line 78 pos 12: '_db != null': DatabaseManager 未初始化，请先调用 initialize()
+  dart:core                                                          _AssertionError._throwNew
+  package:wenzagent/src/persistence/database_manager.dart 78:12      DatabaseManager.db
+  package:wenzagent/src/persistence/stores/session_store.dart 18:34  SessionStore._db
+  package:wenzagent/src/persistence/stores/session_store.dart 50:23  SessionStore.find
+  package:wenzagent/src/persistence/stores/session_store.dart 64:25  SessionStore.getOrCreate
+  package:wenzagent/src/service/session_manager.dart 86:41           SessionManagerImpl.getOrCreateSession
+  test\session_manager_test.dart 87:28                               main.<fn>.<fn>
+  
+00:00 +5 -4: test/message_lsn_sync_test.dart: 消息发送与 seq 分配 消息发送后自动分配递增 seq
+[DatabaseManager] 迁移到版本 1 ...
+00:00 +5 -5: test/message_lsn_sync_test.dart: 消息发送与 seq 分配 消息发送后自动分配递增 seq
+00:00 +6 -5: test/message_lsn_sync_test.dart: 消息发送与 seq 分配 消息发送后自动分配递增 seq
+00:00 +6 -5: test/session_manager_test.dart: getSession 不存在的会话返回 null [E]
+  'package:wenzagent/src/persistence/database_manager.dart': Failed assertion: line 78 pos 12: '_db != null': DatabaseManager 未初始化，请先调用 initialize()
+  dart:core                                                          _AssertionError._throwNew
+  package:wenzagent/src/persistence/database_manager.dart 78:12      DatabaseManager.db
+  package:wenzagent/src/persistence/stores/session_store.dart 18:34  SessionStore._db
+  package:wenzagent/src/persistence/stores/session_store.dart 50:23  SessionStore.find
+  package:wenzagent/src/service/session_manager.dart 96:26           SessionManagerImpl.getSession
+  test\session_manager_test.dart 95:43                               main.<fn>.<fn>
+  
+00:00 +6 -5: test/message_lsn_sync_test.dart: 消息发送与 seq 分配 消息发送后自动分配递增 seq
+[DatabaseManager] 迁移到版本 1 完成
+[DatabaseManager] 迁移到版本 2 ...
+[DatabaseManager] 迁移到版本 2 完成
+[DatabaseManager] 迁移到版本 3 ...
+[DatabaseManager] 迁移到版本 3 完成
+00:00 +6 -6: test/message_lsn_sync_test.dart: 消息发送与 seq 分配 消息发送后自动分配递增 seq
+00:00 +6 -6: test/session_manager_test.dart: getAllSessions 返回所有未归档会话，按置顶和更新时间排序 [E]
+  'package:wenzagent/src/persistence/database_manager.dart': Failed assertion: line 78 pos 12: '_db != null': DatabaseManager 未初始化，请先调用 initialize()
+  dart:core                                                          _AssertionError._throwNew
+  package:wenzagent/src/persistence/database_manager.dart 78:12      DatabaseManager.db
+  package:wenzagent/src/persistence/stores/session_store.dart 18:34  SessionStore._db
+  package:wenzagent/src/persistence/stores/session_store.dart 50:23  SessionStore.find
+  package:wenzagent/src/persistence/stores/session_store.dart 64:25  SessionStore.getOrCreate
+  package:wenzagent/src/service/session_manager.dart 86:41           SessionManagerImpl.getOrCreateSession
+  test\session_manager_test.dart 108:40                              main.<fn>.<fn>
+  
+00:00 +6 -6: test/message_lsn_sync_test.dart: 消息发送与 seq 分配 消息发送后自动分配递增 seq
+00:00 +7 -6: test/message_lsn_sync_test.dart: 消息发送与 seq 分配 消息发送后自动分配递增 seq
+00:00 +8 -6: test/session_manager_test.dart: getAllSessions includeArchived=true 包含归档会话
+00:00 +8 -7: test/employee_crud_test.dart: 创建员工 基本创建
+00:00 +8 -7: test/session_manager_test.dart: getAllSessions includeArchived=true 包含归档会话 [E]
+  'package:wenzagent/src/persistence/database_manager.dart': Failed assertion: line 78 pos 12: '_db != null': DatabaseManager 未初始化，请先调用 initialize()
+  dart:core                                                          _AssertionError._throwNew
+  package:wenzagent/src/persistence/database_manager.dart 78:12      DatabaseManager.db
+  package:wenzagent/src/persistence/stores/session_store.dart 18:34  SessionStore._db
+  package:wenzagent/src/persistence/stores/session_store.dart 50:23  SessionStore.find
+  package:wenzagent/src/persistence/stores/session_store.dart 64:25  SessionStore.getOrCreate
+  package:wenzagent/src/service/session_manager.dart 86:41           SessionManagerImpl.getOrCreateSession
+  test\session_manager_test.dart 123:28                              main.<fn>.<fn>
+  
+00:00 +8 -8: test/employee_crud_test.dart: 创建员工 基本创建
+00:00 +8 -8: test/session_manager_test.dart: getAllSessions 已软删除的会话不在列表中 [E]
+  'package:wenzagent/src/persistence/database_manager.dart': Failed assertion: line 78 pos 12: '_db != null': DatabaseManager 未初始化，请先调用 initialize()
+  dart:core                                                          _AssertionError._throwNew
+  package:wenzagent/src/persistence/database_manager.dart 78:12      DatabaseManager.db
+  package:wenzagent/src/persistence/stores/session_store.dart 18:34  SessionStore._db
+  package:wenzagent/src/persistence/stores/session_store.dart 50:23  SessionStore.find
+  package:wenzagent/src/persistence/stores/session_store.dart 64:25  SessionStore.getOrCreate
+  package:wenzagent/src/service/session_manager.dart 86:41           SessionManagerImpl.getOrCreateSession
+  test\session_manager_test.dart 132:28                              main.<fn>.<fn>
+  
+00:00 +9 -8: test/employee_crud_test.dart: 创建员工 基本创建
+00:00 +9 -9: test/employee_crud_test.dart: 创建员工 基本创建
+00:00 +9 -9: test/session_manager_test.dart: save 保存后可通过 getSession 读取 [E]
+  'package:wenzagent/src/persistence/database_manager.dart': Failed assertion: line 78 pos 12: '_db != null': DatabaseManager 未初始化，请先调用 initialize()
+  dart:core                                                          _AssertionError._throwNew
+  package:wenzagent/src/persistence/database_manager.dart 78:12      DatabaseManager.db
+  package:wenzagent/src/persistence/stores/session_store.dart 18:34  SessionStore._db
+  package:wenzagent/src/persistence/stores/session_store.dart 50:23  SessionStore.find
+  package:wenzagent/src/persistence/stores/session_store.dart 64:25  SessionStore.getOrCreate
+  package:wenzagent/src/service/session_manager.dart 86:41           SessionManagerImpl.getOrCreateSession
+  test\session_manager_test.dart 147:44                              main.<fn>.<fn>
+  
+00:00 +10 -9: test/employee_crud_test.dart: 创建员工 基本创建
+[DatabaseManager] 迁移到版本 1 ...
+00:00 +10 -10: test/employee_crud_test.dart: 创建员工 基本创建
+00:00 +11 -10: test/employee_crud_test.dart: 创建员工 基本创建
+00:00 +11 -10: test/session_manager_test.dart: deleteSession 软删除后 deleted=1，deleteTime 有值 [E]
+  'package:wenzagent/src/persistence/database_manager.dart': Failed assertion: line 78 pos 12: '_db != null': DatabaseManager 未初始化，请先调用 initialize()
+  dart:core                                                          _AssertionError._throwNew
+  package:wenzagent/src/persistence/database_manager.dart 78:12      DatabaseManager.db
+  package:wenzagent/src/persistence/stores/session_store.dart 18:34  SessionStore._db
+  package:wenzagent/src/persistence/stores/session_store.dart 50:23  SessionStore.find
+  package:wenzagent/src/persistence/stores/session_store.dart 64:25  SessionStore.getOrCreate
+  package:wenzagent/src/service/session_manager.dart 86:41           SessionManagerImpl.getOrCreateSession
+  test\session_manager_test.dart 161:28                              main.<fn>.<fn>
+  
+00:00 +11 -10: test/employee_crud_test.dart: 创建员工 基本创建
+[DatabaseManager] 迁移到版本 1 完成
+[DatabaseManager] 迁移到版本 2 ...
+[DatabaseManager] 迁移到版本 2 完成
+[DatabaseManager] 迁移到版本 3 ...
+[DatabaseManager] 迁移到版本 3 完成
+00:00 +11 -11: test/employee_crud_test.dart: 创建员工 基本创建
+00:00 +11 -11: test/session_manager_test.dart: archiveSession 归档后不在默认列表中 [E]
+  'package:wenzagent/src/persistence/database_manager.dart': Failed assertion: line 78 pos 12: '_db != null': DatabaseManager 未初始化，请先调用 initialize()
+  dart:core                                                          _AssertionError._throwNew
+  package:wenzagent/src/persistence/database_manager.dart 78:12      DatabaseManager.db
+  package:wenzagent/src/persistence/stores/session_store.dart 18:34  SessionStore._db
+  package:wenzagent/src/persistence/stores/session_store.dart 50:23  SessionStore.find
+  package:wenzagent/src/persistence/stores/session_store.dart 64:25  SessionStore.getOrCreate
+  package:wenzagent/src/service/session_manager.dart 86:41           SessionManagerImpl.getOrCreateSession
+  test\session_manager_test.dart 177:28                              main.<fn>.<fn>
+  
+00:00 +12 -11: test/message_lsn_sync_test.dart: 消息发送与 seq 分配 发送 25 条消息，seq 从 1 到 25 连续递增
+00:00 +13 -11: test/message_lsn_sync_test.dart: 消息发送与 seq 分配 发送 25 条消息，seq 从 1 到 25 连续递增
+00:00 +13 -12: test/message_lsn_sync_test.dart: 消息发送与 seq 分配 发送 25 条消息，seq 从 1 到 25 连续递增
+00:00 +13 -12: test/session_manager_test.dart: archiveSession 取消归档后重新出现在列表中 [E]
+  'package:wenzagent/src/persistence/database_manager.dart': Failed assertion: line 78 pos 12: '_db != null': DatabaseManager 未初始化，请先调用 initialize()
+  dart:core                                                          _AssertionError._throwNew
+  package:wenzagent/src/persistence/database_manager.dart 78:12      DatabaseManager.db
+  package:wenzagent/src/persistence/stores/session_store.dart 18:34  SessionStore._db
+  package:wenzagent/src/persistence/stores/session_store.dart 50:23  SessionStore.find
+  package:wenzagent/src/persistence/stores/session_store.dart 64:25  SessionStore.getOrCreate
+  package:wenzagent/src/service/session_manager.dart 86:41           SessionManagerImpl.getOrCreateSession
+  test\session_manager_test.dart 188:28                              main.<fn>.<fn>
+  
+00:00 +14 -12: test/message_lsn_sync_test.dart: 消息发送与 seq 分配 发送 25 条消息，seq 从 1 到 25 连续递增
+00:00 +15 -12: test/database_crud_test.dart: SessionStore getOrCreate
+00:00 +15 -13: test/database_crud_test.dart: SessionStore getOrCreate
+00:00 +16 -13: test/employee_crud_test.dart: 创建员工 已有 deviceId 时保留原值
+00:00 +16 -13: test/session_manager_test.dart: archiveSession 归档不存在的会话不报错 [E]
+  'package:wenzagent/src/persistence/database_manager.dart': Failed assertion: line 78 pos 12: '_db != null': DatabaseManager 未初始化，请先调用 initialize()
+  dart:core                                                          _AssertionError._throwNew
+  package:wenzagent/src/persistence/database_manager.dart 78:12      DatabaseManager.db
+  package:wenzagent/src/persistence/stores/session_store.dart 18:34  SessionStore._db
+  package:wenzagent/src/persistence/stores/session_store.dart 50:23  SessionStore.find
+  package:wenzagent/src/service/session_manager.dart 96:26           SessionManagerImpl.getSession
+  package:wenzagent/src/service/session_manager.dart 164:27          SessionManagerImpl.archiveSession
+  test\session_manager_test.dart 197:28                              main.<fn>.<fn>
+  
+00:00 +17 -13: test/message_lsn_sync_test.dart: LSN 增量拉取 初始水位线为 0，拉取全部消息
+00:00 +17 -14: test/message_lsn_sync_test.dart: LSN 增量拉取 初始水位线为 0，拉取全部消息
+00:00 +17 -14: test/session_manager_test.dart: updateDeviceConfig 更新设备配置（providerConfig + systemPromptOverride） [E]
+  'package:wenzagent/src/persistence/database_manager.dart': Failed assertion: line 78 pos 12: '_db != null': DatabaseManager 未初始化，请先调用 initialize()
+  dart:core                                                          _AssertionError._throwNew
+  package:wenzagent/src/persistence/database_manager.dart 78:12      DatabaseManager.db
+  package:wenzagent/src/persistence/stores/session_store.dart 18:34  SessionStore._db
+  package:wenzagent/src/persistence/stores/session_store.dart 50:23  SessionStore.find
+  package:wenzagent/src/persistence/stores/session_store.dart 64:25  SessionStore.getOrCreate
+  package:wenzagent/src/service/session_manager.dart 86:41           SessionManagerImpl.getOrCreateSession
+  package:wenzagent/src/service/session_manager.dart 113:27          SessionManagerImpl.updateDeviceConfig
+  test\session_manager_test.dart 207:28                              main.<fn>.<fn>
+  
+00:00 +18 -14: test/database_crud_test.dart: SessionStore count
+00:00 +19 -14: test/employee_crud_test.dart: 创建员工 createEmployee 触发 created 事件
+00:00 +19 -15: test/employee_crud_test.dart: 创建员工 createEmployee 触发 created 事件
+00:00 +19 -15: test/session_manager_test.dart: updateDeviceConfig 多次更新同一设备配置（部分字段） [E]
+  'package:wenzagent/src/persistence/database_manager.dart': Failed assertion: line 78 pos 12: '_db != null': DatabaseManager 未初始化，请先调用 initialize()
+  dart:core                                                          _AssertionError._throwNew
+  package:wenzagent/src/persistence/database_manager.dart 78:12      DatabaseManager.db
+  package:wenzagent/src/persistence/stores/session_store.dart 18:34  SessionStore._db
+  package:wenzagent/src/persistence/stores/session_store.dart 50:23  SessionStore.find
+  package:wenzagent/src/persistence/stores/session_store.dart 64:25  SessionStore.getOrCreate
+  package:wenzagent/src/service/session_manager.dart 86:41           SessionManagerImpl.getOrCreateSession
+  package:wenzagent/src/service/session_manager.dart 113:27          SessionManagerImpl.updateDeviceConfig
+  test\session_manager_test.dart 224:28                              main.<fn>.<fn>
+  
+00:00 +19 -16: test/employee_crud_test.dart: 创建员工 createEmployee 触发 created 事件
+00:00 +19 -16: test/session_manager_test.dart: updateDeviceStats 更新设备统计信息 [E]
+  'package:wenzagent/src/persistence/database_manager.dart': Failed assertion: line 78 pos 12: '_db != null': DatabaseManager 未初始化，请先调用 initialize()
+  dart:core                                                          _AssertionError._throwNew
+  package:wenzagent/src/persistence/database_manager.dart 78:12      DatabaseManager.db
+  package:wenzagent/src/persistence/stores/session_store.dart 18:34  SessionStore._db
+  package:wenzagent/src/persistence/stores/session_store.dart 50:23  SessionStore.find
+  package:wenzagent/src/persistence/stores/session_store.dart 64:25  SessionStore.getOrCreate
+  package:wenzagent/src/service/session_manager.dart 86:41           SessionManagerImpl.getOrCreateSession
+  package:wenzagent/src/service/session_manager.dart 135:27          SessionManagerImpl.updateDeviceStats
+  test\session_manager_test.dart 247:28                              main.<fn>.<fn>
+  
+00:00 +20 -16: test/employee_crud_test.dart: 创建员工 createEmployee 触发 created 事件
+00:00 +21 -16: test/employee_crud_test.dart: 创建员工 createEmployee 触发 created 事件
+00:00 +21 -17: test/employee_crud_test.dart: 创建员工 createEmployee 触发 created 事件
+00:00 +21 -17: test/session_manager_test.dart: updateDeviceStats 累加更新统计 [E]
+  'package:wenzagent/src/persistence/database_manager.dart': Failed assertion: line 78 pos 12: '_db != null': DatabaseManager 未初始化，请先调用 initialize()
+  dart:core                                                          _AssertionError._throwNew
+  package:wenzagent/src/persistence/database_manager.dart 78:12      DatabaseManager.db
+  package:wenzagent/src/persistence/stores/session_store.dart 18:34  SessionStore._db
+  package:wenzagent/src/persistence/stores/session_store.dart 50:23  SessionStore.find
+  package:wenzagent/src/persistence/stores/session_store.dart 64:25  SessionStore.getOrCreate
+  package:wenzagent/src/service/session_manager.dart 86:41           SessionManagerImpl.getOrCreateSession
+  package:wenzagent/src/service/session_manager.dart 135:27          SessionManagerImpl.updateDeviceStats
+  test\session_manager_test.dart 263:28                              main.<fn>.<fn>
+  
+00:00 +22 -17: test/employee_crud_test.dart: 创建员工 createEmployee 触发 created 事件
+00:00 +22 -18: test/employee_crud_test.dart: 创建员工 createEmployee 触发 created 事件
+00:00 +22 -18: test/session_manager_test.dart: onSessionChanged getOrCreateSession 触发 created 事件 [E]
+  'package:wenzagent/src/persistence/database_manager.dart': Failed assertion: line 78 pos 12: '_db != null': DatabaseManager 未初始化，请先调用 initialize()
+  dart:core                                                          _AssertionError._throwNew
+  package:wenzagent/src/persistence/database_manager.dart 78:12      DatabaseManager.db
+  package:wenzagent/src/persistence/stores/session_store.dart 18:34  SessionStore._db
+  package:wenzagent/src/persistence/stores/session_store.dart 50:23  SessionStore.find
+  package:wenzagent/src/persistence/stores/session_store.dart 64:25  SessionStore.getOrCreate
+  package:wenzagent/src/service/session_manager.dart 86:41           SessionManagerImpl.getOrCreateSession
+  test\session_manager_test.dart 296:28                              main.<fn>.<fn>
+  
+00:00 +23 -18: test/employee_crud_test.dart: 创建员工 createEmployee 触发 created 事件
+00:00 +23 -19: test/employee_crud_test.dart: 创建员工 createEmployee 触发 created 事件
+00:00 +23 -19: test/session_manager_test.dart: onSessionChanged save 触发 updated 事件 [E]
+  'package:wenzagent/src/persistence/database_manager.dart': Failed assertion: line 78 pos 12: '_db != null': DatabaseManager 未初始化，请先调用 initialize()
+  dart:core                                                          _AssertionError._throwNew
+  package:wenzagent/src/persistence/database_manager.dart 78:12      DatabaseManager.db
+  package:wenzagent/src/persistence/stores/session_store.dart 18:34  SessionStore._db
+  package:wenzagent/src/persistence/stores/session_store.dart 50:23  SessionStore.find
+  package:wenzagent/src/persistence/stores/session_store.dart 64:25  SessionStore.getOrCreate
+  package:wenzagent/src/service/session_manager.dart 86:41           SessionManagerImpl.getOrCreateSession
+  test\session_manager_test.dart 305:44                              main.<fn>.<fn>
+  
+00:00 +24 -19: test/employee_crud_test.dart: 创建员工 createEmployee 触发 created 事件
+00:00 +24 -20: test/employee_crud_test.dart: 创建员工 createEmployee 触发 created 事件
+00:00 +24 -20: test/session_manager_test.dart: onSessionChanged deleteSession 触发 deleted 事件 [E]
+  'package:wenzagent/src/persistence/database_manager.dart': Failed assertion: line 78 pos 12: '_db != null': DatabaseManager 未初始化，请先调用 initialize()
+  dart:core                                                          _AssertionError._throwNew
+  package:wenzagent/src/persistence/database_manager.dart 78:12      DatabaseManager.db
+  package:wenzagent/src/persistence/stores/session_store.dart 18:34  SessionStore._db
+  package:wenzagent/src/persistence/stores/session_store.dart 50:23  SessionStore.find
+  package:wenzagent/src/persistence/stores/session_store.dart 64:25  SessionStore.getOrCreate
+  package:wenzagent/src/service/session_manager.dart 86:41           SessionManagerImpl.getOrCreateSession
+  test\session_manager_test.dart 321:28                              main.<fn>.<fn>
+  
+00:00 +25 -20: test/employee_crud_test.dart: 创建员工 createEmployee 触发 created 事件
+00:00 +26 -20: test/employee_crud_test.dart: 创建员工 createEmployee 触发 created 事件
+00:00 +26 -21: test/employee_crud_test.dart: 创建员工 createEmployee 触发 created 事件
+00:00 +26 -21: test/session_manager_test.dart: onSessionChanged archiveSession 触发 updated 事件（实现通过 save 发出） [E]
+  'package:wenzagent/src/persistence/database_manager.dart': Failed assertion: line 78 pos 12: '_db != null': DatabaseManager 未初始化，请先调用 initialize()
+  dart:core                                                          _AssertionError._throwNew
+  package:wenzagent/src/persistence/database_manager.dart 78:12      DatabaseManager.db
+  package:wenzagent/src/persistence/stores/session_store.dart 18:34  SessionStore._db
+  package:wenzagent/src/persistence/stores/session_store.dart 50:23  SessionStore.find
+  package:wenzagent/src/persistence/stores/session_store.dart 64:25  SessionStore.getOrCreate
+  package:wenzagent/src/service/session_manager.dart 86:41           SessionManagerImpl.getOrCreateSession
+  test\session_manager_test.dart 337:28                              main.<fn>.<fn>
+  
+00:00 +26 -21: test/employee_crud_test.dart: 创建员工 createEmployee 触发 created 事件
+00:00 +27 -21: test/employee_crud_test.dart: 创建员工 createEmployee 触发 created 事件
+00:00 +28 -21: test/employee_crud_test.dart: 创建员工 createEmployee 触发 created 事件
+00:00 +29 -21: test/message_lsn_sync_test.dart: 水位线 MAX 语义（防回退） updateLastSeq 只升不降
+00:00 +30 -21: test/database_crud_test.dart: MessageStore 删: delete 单条 + deleteBySession
+00:00 +31 -21: test/employee_crud_test.dart: 查询员工 getEmployee 按 uuid 查询
+00:00 +32 -21: test/employee_crud_test.dart: 查询员工 getEmployee 按 uuid 查询
+00:00 +33 -21: test/database_crud_test.dart: MessageStore count + getLastMessage
+00:00 +34 -21: test/database_crud_test.dart: MessageStore count + getLastMessage
+00:00 +35 -21: test/message_lsn_sync_test.dart: 水位线 MAX 语义（防回退） 从 0 递增更新水位线
+00:00 +36 -21: test/employee_crud_test.dart: 查询员工 getEmployees 获取所有员工
+00:00 +37 -21: test/database_crud_test.dart: MessageStore batchUpdateWithDeviceId 事务
+00:00 +38 -21: test/message_lsn_sync_test.dart: 端到端场景 完整流程：Host 发 5 条 → Client 分 2 批拉取 → 验证水位线
+00:00 +39 -21: test/employee_crud_test.dart: 查询员工 getEmployees 按 keyword 过滤（名称模糊匹配）
+00:00 +40 -21: test/database_crud_test.dart: MessageStore addWithDeviceId + updateWithDeviceId
+00:00 +41 -21: test/message_lsn_sync_test.dart: 端到端场景 Host 发消息 → Client 已拉到 seq=3 → Host 再发 → Client 只拉新增
+00:00 +42 -21: test/employee_crud_test.dart: 查询员工 getEmployees 按 description 模糊匹配
+00:00 +43 -21: test/database_crud_test.dart: SkillStore 增: save + find
+00:00 +44 -21: test/message_lsn_sync_test.dart: 端到端场景 跨 employee 隔离：不同员工的消息和水位线独立
+00:00 +45 -21: test/message_lsn_sync_test.dart: 端到端场景 跨 employee 隔离：不同员工的消息和水位线独立
+00:00 +46 -21: test/database_crud_test.dart: SkillStore 查: findByEmployee
+00:00 +47 -21: test/employee_crud_test.dart: 查询员工 getEmployees 按 deviceId 隔离
+00:00 +48 -21: test/message_lsn_sync_test.dart: 端到端场景 空消息列表拉取不报错
+00:00 +49 -21: test/database_crud_test.dart: SkillStore 改: save 更新
+00:00 +50 -21: test/employee_crud_test.dart: 查询员工 getEmployeeStats 统计信息
+00:00 +51 -21: test/employee_crud_test.dart: 查询员工 getEmployeeStats 统计信息
+00:00 +52 -21: test/database_crud_test.dart: SkillStore 删: 软删除 + hardDelete
+00:00 +53 -21: test/database_crud_test.dart: SkillStore 删: 软删除 + hardDelete
+00:00 +54 -21: test/database_crud_test.dart: SkillStore 删: 软删除 + hardDelete
+00:00 +55 -21: test/employee_crud_test.dart: 更新员工 updateEmployee 自动更新 updateTime
+00:00 +56 -21: test/employee_crud_test.dart: 更新员工 updateEmployee 自动更新 updateTime
+00:00 +57 -21: test/employee_crud_test.dart: 更新员工 updateEmployee 自动更新 updateTime
+00:00 +58 -21: test/employee_crud_test.dart: 更新员工 updateEmployee 自动更新 updateTime
+00:00 +59 -21: test/employee_crud_test.dart: 更新员工 updateEmployee 自动更新 updateTime
+00:00 +60 -21: test/database_crud_test.dart: DeviceConfigStore 增: save + find
+00:00 +61 -21: test/message_lsn_sync_test.dart: 软删除同步 softDeleteBySessionForSync 批量删除并更新 seq
+00:00 +62 -21: test/employee_crud_test.dart: 更新员工 updateEmployee 触发 updated 事件
+00:00 +63 -21: test/employee_crud_test.dart: 更新员工 updateEmployee 触发 updated 事件
+00:00 +64 -21: test/employee_crud_test.dart: 更新员工 updateEmployee 触发 updated 事件
+00:00 +65 -21: test/employee_crud_test.dart: 更新员工 updateEmployee 触发 updated 事件
+00:00 +66 -21: test/employee_crud_test.dart: 更新员工 updateEmployee 触发 updated 事件
+00:00 +67 -21: test/employee_crud_test.dart: 更新员工 updateEmployee 触发 updated 事件
+00:00 +68 -21: test/employee_crud_test.dart: 更新员工 updateEmployee 触发 updated 事件
+00:00 +69 -21: test/employee_crud_test.dart: 更新员工 updateEmployee 触发 updated 事件
+00:00 +70 -21: test/employee_crud_test.dart: 更新员工 updateEmployee 触发 updated 事件
+00:00 +71 -21: test/employee_crud_test.dart: 更新员工 updateEmployee 触发 updated 事件
+00:00 +72 -21: test/database_crud_test.dart: ScheduledTaskStore 增: save + find
+00:00 +73 -21: test/message_lsn_sync_test.dart: 清空重新同步 水位线等于 maxSeq 时不触发清空（正常情况）
+00:00 +74 -21: test/message_lsn_sync_test.dart: 清空重新同步 水位线等于 maxSeq 时不触发清空（正常情况）
+00:00 +75 -21: test/database_crud_test.dart: ScheduledTaskStore 查: findAll + findByEmployee
+00:00 +76 -21: test/employee_crud_test.dart: 更新员工 updateEmployee 更新 enableTools 和 enableMcp
+00:00 +77 -21: test/message_lsn_sync_test.dart: 清空重新同步 水位线为 0 且 maxSeq 为 0 时不触发清空（初始状态）
+00:00 +78 -21: test/database_crud_test.dart: ScheduledTaskStore 改: save 更新
+00:00 +79 -21: test/employee_crud_test.dart: 更新员工 updateCurrentDeviceId 更新会话设备
+00:00 +80 -21: test/message_lsn_sync_test.dart: 清空重新同步 清空重新同步后，增量拉取正常工作
+00:00 +81 -21: test/message_lsn_sync_test.dart: 清空重新同步 清空重新同步后，增量拉取正常工作
+00:00 +82 -21: test/database_crud_test.dart: ScheduledTaskStore 删: 软删除 + hardDelete + deleteByEmployee
+00:00 +83 -21: test/employee_crud_test.dart: 更新员工 saveEmployee 保留原始时间戳
+00:00 +84 -21: test/message_lsn_sync_test.dart: 清空重新同步 清空重新同步后水位线持久化正确
+00:00 +85 -21: test/message_lsn_sync_test.dart: 清空重新同步 清空重新同步后水位线持久化正确
+00:00 +86 -21: test/message_lsn_sync_test.dart: 清空重新同步 清空重新同步后水位线持久化正确
+00:00 +87 -21: test/employee_crud_test.dart: 删除员工 deleteEmployee 触发 deleted 事件
+00:00 +88 -21: test/employee_crud_test.dart: 删除员工 deleteEmployee 后 getEmployee 返回 null
+00:00 +89 -21: test/employee_crud_test.dart: EmployeeStore exists 存在返回 true
+00:00 +90 -21: test/employee_crud_test.dart: EmployeeStore exists 不存在返回 false
+00:00 +91 -21: test/employee_crud_test.dart: EmployeeStore exists 软删除后返回 false
+00:00 +92 -21: test/employee_crud_test.dart: EmployeeStore count 统计数量
+00:00 +93 -21: test/employee_crud_test.dart: EmployeeStore findAll(null) 返回全部（不过滤 deviceId）
+00:00 +94 -21: test/employee_crud_test.dart: EmployeeStore find(null, uuid) 不过滤 deviceId
+00:00 +94 -22: test/employee_crud_test.dart: EmployeeStore find(null, uuid) 不过滤 deviceId [E]
+  Expected: null
+    Actual: AiEmployeeEntity:<AiEmployeeEntity(uuid: emp-1, name: A, provider: null, model: null)>
+  
+  package:matcher                     expect
+  test\employee_crud_test.dart 476:7  main.<fn>.<fn>
+  
+00:00 +94 -22: test/employee_crud_test.dart: 完整 CRUD 流程 创建 → 查询 → 更新 → 查询 → 删除 → 确认
+00:00 +95 -22: test/employee_crud_test.dart: (tearDownAll)
+00:00 +95 -22: Some tests failed.
+
+Failing tests:
+  test/employee_crud_test.dart: EmployeeStore find(null, uuid) 不过滤 deviceId
+  test/session_manager_test.dart: archiveSession 取消归档后重新出现在列表中
+  test/session_manager_test.dart: archiveSession 归档不存在的会话不报错
+  test/session_manager_test.dart: archiveSession 归档后不在默认列表中
+  ... and 18 more
+
+Consider enabling the flag chain-stack-traces to receive more detailed exceptions.
+For example, 'dart test --chain-stack-traces'.

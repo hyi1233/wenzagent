@@ -25,8 +25,8 @@ Future<void> main() async {
 
 class ReconnectTest {
   late LanHostServiceImpl host;
-  late DeviceClientImpl deviceA;
-  late DeviceClientImpl deviceB;
+  late DeviceClient deviceA;
+  late DeviceClient deviceB;
 
   final String deviceAId = 'device-alpha';
   final String deviceBId = 'device-beta';
@@ -93,7 +93,7 @@ class ReconnectTest {
   Future<void> _initializeStorage() async {
     final tempDir = await Directory.systemTemp.createTemp('wenzagent_reconnect_');
     print('  临时目录: ${tempDir.path}');
-    await DatabaseManager.instance.initialize(storagePath: tempDir.path);
+    await DatabaseManager.getInstance('test').initialize(storagePath: tempDir.path);
     print('  ✓ Hive 初始化完成');
   }
 
@@ -107,7 +107,7 @@ class ReconnectTest {
   /// 两个设备连接并建立会话
   Future<void> _bothDevicesConnect() async {
     // Device-A 连接
-    deviceA = DeviceClientImpl(
+    deviceA = DeviceClient.create(
       deviceId: deviceAId,
       deviceName: 'Device Alpha',
       host: host.localIp!,
@@ -117,7 +117,7 @@ class ReconnectTest {
     print('  ✓ Device-A 已连接: $deviceAId');
 
     // Device-B 连接
-    deviceB = DeviceClientImpl(
+    deviceB = DeviceClient.create(
       deviceId: deviceBId,
       deviceName: 'Device Beta',
       host: host.localIp!,
@@ -219,7 +219,7 @@ class ReconnectTest {
   /// Device-B 重连
   Future<void> _deviceBReconnect() async {
     print('\n  [Device-B 重连]');
-    deviceB = DeviceClientImpl(
+    deviceB = DeviceClient.create(
       deviceId: deviceBId,
       deviceName: 'Device Beta',
       host: host.localIp!,
@@ -362,7 +362,7 @@ class ReconnectTest {
   }
 
   /// 等待消息处理完成
-  Future<void> _waitForMessageComplete(DeviceClientImpl device, String messageId) async {
+  Future<void> _waitForMessageComplete(DeviceClient device, String messageId) async {
     print('    等待消息处理完成...');
     final completer = Completer<void>();
 

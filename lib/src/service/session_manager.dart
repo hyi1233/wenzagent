@@ -20,6 +20,16 @@ class SessionChangeEvent {
 
 /// 会话管理器接口
 abstract class SessionManager {
+  static SessionManager? _instance;
+
+  /// 获取全局单例
+  static SessionManager getInstance() {
+    return _instance ??= SessionManagerImpl();
+  }
+
+  /// 移除单例
+  static void removeInstance() => _instance = null;
+
   /// 获取或创建Session（只需要employeeId）
   Future<AiEmployeeSessionEntity> getOrCreateSession(String employeeId);
 
@@ -66,8 +76,8 @@ class SessionManagerImpl implements SessionManager {
   final SessionStore _sessionStore;
   final _changeController = StreamController<SessionChangeEvent>.broadcast();
 
-  SessionManagerImpl({SessionStore? sessionStore})
-    : _sessionStore = sessionStore ?? SessionStore();
+  SessionManagerImpl({SessionStore? sessionStore, String? deviceId})
+    : _sessionStore = sessionStore ?? SessionStore(deviceId: deviceId);
 
   @override
   Future<AiEmployeeSessionEntity> getOrCreateSession(

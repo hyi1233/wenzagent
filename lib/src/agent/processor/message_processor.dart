@@ -221,6 +221,13 @@ class MessageProcessor {
   /// 消息状态变更回调
   MessageStatusCallback? onMessageStatusChanged;
 
+  /// 消息完成前回调（在广播 completed 之前调用）
+  ///
+  /// 用于等待持久化等异步操作完成，确保 completed 事件广播时
+  /// 数据已经落盘（如 SQLite 持久化、seq 已分配）。
+  /// 这解决了 async* generator 被取消导致 post-loop 代码无法执行的问题。
+  Future<void> Function()? onBeforeMessageCompleted;
+
   MessageProcessor({
     required StreamMessageFunc streamMessage,
     required Future<void> Function() stopStreaming,
@@ -433,6 +440,8 @@ class MessageProcessor {
 
         if (response.isDone) {
           print('[MessageProcessor] message completed: $messageId');
+          // 等待持久化完成后再广播 completed（修复 async* generator 取消问题）
+          await onBeforeMessageCompleted?.call();
           onMessageStatusChanged?.call(
             messageId,
             MessageProcessingStatus.completed.toAgentMessageStatus(),
@@ -445,6 +454,8 @@ class MessageProcessor {
 
       // 流正常结束
       if (!_disposed && _currentProcessingMessageId == messageId) {
+        // 等待持久化完成后再广播 completed
+        await onBeforeMessageCompleted?.call();
         onMessageStatusChanged?.call(
           messageId,
           MessageProcessingStatus.completed.toAgentMessageStatus(),

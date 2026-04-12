@@ -326,17 +326,25 @@ class AgentProxy {
   /// 查询指定设备的未接收消息（本机deviceId，而非proxy的deviceId）
   ///
   /// [receiverDeviceId] 接收设备的ID（本机设备ID）
+  /// [offset] 偏移量（跳过的消息数），用于分页，默认0
+  /// [limit] 每批数量限制，用于分页，默认20条
   Future<List<AgentMessage>> getUnreceivedMessages({
     required String receiverDeviceId,
+    int offset = 0,
+    int limit = 20,
   }) async {
     if (isLocalMode && _localAgent != null) {
       return _localAgent.getUnreceivedMessages(
         receiverDeviceId: receiverDeviceId,
+        offset: offset,
+        limit: limit,
       );
     }
     final request = GetUnreceivedMessagesRequest(
       employeeId: employeeId,
       receiverDeviceId: receiverDeviceId,
+      offset: offset,
+      limit: limit,
     );
     final result = await _rpcUtil!.getUnreceivedMessages(request);
     final messages =
@@ -367,6 +375,41 @@ class AgentProxy {
       messageReceiveList: messageReceiveList,
     );
     await _rpcUtil!.markMessagesAsReceived(request);
+  }
+
+  /// 增量拉取消息（基于 LSN）
+  ///
+  /// 客户端通过 lastSeq 获取 seq > lastSeq 的消息
+  Future<List<AgentMessage>> getMessagesAfterSeq({
+    int lastSeq = 0,
+    int limit = 20,
+  }) async {
+    if (isLocalMode && _localAgent != null) {
+      return _localAgent.getMessagesAfterSeq(
+        employeeId: employeeId,
+        lastSeq: lastSeq,
+        limit: limit,
+      );
+    }
+    final request = GetMessagesAfterSeqRequest(
+      employeeId: employeeId,
+      lastSeq: lastSeq,
+      limit: limit,
+    );
+    final result = await _rpcUtil!.getMessagesAfterSeq(request);
+    final messages =
+        (result['messages'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+    return messages.map((m) => AgentMessage.fromMap(m)).toList();
+  }
+
+  /// 获取会话的最大 seq
+  Future<int> getMaxSeq() async {
+    if (isLocalMode && _localAgent != null) {
+      return _localAgent.getMaxSeq(employeeId: employeeId);
+    }
+    final request = GetSessionMessagesRequest(employeeId: employeeId);
+    final result = await _rpcUtil!.getMaxSeq(request);
+    return result['maxSeq'] as int? ?? 0;
   }
 
   /// 标记消息为已读

@@ -1,19 +1,17 @@
-import 'package:langchain_core/chat_models.dart';
-
+import 'chat_msg.dart';
 import 'context_compression_config.dart';
-import 'error_tool_chat_message.dart';
 import 'session_memory_manager.dart';
 import 'token_estimator.dart';
 
 /// LLM 摘要回调类型
 ///
-/// 由 [LangChainChatAdapter] 注入，用于调用 LLM 生成对话摘要。
+/// 由 [LlmChatAdapter] 注入，用于调用 LLM 生成对话摘要。
 typedef SummarizeCallback = Future<String> Function(String prompt);
 
 /// 消息轮次
 ///
-/// 一个"轮次"从 HumanChatMessage 开始，到下一个 HumanChatMessage 之前结束。
-/// 包含用户消息及其后续的所有 AI/Tool 消息。
+/// 一个"轮次"从 user 消息开始，到下一个 user 消息之前结束。
+/// 包含用户消息及其后续的所有 assistant/tool 消息。
 class MessageTurn {
   /// 在原始消息列表中的起始索引
   final int startIndex;
@@ -22,7 +20,7 @@ class MessageTurn {
   final int endIndex;
 
   /// 本轮次包含的消息
-  final List<ChatMessage> messages;
+  final List<ChatMsg> messages;
 
   const MessageTurn({
     required this.startIndex,
@@ -77,7 +75,7 @@ class ContextCompressor {
   /// 结果缓存供后续 [buildCompressedMessages] 使用。
   Future<void> prepareCompression({
     required String employeeId,
-    required List<ChatMessage> allMessages,
+    required List<ChatMsg> allMessages,
     required SessionHistory session,
     String? systemPrompt,
   }) async {
@@ -110,7 +108,7 @@ class ContextCompressor {
     );
 
     // 估算最近轮次的 token（始终保留完整）
-    final recentMessages = <ChatMessage>[];
+    final recentMessages = <ChatMsg>[];
     for (var i = recentStart; i < turns.length; i++) {
       recentMessages.addAll(turns[i].messages);
     }
@@ -162,9 +160,9 @@ class ContextCompressor {
   /// 构建压缩后的消息列表（同步，使用缓存）
   ///
   /// 在 tool calling loop 的每次迭代中调用。
-  List<ChatMessage> buildCompressedMessages({
+  List<ChatMsg> buildCompressedMessages({
     required String employeeId,
-    required List<ChatMessage> allMessages,
+    required List<ChatMsg> allMessages,
     String? systemPrompt,
   }) {
     if (!config.enabled || allMessages.isEmpty) {
@@ -177,11 +175,11 @@ class ContextCompressor {
       return _buildFullMessages(allMessages, systemPrompt);
     }
 
-    final result = <ChatMessage>[];
+    final result = <ChatMsg>[];
 
     // 1. 系统提示
     if (systemPrompt != null && systemPrompt.isNotEmpty) {
-      result.add(ChatMessage.system(systemPrompt));
+      result.add(ChatMsg.system(systemPrompt));
     }
 
     // 分组为轮次
@@ -197,7 +195,7 @@ class ContextCompressor {
     // 3. 注入摘要（如果有）
     if (cache?.summary != null && cache!.summary!.isNotEmpty) {
       result.add(
-        ChatMessage.system('[Prior Conversation Summary]\n${cache.summary}'),
+        ChatMsg.system('[Prior Conversation Summary]\n${cache.summary}'),
       );
     }
 
@@ -241,23 +239,23 @@ class ContextCompressor {
 
   /// 将消息列表分组为对话轮次
   ///
-  /// 每遇到 HumanChatMessage 开始一个新轮次。
-  /// 轮次包含该 Human 消息及后续所有 AI/Tool 消息直到下一个 Human。
-  /// AI(toolCalls) + 对应 ToolChatMessage(s) 永远在同一轮次内。
+  /// 每遇到 user 消息开始一个新轮次。
+  /// 轮次包含该 user 消息及后续所有 assistant/tool 消息直到下一个 user。
+  /// assistant(toolCalls) + 对应 tool 消息永远在同一轮次内。
   ///
-  /// 对于开头的非 Human 消息（如果有），归入第一个虚拟轮次。
-  static List<MessageTurn> groupIntoTurns(List<ChatMessage> messages) {
+  /// 对于开头的非 user 消息（如果有），归入第一个虚拟轮次。
+  static List<MessageTurn> groupIntoTurns(List<ChatMsg> messages) {
     if (messages.isEmpty) return [];
 
     final turns = <MessageTurn>[];
     var currentStart = 0;
-    var currentMessages = <ChatMessage>[];
+    var currentMessages = <ChatMsg>[];
 
     for (var i = 0; i < messages.length; i++) {
       final msg = messages[i];
 
-      if (msg is HumanChatMessage && currentMessages.isNotEmpty) {
-        // 遇到新的 Human 消息，结束当前轮次
+      if (msg.role == ChatMsgRole.user && currentMessages.isNotEmpty) {
+        // 遇到新的 user 消息，结束当前轮次
         turns.add(
           MessageTurn(
             startIndex: currentStart,
@@ -288,9 +286,9 @@ class ContextCompressor {
 
   // ===== 工具结果截断 =====
 
-  /// 对旧轮次中的 ToolChatMessage 内容进行截断
-  List<ChatMessage> _truncateToolResults(List<MessageTurn> turns) {
-    final result = <ChatMessage>[];
+  /// 对旧轮次中的 tool 消息内容进行截断
+  List<ChatMsg> _truncateToolResults(List<MessageTurn> turns) {
+    final result = <ChatMsg>[];
     for (final turn in turns) {
       for (final msg in turn.messages) {
         result.add(_maybeTrancateToolMessage(msg));
@@ -299,28 +297,46 @@ class ContextCompressor {
     return result;
   }
 
-  /// 如果是 ToolChatMessage 且内容过长，截断之
-  ChatMessage _maybeTrancateToolMessage(ChatMessage message) {
-    if (message is! ToolChatMessage) return message;
+  /// 如果是 tool 消息且内容过长，截断之
+  ChatMsg _maybeTrancateToolMessage(ChatMsg message) {
+    if (message.role != ChatMsgRole.tool) return message;
 
-    final content = message.contentAsString;
     final maxChars = config.toolResultMaxChars;
 
+    if (message.isToolResultGroup) {
+      // 分组格式：对每个 result 的 content 分别截断
+      var anyTruncated = false;
+      final truncatedResults = message.toolResults!.map((r) {
+        if (r.content.length > maxChars) {
+          anyTruncated = true;
+          return ToolResultInfo(
+            toolCallId: r.toolCallId,
+            content: '${r.content.substring(0, maxChars)}'
+                '\n...[truncated, ${r.content.length} chars total]',
+            isError: r.isError,
+            name: r.name,
+          );
+        }
+        return r;
+      }).toList();
+      if (!anyTruncated) return message;
+      return ChatMsg.toolResultGroup(truncatedResults);
+    }
+
+    // 单条格式
+    final content = message.content;
     if (content.length <= maxChars) return message;
 
     final truncated =
         '${content.substring(0, maxChars)}'
         '\n...[truncated, ${content.length} chars total]';
 
-    // 保留 ErrorToolChatMessage 类型及其 isError 标记
-    if (message is ErrorToolChatMessage) {
-      return ErrorToolChatMessage(
-        toolCallId: message.toolCallId,
-        content: truncated,
-        isError: message.isError,
-      );
-    }
-    return ToolChatMessage(toolCallId: message.toolCallId, content: truncated);
+    return ChatMsg.toolResult(
+      toolCallId: message.toolCallId ?? '',
+      content: truncated,
+      isError: message.isError,
+      name: message.name,
+    );
   }
 
   // ===== 摘要生成 =====
@@ -358,7 +374,7 @@ class ContextCompressor {
     // 先算出所有旧轮次截断后的 token
     final truncatedPerTurn = <int>[];
     for (final turn in oldTurns) {
-      final truncated = <ChatMessage>[];
+      final truncated = <ChatMsg>[];
       for (final msg in turn.messages) {
         truncated.add(_maybeTrancateToolMessage(msg));
       }
@@ -385,7 +401,7 @@ class ContextCompressor {
     if (turnsToSummarize == 0) turnsToSummarize = 1;
 
     // 构建摘要 prompt
-    final messagesToSummarize = <ChatMessage>[];
+    final messagesToSummarize = <ChatMsg>[];
     for (var i = 0; i < turnsToSummarize; i++) {
       messagesToSummarize.addAll(oldTurns[i].messages);
     }
@@ -416,32 +432,41 @@ class ContextCompressor {
   }
 
   /// 将消息格式化为适合摘要的文本
-  String _formatMessagesForSummary(List<ChatMessage> messages) {
+  String _formatMessagesForSummary(List<ChatMsg> messages) {
     final buffer = StringBuffer();
 
     for (final msg in messages) {
-      final role = switch (msg) {
-        HumanChatMessage() => 'User',
-        AIChatMessage() => 'Assistant',
-        ToolChatMessage() => 'Tool Result',
-        SystemChatMessage() => 'System',
-        _ => 'Other',
+      final role = switch (msg.role) {
+        ChatMsgRole.user => 'User',
+        ChatMsgRole.assistant => 'Assistant',
+        ChatMsgRole.tool => 'Tool Result',
+        ChatMsgRole.system => 'System',
       };
 
-      var content = msg.contentAsString;
+      var content = msg.content;
 
       // 截断过长的内容（摘要 prompt 本身也不能太长）
       if (content.length > 500) {
         content = '${content.substring(0, 500)}...[truncated]';
       }
 
-      // 对 AI 消息附加工具调用信息
-      if (msg is AIChatMessage && msg.toolCalls.isNotEmpty) {
-        final toolNames = msg.toolCalls.map((tc) => tc.name).join(', ');
+      // 对 assistant 消息附加工具调用信息
+      if (msg.role == ChatMsgRole.assistant && msg.toolCalls != null && msg.toolCalls!.isNotEmpty) {
+        final toolNames = msg.toolCalls!.map((tc) => tc.name).join(', ');
         buffer.writeln('$role: $content');
         buffer.writeln('  [Called tools: $toolNames]');
-      } else if (msg is ToolChatMessage) {
-        buffer.writeln('$role (${msg.toolCallId}): $content');
+      } else if (msg.role == ChatMsgRole.tool) {
+        if (msg.isToolResultGroup) {
+          final parts = msg.toolResults!.map((r) {
+            var c = r.content;
+            if (c.length > 500) c = '${c.substring(0, 500)}...[truncated]';
+            final err = r.isError ? ' [ERROR]' : '';
+            return '  [${r.name ?? r.toolCallId}]$err: $c';
+          }).join('\n');
+          buffer.writeln('Tool Results:\n$parts');
+        } else {
+          buffer.writeln('$role (${msg.toolCallId}): $content');
+        }
       } else {
         buffer.writeln('$role: $content');
       }
@@ -453,13 +478,13 @@ class ContextCompressor {
   // ===== 辅助方法 =====
 
   /// 不压缩的全量消息构建
-  List<ChatMessage> _buildFullMessages(
-    List<ChatMessage> allMessages,
+  List<ChatMsg> _buildFullMessages(
+    List<ChatMsg> allMessages,
     String? systemPrompt,
   ) {
-    final result = <ChatMessage>[];
+    final result = <ChatMsg>[];
     if (systemPrompt != null && systemPrompt.isNotEmpty) {
-      result.add(ChatMessage.system(systemPrompt));
+      result.add(ChatMsg.system(systemPrompt));
     }
     result.addAll(allMessages);
     return result;

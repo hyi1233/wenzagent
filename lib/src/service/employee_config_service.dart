@@ -36,6 +36,22 @@ class EmployeeConfigChangeEvent {
 /// - 权限配置
 /// - MCP配置（支持多MCP服务）
 abstract class EmployeeConfigService {
+  static final Map<String, EmployeeConfigService> _instances = {};
+
+  /// 按 deviceId 获取单例，不存在则自动创建
+  static EmployeeConfigService getInstance(String deviceId) {
+    return _instances.putIfAbsent(
+      deviceId,
+      () => EmployeeConfigServiceImpl(
+        employeeManager: EmployeeManager.getInstance(deviceId),
+        skillManager: SkillManager.getInstance(deviceId),
+      ),
+    );
+  }
+
+  /// 移除指定 deviceId 的实例
+  static void removeInstance(String deviceId) => _instances.remove(deviceId);
+
   /// 获取员工完整配置（包含基础信息、技能、权限、MCP）
   Future<EmployeeConfig> getEmployeeConfig(String employeeId);
 

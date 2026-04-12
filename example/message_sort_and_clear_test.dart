@@ -26,7 +26,7 @@ Future<void> main() async {
 
 class MessageSortAndClearTest {
   late String tempDirPath;
-  late DeviceClientImpl device;
+  late DeviceClient device;
   late MessageStoreService messageStoreService;
 
   final String deviceId = 'test-device-sort-clear';
@@ -81,12 +81,12 @@ class MessageSortAndClearTest {
     tempDirPath = tempDir.path;
     print('  临时目录: $tempDirPath');
 
-    await DatabaseManager.instance.initialize(storagePath: tempDirPath);
+    await DatabaseManager.getInstance('test').initialize(storagePath: tempDirPath);
 
     messageStoreService = MessageStoreServiceImpl(deviceId: deviceId);
 
     // 创建 DeviceClient
-    device = DeviceClientImpl(
+    device = DeviceClient.create(
       deviceId: deviceId,
       deviceName: 'Test Device',
       host: 'localhost',

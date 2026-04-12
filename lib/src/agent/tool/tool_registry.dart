@@ -1,6 +1,10 @@
-import 'package:langchain_core/tools.dart';
+import 'package:llm_dart/llm_dart.dart' as llm;
 
+import '../adapter/provider_config.dart';
 import 'agent_tool.dart';
+
+/// Anthropic 工具名正则: 仅允许 a-zA-Z0-9_-，最长 64 字符
+final _anthropicToolNameRegex = RegExp(r'^[a-zA-Z0-9_-]{1,64}$');
 
 /// 工具注册器
 ///
@@ -57,11 +61,43 @@ class ToolRegistry {
   /// 是否为空
   bool get isEmpty => _tools.isEmpty;
 
-  /// 获取所有工具的 LangChain ToolSpec 列表
+  /// 获取所有工具的 llm_dart Tool 列表
   ///
-  /// 用于传递给各 LLM 提供商的 options.tools
-  List<ToolSpec> get toolSpecs {
-    return _tools.values.map((t) => t.toToolSpec()).toList();
+  /// 用于传递给 llm_dart ChatCapability 的 chatStream 方法。
+  /// [provider] 用于 Anthropic 工具名清洗。
+  List<llm.Tool> getLlmDartTools(LLMProvider provider) {
+    return _tools.values.map((t) {
+      final tool = t.toLlmDartTool();
+      if (provider == LLMProvider.anthropic) {
+        return _sanitizeToolForAnthropic(tool);
+      }
+      return tool;
+    }).toList();
+  }
+
+  /// 清洗 Tool 以满足 Anthropic 工具名规范
+  ///
+  /// Anthropic 要求: `^[a-zA-Z0-9_-]{1,64}$`
+  llm.Tool _sanitizeToolForAnthropic(llm.Tool tool) {
+    // llm_dart 的 Tool 是 FunctionTool，需要检查名称
+    if (_anthropicToolNameRegex.hasMatch(tool.function.name)) {
+      return tool;
+    }
+    // 对于需要清洗的工具名，需要重新构建 Tool
+    final sanitized = tool.function.name
+        .replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_')
+        .replaceAll(RegExp(r'_+'), '_')
+        .replaceAll(RegExp(r'^_|_$'), '');
+    final finalName = sanitized.isEmpty || sanitized.length > 64
+        ? 'skill_${sanitized.isEmpty ? 'unnamed' : sanitized.substring(0, 64)}'
+        : sanitized;
+
+    // 重新构建 Tool（使用原参数，仅替换名称）
+    return llm.Tool.function(
+      name: finalName,
+      description: tool.function.description,
+      parameters: tool.function.parameters,
+    );
   }
 
   /// 转换为 JSON 序列化列表（用于 RPC）

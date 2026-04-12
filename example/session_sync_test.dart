@@ -24,8 +24,8 @@ Future<void> main() async {
 class SessionSyncTest {
   late String tempDirA;
   late String tempDirB;
-  late DeviceClientImpl deviceA;
-  late DeviceClientImpl deviceB;
+  late DeviceClient deviceA;
+  late DeviceClient deviceB;
 
   final String deviceAId = 'device-alpha';
   final String deviceBId = 'device-beta';
@@ -81,8 +81,8 @@ class SessionSyncTest {
     print('  设备B 临时目录: $tempDirB');
 
     // 初始化设备 A
-    await DatabaseManager.instance.initialize(storagePath: tempDirA);
-    deviceA = DeviceClientImpl(
+    await DatabaseManager.getInstance('test').initialize(storagePath: tempDirA);
+    deviceA = DeviceClient.create(
       deviceId: deviceAId,
       deviceName: 'Device Alpha',
       host: 'localhost',
@@ -90,7 +90,7 @@ class SessionSyncTest {
     );
 
     // 初始化设备 B
-    deviceB = DeviceClientImpl(
+    deviceB = DeviceClient.create(
       deviceId: deviceBId,
       deviceName: 'Device Beta',
       host: 'localhost',
@@ -367,7 +367,7 @@ class SessionSyncTest {
   }
 
   /// 模拟会话同步：从源设备同步所有会话到目标设备
-  Future<void> _simulateSessionSync(DeviceClientImpl source, DeviceClientImpl target) async {
+  Future<void> _simulateSessionSync(DeviceClient source, DeviceClient target) async {
     // 获取源设备的所有会话
     final sourceSessions = await source.sessionManager.getAllSessions();
 
@@ -420,7 +420,7 @@ class SessionSyncTest {
   }
 
   /// 清理会话数据（避免测试累积）
-  Future<void> _clearSessions(DeviceClientImpl device) async {
+  Future<void> _clearSessions(DeviceClient device) async {
     try {
       // 获取所有会话（包括已删除的）
       final sessions = await device.sessionManager.getAllSessions();

@@ -120,8 +120,12 @@ abstract class IAgent {
   /// 查询指定设备的未接收消息（本机deviceId，而非proxy的deviceId）
   ///
   /// [receiverDeviceId] 接收设备的ID（本机设备ID）
+  /// [offset] 偏移量（跳过的消息数），用于分页，默认0
+  /// [limit] 每批数量限制，用于分页，默认20条
   Future<List<AgentMessage>> getUnreceivedMessages({
     required String receiverDeviceId,
+    int offset = 0,
+    int limit = 20,
   });
 
   /// 标记消息为已接收
@@ -134,6 +138,26 @@ abstract class IAgent {
     required String receiverDeviceId,
     required List<MessageReceiveInfo> messageReceiveList,
   });
+
+  /// 增量拉取消息（基于 LSN）
+  ///
+  /// 客户端通过 lastSeq 获取 seq > lastSeq 的消息，
+  /// 实现 Agent 端无状态的增量同步。
+  ///
+  /// [employeeId] 会话ID
+  /// [lastSeq] 客户端已同步到的最大 seq
+  /// [limit] 每批数量限制，默认20条
+  Future<List<AgentMessage>> getMessagesAfterSeq({
+    required String employeeId,
+    int lastSeq = 0,
+    int limit = 20,
+  });
+
+  /// 获取会话的最大 seq
+  ///
+  /// 用于客户端判断是否有新消息。
+  /// [employeeId] 会话ID
+  Future<int> getMaxSeq({required String employeeId});
 
   /// 标记消息为已读
   ///

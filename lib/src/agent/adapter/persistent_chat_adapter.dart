@@ -1,15 +1,15 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:convert';
 
-import 'package:langchain_core/chat_models.dart';
+import 'package:uuid/uuid.dart';
 
 import '../agent_state.dart';
 import '../entity/entity.dart';
 import '../processor/cancellation_token.dart';
 import '../processor/message_processor.dart';
 import '../processor/persistence_queue.dart';
-import 'langchain_chat_adapter.dart';
-import 'error_tool_chat_message.dart';
+import 'chat_msg.dart';
+import 'llm_chat_adapter.dart';
 import 'session_memory_manager.dart';
 
 /// 持久化回调函数类型
@@ -19,24 +19,18 @@ typedef PersistSessionFunc =
     Future<void> Function(Map<String, dynamic> session);
 typedef LoadSessionFunc =
     Future<Map<String, dynamic>?> Function(String employeeId);
-typedef LoadMessagesFunc =
-    Future<List<Map<String, dynamic>>> Function(String employeeId, {int? limit});
-typedef UpdateMessageStatusFunc =
-    Future<void> Function(
-      String messageId,
-      AgentMessageStatus status, {
-      String? error,
-    });
+typedef LoadMessagesFunc = Future<List<Map<String, dynamic>>> Function(
+    String employeeId);
+typedef UpdateMessageStatusFunc = Future<void> Function(
+    String messageId, String status, {String? error});
 typedef DeleteMessagesFunc = Future<void> Function(String employeeId);
-
-/// 删除单条消息回调
 typedef DeleteMessageFunc = Future<void> Function(String messageId);
 
 /// 持久化聊天适配器
 ///
-/// 继承 [LangChainChatAdapter]，在内存操作的基础上添加持久化回调。
-/// 每次会话/消息变更后自动调用回调函数持久化到数据库。
-class PersistentChatAdapter extends LangChainChatAdapter {
+/// 在 LlmChatAdapter 的基础上，增加了消息和会话的持久化能力。
+/// 所有消息变更都会通过回调函数持久化到外部存储。
+class PersistentChatAdapter extends LlmChatAdapter {
   /// 持久化会话回调
   PersistSessionFunc? persistSession;
 
@@ -64,202 +58,134 @@ class PersistentChatAdapter extends LangChainChatAdapter {
   /// 持久化队列（用于异步处理持久化任务，避免阻塞）
   final PersistenceQueue _persistenceQueue = PersistenceQueue();
 
+  /// 缓存的 Provider 配置 JSON（用于持久化恢复）
+  String? _cachedProviderConfigJson;
+
+  /// 缓存的项目 UUID（用于持久化恢复）
+  String? _cachedProjectUuid;
+
   PersistentChatAdapter() {
     // 持久化最终失败时，通知上层（仅消息类型任务）
     _persistenceQueue.onTaskFailed = (task, error) {
       if (task.type == PersistenceTaskType.message && task.messageData != null) {
-        final messageId = task.messageData!['id'] as String?;
-        if (messageId != null && updateMessageStatusCallback != null) {
-          updateMessageStatusCallback!(
-            messageId,
-            AgentMessageStatus.failed,
-            error: '消息持久化失败: $error',
-          );
-        }
+        final msgId = task.messageData!['id'] ?? 'unknown';
+        print(
+          '[PersistentChatAdapter] 消息 $msgId 持久化最终失败（重试耗尽）: $error',
+        );
       }
     };
   }
+
+  /// 获取持久化队列（外部可用于等待特定消息持久化完成）
+  PersistenceQueue get persistenceQueue => _persistenceQueue;
 
   @override
   Future<void> initSession({required String employeeId, int? recentLimit}) async {
     await super.initSession(employeeId: employeeId, recentLimit: recentLimit);
 
-    // 如果提供了会话UUID且存在加载回调，尝试从数据库加载
-    if (loadSession != null) {
-      final sessionData = await loadSession!(employeeId);
-      if (sessionData != null) {
-        // 恢复会话配置（如 provider_config 等）
-        final providerConfig = sessionData['providerConfig'];
-        if (providerConfig != null && getProviderConfig() == null) {
-          try {
-            await updateProvider(Map<String, dynamic>.from(providerConfig));
-          } catch (_) {
-            // 忽略模型加载失败
-          }
-        }
+    // 加载持久化的消息
+    if (loadMessages != null) {
+      try {
+        final messages = await loadMessages!(employeeId);
+        print(
+          '[PersistentChatAdapter] 从数据库加载了 ${messages.length} 条消息',
+        );
 
-        // 恢复项目上下文（如果 _context 中还没有项目信息）
-        final projectUuid = sessionData['projectUuid'] as String?;
-        if (projectUuid != null && projectUuid.isNotEmpty) {
-          final currentProjectUuid = currentContext?['projectUuid'] as String?;
-          if (currentProjectUuid == null || currentProjectUuid.isEmpty) {
-            final projectData = <String, dynamic>{
-              'projectUuid': projectUuid,
-            };
-            if (sessionData['projectName'] != null) {
-              projectData['projectName'] = sessionData['projectName'];
+        final session = memoryManager.getSession(currentEmployeeUuid!);
+        if (session != null) {
+          for (final msgMap in messages) {
+            try {
+              final wrapper = _mapToMessageWrapper(msgMap);
+              if (wrapper != null) {
+                session.addMessageWrapper('persistence', wrapper);
+                _persistedMessageIds.add(wrapper.uuid);
+              }
+            } catch (e) {
+              print(
+                '[PersistentChatAdapter] 加载消息失败: ${msgMap['id']}, $e',
+              );
             }
-            if (sessionData['projectContext'] != null) {
-              projectData['projectContext'] = sessionData['projectContext'];
-            }
-            if (sessionData['workPath'] != null) {
-              projectData['workPath'] = sessionData['workPath'];
-            }
-            if (sessionData['additionalInfo'] != null) {
-              projectData['additionalInfo'] = sessionData['additionalInfo'];
-            }
-            await updateProjectContext(projectData);
           }
         }
+      } catch (e) {
+        print('[PersistentChatAdapter] 加载消息失败: $e');
       }
     }
 
-    // 从数据库加载消息历史到内存
-    await _loadMessagesIntoMemory(employeeId, limit: recentLimit);
+    // 加载持久化的会话数据（context）
+    if (loadSession != null) {
+      try {
+        final sessionData = await loadSession!(employeeId);
+        if (sessionData != null) {
+          final contextJson = sessionData['context'] as String?;
+          if (contextJson != null && contextJson.isNotEmpty) {
+            try {
+              final contextData = jsonDecode(contextJson) as Map<String, dynamic>;
+              setContext(contextData);
+              print('[PersistentChatAdapter] 恢复了会话上下文');
+            } catch (e) {
+              print('[PersistentChatAdapter] 恢复会话上下文失败: $e');
+            }
+          }
 
-    // 持久化会话
+          // 恢复 provider 配置
+          final providerJson = sessionData['providerConfig'] as String?;
+          if (providerJson != null && providerJson.isNotEmpty) {
+            try {
+              _cachedProviderConfigJson = providerJson;
+              print('[PersistentChatAdapter] 恢复了 Provider 配置');
+            } catch (e) {
+              print('[PersistentChatAdapter] 恢复 Provider 配置失败: $e');
+            }
+          }
+
+          // 恢复项目 UUID
+          final projectUuid = sessionData['projectUuid'] as String?;
+          if (projectUuid != null && projectUuid.isNotEmpty) {
+            _cachedProjectUuid = projectUuid;
+            print('[PersistentChatAdapter] 恢复了项目 UUID: $projectUuid');
+          }
+        }
+      } catch (e) {
+        print('[PersistentChatAdapter] 加载会话数据失败: $e');
+      }
+    }
+
     _notifyPersistSession();
   }
 
-  /// 将数据库消息加载到内存
-  ///
-  /// [limit] 为 null 时加载全部消息；指定时仅加载最新 N 条。
-  Future<void> _loadMessagesIntoMemory(String employeeId, {int? limit}) async {
-    if (loadMessages == null) return;
-
-    final session = memoryManager.getSession(employeeId);
-    if (session == null) return;
-
-    try {
-      final messagesData = await loadMessages!(employeeId, limit: limit);
-      if (messagesData.isEmpty) return;
-
-      for (final msgData in messagesData) {
-        final chatMessage = _mapToChatMessage(msgData);
-        if (chatMessage != null) {
-          final msgDeviceId = msgData['deviceId'] as String? ?? 'default';
-          final msgId = (msgData['uuid'] ?? msgData['id']) as String?;
-
-          dynamic msgCreateTimeValue =
-              msgData['createTime'] ?? msgData['createdAt'];
-          DateTime msgCreatedAt;
-          if (msgCreateTimeValue is String) {
-            msgCreatedAt = DateTime.parse(msgCreateTimeValue);
-          } else if (msgCreateTimeValue is int) {
-            msgCreatedAt = DateTime.fromMillisecondsSinceEpoch(msgCreateTimeValue);
-          } else if (msgCreateTimeValue is DateTime) {
-            msgCreatedAt = msgCreateTimeValue;
-          } else {
-            msgCreatedAt = DateTime.now();
-          }
-
-          if (msgId != null) {
-            Map<String, dynamic>? wrapperMetadata;
-            final toolName = msgData['toolName'] as String?;
-            if (toolName != null) {
-              wrapperMetadata = {'toolName': toolName};
-            }
-            final processingStatus = msgData['processingStatus'] as String?;
-            if (processingStatus != null) {
-              wrapperMetadata = {
-                ...?wrapperMetadata,
-                'status': processingStatus,
-              };
-            }
-
-            final wrapper = MessageWrapper(
-              uuid: msgId,
-              message: chatMessage,
-              createdAt: msgCreatedAt,
-              metadata: wrapperMetadata,
-            );
-            session.addMessageWrapper(msgDeviceId, wrapper);
-            _persistedMessageIds.add(msgId);
-          }
-        }
-      }
-      print(
-        '[PersistentChatAdapter] _loadMessagesIntoMemory: '
-        '已加载 ${messagesData.length} 条历史消息${limit != null ? ' (recentLimit=$limit)' : ''}',
-      );
-    } catch (e) {
-      print('[PersistentChatAdapter] _loadMessagesIntoMemory: 加载失败: $e');
-    }
-  }
-
+  /// 加载剩余的历史消息
   @override
   Future<void> loadRemainingMessages() async {
-    final employeeId = currentEmployeeUuid;
-    if (employeeId == null) return;
-
-    final session = memoryManager.getSession(employeeId);
-    if (session == null) return;
-
-    // 清空已有消息（保留 conversationSummary），重新从数据库加载全部
-    session.messagesMap.clear();
-    await _loadMessagesIntoMemory(employeeId);
-  }
-
-  @override
-  Future<void> clearCurrentSession() async {
-    await super.clearCurrentSession();
-
-    // 删除数据库中的消息
-    if (deleteMessagesCallback != null && currentSessionUuid != null) {
+    if (loadMessages != null) {
       try {
-        await deleteMessagesCallback!(currentSessionUuid!);
-        print('[PersistentChatAdapter] clearCurrentSession: 已删除数据库中的消息');
+        final messages = await loadMessages!(currentEmployeeUuid!);
+        print(
+          '[PersistentChatAdapter] loadRemainingMessages: 从数据库加载了 ${messages.length} 条消息',
+        );
+
+        final session = memoryManager.getSession(currentEmployeeUuid!);
+        if (session != null) {
+          session.clear();
+
+          for (final msgMap in messages) {
+            try {
+              final wrapper = _mapToMessageWrapper(msgMap);
+              if (wrapper != null) {
+                session.addMessageWrapper('persistence', wrapper);
+                _persistedMessageIds.add(wrapper.uuid);
+              }
+            } catch (e) {
+              print(
+                '[PersistentChatAdapter] loadRemainingMessages: 加载消息失败: ${msgMap['id']}, $e',
+              );
+            }
+          }
+        }
       } catch (e) {
-        print('[PersistentChatAdapter] clearCurrentSession: 删除数据库消息失败: $e');
+        print('[PersistentChatAdapter] loadRemainingMessages: 加载消息失败: $e');
       }
     }
-
-    // 清空已持久化消息 ID 集合
-    _persistedMessageIds.clear();
-
-    _notifyPersistSession();
-  }
-
-  @override
-  Future<void> updateProvider(Map<String, dynamic> providerConfig) async {
-    await super.updateProvider(providerConfig);
-    // 模型配置变更后持久化会话
-    _notifyPersistSession();
-  }
-
-  @override
-  Future<void> updateProjectContext(
-    Map<String, dynamic>? projectContext,
-  ) async {
-    await super.updateProjectContext(projectContext);
-    _notifyPersistSession();
-  }
-
-  @override
-  void setContext(Map<String, dynamic> contextData) {
-    super.setContext(contextData);
-    // 同步持久化（不等待）
-    _notifyPersistSession();
-  }
-
-  @override
-  void updateMessageStatus(
-    String messageId,
-    AgentMessageStatus status, {
-    String? error,
-  }) {
-    // 调用持久化回调
-    updateMessageStatusCallback?.call(messageId, status, error: error);
   }
 
   @override
@@ -267,7 +193,7 @@ class PersistentChatAdapter extends LangChainChatAdapter {
     Map<String, dynamic> messageData, {
     CancellationToken? cancellationToken,
   }) async* {
-    final session = memoryManager.getSession(currentSessionUuid!);
+    final session = memoryManager.getSession(currentEmployeeUuid!);
     final messagesBefore = session?.messageCount ?? 0;
 
     try {
@@ -281,12 +207,6 @@ class PersistentChatAdapter extends LangChainChatAdapter {
         if (messagesNow > messagesBefore) {
           _persistNewMessages(session, messagesBefore);
         }
-      }
-
-      // 流完成后确保所有新消息都已持久化
-      final messagesAfter = session?.messageCount ?? 0;
-      if (messagesAfter > messagesBefore) {
-        await _persistNewMessages(session, messagesBefore);
       }
     } catch (e) {
       print('[PersistentChatAdapter] streamMessage error: $e');
@@ -303,38 +223,29 @@ class PersistentChatAdapter extends LangChainChatAdapter {
   Future<List<AgentMessage>> getSessionMessages(
     String employeeId,
   ) async {
-    // 直接返回内存中的消息，不触发持久化
     return await super.getSessionMessages(employeeId);
   }
 
   /// 注入一条 assistant 消息到当前会话
-  ///
-  /// 不触发 LLM，直接写入 session 内存 + 持久化到数据库。
-  /// 用于定时任务、系统通知等场景。
-  void injectAssistantMessage(String messageId, String content, String deviceIdentifier) {
+  Future<void> injectAssistantMessage(String messageId, String content, String deviceIdentifier) async {
     final session = memoryManager.getSession(currentEmployeeUuid!);
     if (session == null) return;
 
     final now = DateTime.now();
     final wrapper = MessageWrapper(
       uuid: messageId,
-      message: ChatMessage.ai(content),
+      message: ChatMsg.assistant(content),
       createdAt: now,
       metadata: {'status': 'completed'},
     );
     session.addMessageWrapper(deviceIdentifier, wrapper);
 
-    // 持久化到数据库
     final messageMap = _messageWrapperToMap(wrapper);
     _persistedMessageIds.add(messageId);
-    _persistMessage(messageMap);
+    await _persistMessageAndWait(messageMap);
   }
 
   /// 注入一条 system 消息到当前会话
-  ///
-  /// 不触发 LLM，直接写入 session 内存 + 持久化到数据库。
-  /// 用于定时任务触发等场景，将任务指令以 system 角色注入会话，
-  /// 之后由 AgentImpl 触发一次 sendMessage 让 LLM 处理。
   void injectSystemMessage(String messageId, String content, String deviceIdentifier) {
     final session = memoryManager.getSession(currentEmployeeUuid!);
     if (session == null) return;
@@ -342,19 +253,18 @@ class PersistentChatAdapter extends LangChainChatAdapter {
     final now = DateTime.now();
     final wrapper = MessageWrapper(
       uuid: messageId,
-      message: ChatMessage.system(content),
+      message: ChatMsg.system(content),
       createdAt: now,
       metadata: {'status': 'completed', 'trigger': 'scheduled_task'},
     );
     session.addMessageWrapper(deviceIdentifier, wrapper);
 
-    // 持久化到数据库
     final messageMap = _messageWrapperToMap(wrapper);
     _persistedMessageIds.add(messageId);
     _persistMessage(messageMap);
   }
 
-  /// 持久化新添加的消息
+  /// 持久化新添加的消息（fire-and-forget，不等待完成）
   Future<void> _persistNewMessages(
     SessionHistory? session,
     int messagesBefore,
@@ -378,7 +288,6 @@ class PersistentChatAdapter extends LangChainChatAdapter {
       final messageId = wrapper.uuid;
 
       if (_persistedMessageIds.contains(messageId)) {
-        // 已持久化，跳过（静默处理，避免日志刷屏）
         continue;
       }
 
@@ -391,20 +300,33 @@ class PersistentChatAdapter extends LangChainChatAdapter {
     }
   }
 
-  /// 持久化单条消息
+  /// 持久化单条消息（fire-and-forget）
   void _persistMessage(Map<String, dynamic> message) {
     if (persistMessage == null) return;
 
-    // 添加 employeeId
     final messageWithSession = {...message, 'employeeId': currentSessionUuid};
 
-    // 将持久化任务加入队列，不阻塞主流程
     _persistenceQueue.addMessageTask(messageWithSession, (data) async {
       try {
         await persistMessage!(data);
       } catch (e) {
-        // 队列会自动处理重试
         print('[PersistentChatAdapter] _persistMessage: 持久化失败: $e');
+        rethrow;
+      }
+    });
+  }
+
+  /// 持久化单条消息（等待完成）
+  Future<void> _persistMessageAndWait(Map<String, dynamic> message) async {
+    if (persistMessage == null) return;
+
+    final messageWithSession = {...message, 'employeeId': currentSessionUuid};
+
+    await _persistenceQueue.addMessageTaskAndWait(messageWithSession, (data) async {
+      try {
+        await persistMessage!(data);
+      } catch (e) {
+        print('[PersistentChatAdapter] _persistMessageAndWait: 持久化失败: $e');
         rethrow;
       }
     });
@@ -414,185 +336,201 @@ class PersistentChatAdapter extends LangChainChatAdapter {
   void _notifyPersistSession() {
     if (persistSession == null) return;
 
-    final sessionData = _buildSessionData();
+    final sessionData = {
+      'uuid': currentSessionUuid,
+      'employeeId': currentEmployeeUuid,
+      'context': jsonEncode(currentContext ?? {}),
+      'providerConfig': _cachedProviderConfigJson,
+      'projectUuid': _cachedProjectUuid,
+      'updatedAt': DateTime.now().toIso8601String(),
+    };
 
-    // 将持久化任务加入队列，不阻塞主流程
     _persistenceQueue.addSessionTask(sessionData, (data) async {
       try {
         await persistSession!(data);
       } catch (e) {
-        // 队列会自动处理重试
-        print('[PersistentChatAdapter] _notifyPersistSession: 持久化失败: $e');
+        print('[PersistentChatAdapter] 持久化会话失败: $e');
         rethrow;
       }
     });
   }
 
-  /// 构建会话数据用于持久化
-  Map<String, dynamic> _buildSessionData() {
-    final employeeId = currentSessionUuid ?? '';
-    final context = currentContext ?? {};
-
-    return {
-      'uuid': employeeId,
-      'title': context['title'] ?? '新对话',
-      'contextData': context['contextData'],
-      'providerConfig': getProviderConfig(),
-      'projectUuid': context['projectUuid'],
-      'projectName': context['projectName'],
-      'projectContext': context['projectContext'],
-      'workPath': context['workPath'],
-      'additionalInfo': context['additionalInfo'],
-      'updateTime': DateTime.now().millisecondsSinceEpoch,
-    };
+  @override
+  void setContext(Map<String, dynamic> contextData) {
+    super.setContext(contextData);
+    _notifyPersistSession();
   }
 
-  /// 将 MessageWrapper 转换为 Map（用于持久化）
-  Map<String, dynamic> _messageWrapperToMap(MessageWrapper wrapper) {
-    final message = wrapper.message;
+  @override
+  void updateMessageStatus(
+    String messageId,
+    AgentMessageStatus status, {
+    String? error,
+  }) {
+    super.updateMessageStatus(messageId, status, error: error);
+    if (updateMessageStatusCallback != null) {
+      updateMessageStatusCallback!(messageId, status.name, error: error);
+    }
+  }
 
-    // 获取消息类型
-    final type = switch (message) {
-      SystemChatMessage() => 'system',
-      HumanChatMessage() => 'human',
-      AIChatMessage() => 'ai',
-      ToolChatMessage() => 'tool',
-      CustomChatMessage() => 'custom',
-    };
+  /// 删除单条消息（从内存和数据库中删除）
+  Future<void> deleteMessage(String messageId) async {
+    final success = removeMessageFromMemory(messageId);
+    if (success && deleteMessageCallback != null) {
+      await deleteMessageCallback!(messageId);
+    }
+  }
 
-    // 获取内容
-    final content = message.contentAsString;
+  @override
+  Future<void> clearCurrentSession() async {
+    await super.clearCurrentSession();
 
-    // ✅ 使用 MessageWrapper 的稳定 UUID
-    // 🔑 同时设置 'uuid' 和 'id' 字段，确保数据库存储和查询一致
-    final map = <String, dynamic>{
-      'uuid': wrapper.uuid,
-      'id': wrapper.uuid,
-      'role': type == 'human'
-          ? 'user'
-          : type == 'ai'
-          ? 'assistant'
-          : type,
-      'content': content,
-      'createdAt': wrapper.createdAt.toIso8601String(),
-    };
-
-    // AI 消息附加 toolCalls 信息
-    if (message is AIChatMessage && message.toolCalls.isNotEmpty) {
-      // ✅ 序列化为 JSON 字符串，避免类型转换错误
-      map['toolCalls'] = jsonEncode(message.toolCalls
-          .map(
-            (tc) => {'id': tc.id, 'name': tc.name, 'arguments': tc.arguments},
-          )
-          .toList());
+    if (deleteMessagesCallback != null && currentSessionUuid != null) {
+      try {
+        await deleteMessagesCallback!(currentSessionUuid!);
+        print('[PersistentChatAdapter] clearCurrentSession: 已删除数据库中的消息');
+      } catch (e) {
+        print('[PersistentChatAdapter] clearCurrentSession: 删除数据库消息失败: $e');
+      }
     }
 
-    // Tool 消息附加 toolCallId、toolName 和 type
-    if (message is ToolChatMessage) {
-      map['toolCallId'] = message.toolCallId;
-      map['type'] = 'functionResult';
-      // 从 metadata 中获取 toolName（工具执行时通过 metadata 传入）
-      final toolName = wrapper.metadata?['toolName'] as String?;
-      if (toolName != null) {
-        map['toolName'] = toolName;
+    _persistedMessageIds.clear();
+  }
+
+  /// 保存 Provider 配置并持久化到数据库
+  Future<void> saveProviderConfig(ProviderConfig config) async {
+    await updateProvider(config.toMap());
+    _cachedProviderConfigJson = jsonEncode(config.toMap());
+    _notifyPersistSession();
+  }
+
+  /// 设置当前项目 UUID 并持久化到数据库
+  Future<void> setCurrentProjectUuid(String uuid) async {
+    _cachedProjectUuid = uuid;
+    _notifyPersistSession();
+  }
+
+  /// 从消息 Map 创建 MessageWrapper
+  MessageWrapper? _mapToMessageWrapper(Map<String, dynamic> map) {
+    try {
+      final uuid = map['id'] as String? ?? const Uuid().v4();
+      final role = map['role'] as String? ?? 'user';
+      final content = map['content'] as String? ?? '';
+      final createdAtStr = map['createdAt'] as String?;
+      final createdAt = createdAtStr != null
+          ? DateTime.parse(createdAtStr)
+          : DateTime.now();
+      final metadata = map['metadata'] as Map<String, dynamic>? ?? {};
+      final toolCallId = map['toolCallId'] as String?;
+      final toolCallsJson = map['toolCalls'] as String?;
+      final isError = map['isError'] as bool? ?? false;
+
+      // 创建对应的 ChatMsg
+      late ChatMsg message;
+      switch (role) {
+        case 'user':
+          message = ChatMsg.user(content);
+        case 'assistant':
+          if (toolCallsJson != null && toolCallsJson.isNotEmpty) {
+            final toolCalls = (jsonDecode(toolCallsJson) as List)
+                .map((tc) => ToolCallInfo.fromMap(tc as Map<String, dynamic>))
+                .toList();
+            message = ChatMsg.assistant(content, toolCalls: toolCalls);
+          } else {
+            message = ChatMsg.assistant(content);
+          }
+        case 'tool':
+          // 检查是否为分组格式
+          final toolResultsJson = map['toolResults'] as String?;
+          if (toolResultsJson != null && toolResultsJson.isNotEmpty) {
+            final results = (jsonDecode(toolResultsJson) as List)
+                .map((r) => ToolResultInfo.fromMap(r as Map<String, dynamic>))
+                .toList();
+            message = ChatMsg.toolResultGroup(results);
+          } else {
+            // 单条格式（向后兼容）
+            message = ChatMsg.toolResult(
+              toolCallId: toolCallId ?? '',
+              content: content,
+              isError: isError,
+              name: metadata['toolName'] as String?,
+            );
+          }
+        case 'system':
+          return MessageWrapper(
+            uuid: uuid,
+            message: ChatMsg.system(content),
+            createdAt: createdAt,
+            metadata: metadata,
+          );
+        default:
+          return null;
       }
-      // ErrorToolChatMessage 的 isError 标记
-      if (message is ErrorToolChatMessage && message.isError) {
-        map['isError'] = true;
+
+      return MessageWrapper(
+        uuid: uuid,
+        message: message,
+        createdAt: createdAt,
+        metadata: metadata,
+      );
+    } catch (e) {
+      print('[PersistentChatAdapter] _mapToMessageWrapper failed: $e');
+      return null;
+    }
+  }
+
+  /// 将 MessageWrapper 转为 Map
+  Map<String, dynamic> _messageWrapperToMap(MessageWrapper wrapper) {
+    final map = <String, dynamic>{
+      'id': wrapper.uuid,
+      'role': _chatMsgToRole(wrapper.message),
+      'content': wrapper.message.content,
+      'type': 'text',
+      'createdAt': wrapper.createdAt.toIso8601String(),
+      'metadata': wrapper.metadata ?? {},
+    };
+
+    // 如果是 assistant 消息且包含 toolCalls，序列化
+    if (wrapper.message.role == ChatMsgRole.assistant && wrapper.message.toolCalls != null && wrapper.message.toolCalls!.isNotEmpty) {
+      map['toolCalls'] = jsonEncode(
+        wrapper.message.toolCalls!.map((tc) => {
+          'id': tc.id,
+          'name': tc.name,
+          'arguments': tc.arguments,
+        }).toList(),
+      );
+    }
+
+    // 如果是 tool 消息，序列化为分组格式或单条格式
+    if (wrapper.message.role == ChatMsgRole.tool) {
+      if (wrapper.message.isToolResultGroup) {
+        map['toolResults'] = jsonEncode(
+          wrapper.message.toolResults!.map((r) => r.toMap()).toList(),
+        );
+      } else {
+        map['toolCallId'] = wrapper.message.toolCallId;
+        if (wrapper.message.isError) {
+          map['isError'] = true;
+        }
       }
     }
 
     return map;
   }
 
-  /// 将数据库消息格式转换为 LangChain ChatMessage
-  ChatMessage? _mapToChatMessage(Map<String, dynamic> map) {
-    final role = map['role'] as String? ?? 'user';
-    final content = map['content'] as String? ?? '';
-    final type = map['type'] as String? ?? 'text';
-
-    // 处理工具消息
-    if (type == 'functionResult' || role == 'tool') {
-      final toolCallId =
-          map['toolCallId'] as String? ?? map['id'] as String? ?? '';
-      final isError = map['isError'] == true;
-      if (isError) {
-        return ErrorToolChatMessage(toolCallId: toolCallId, content: content, isError: true);
-      }
-      return ToolChatMessage(toolCallId: toolCallId, content: content);
-    }
-
-    // 解析 toolCalls
-    List<AIChatMessageToolCall>? parsedToolCalls;
-    final toolCalls = map['toolCalls'];
-    List<dynamic>? toolCallsList;
-
-    // toolCalls 可能是 List（来自内存）或 String（来自数据库 JSON 字符串）
-    if (toolCalls is List && toolCalls.isNotEmpty) {
-      toolCallsList = toolCalls;
-    } else if (toolCalls is String && toolCalls.isNotEmpty) {
-      try {
-        toolCallsList = jsonDecode(toolCalls) as List<dynamic>;
-      } catch (e) {
-        print('[PersistentChatAdapter] _mapToChatMessage: 解析 toolCalls 失败: $e');
-      }
-    }
-
-    if (toolCallsList != null && toolCallsList.isNotEmpty) {
-      parsedToolCalls = toolCallsList.map((tc) {
-        final tcMap = tc as Map<String, dynamic>;
-
-        // arguments 可能是 String（JSON字符串）或 Map（已解析）
-        String argsStr = '{}';
-        Map<String, dynamic> argsMap = {};
-
-        final args = tcMap['arguments'];
-        if (args is String && args.isNotEmpty) {
-          argsStr = args;
-          try {
-            argsMap = jsonDecode(args) as Map<String, dynamic>? ?? {};
-          } catch (_) {}
-        } else if (args is Map) {
-          argsMap = args as Map<String, dynamic>;
-          argsStr = jsonEncode(args);
-        }
-
-        return AIChatMessageToolCall(
-          id: tcMap['id'] as String? ?? '',
-          name: tcMap['name'] as String? ?? '',
-          argumentsRaw: argsStr,
-          arguments: argsMap,
-        );
-      }).toList();
-    }
-
-    // 处理函数调用消息
-    if (type == 'functionCall' && parsedToolCalls != null) {
-      return AIChatMessage(content: content, toolCalls: parsedToolCalls);
-    }
-
-    // 根据角色创建消息
-    switch (role) {
-      case 'user':
-        return ChatMessage.humanText(content);
-      case 'assistant':
-        if (parsedToolCalls != null && parsedToolCalls.isNotEmpty) {
-          return AIChatMessage(content: content, toolCalls: parsedToolCalls);
-        }
-        return ChatMessage.ai(content);
-      case 'system':
-        return ChatMessage.system(content);
-      default:
-        // 默认作为用户消息
-        return ChatMessage.humanText(content);
-    }
+  /// 从 ChatMsg 获取角色
+  String _chatMsgToRole(ChatMsg message) {
+    return switch (message.role) {
+      ChatMsgRole.user => 'user',
+      ChatMsgRole.assistant => 'assistant',
+      ChatMsgRole.tool => 'tool',
+      ChatMsgRole.system => 'system',
+    };
   }
 
   @override
   Future<void> dispose() async {
-    // 释放持久化队列
     await _persistenceQueue.dispose();
-    // 调用父类 dispose
     await super.dispose();
   }
 }

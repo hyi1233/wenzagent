@@ -9,8 +9,8 @@ import '../entities/employee_entity.dart';
 class EmployeeStore {
   final DatabaseManager _dbManager;
 
-  EmployeeStore({DatabaseManager? dbManager})
-      : _dbManager = dbManager ?? DatabaseManager.instance;
+  EmployeeStore({String? deviceId, DatabaseManager? dbManager})
+      : _dbManager = dbManager ?? DatabaseManager.getInstance(deviceId ?? '');
 
   Database get _db => _dbManager.db;
 
@@ -114,6 +114,18 @@ class EmployeeStore {
 
     final resultSet = _db.select(sql, params);
     return resultSet.map(_rowToEntity).toList();
+  }
+
+  /// 查找单个员工（包含已删除的，用于同步合并场景）
+  Future<AiEmployeeEntity?> findIncludingDeleted(String uuid) async {
+    final resultSet = _db.select(
+      'SELECT * FROM employees WHERE uuid = ? LIMIT 1',
+      [uuid],
+    );
+    for (final row in resultSet) {
+      return _rowToEntity(row);
+    }
+    return null;
   }
 
   /// 查找单个员工

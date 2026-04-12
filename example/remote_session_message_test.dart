@@ -25,8 +25,8 @@ Future<void> main() async {
 
 class RemoteSessionMessageTest {
   late LanHostServiceImpl host;
-  late DeviceClientImpl deviceA;
-  late DeviceClientImpl deviceB;
+  late DeviceClient deviceA;
+  late DeviceClient deviceB;
 
   final String deviceAId = 'device-alpha';
   final String deviceBId = 'device-beta';
@@ -88,7 +88,7 @@ class RemoteSessionMessageTest {
       'wenzagent_remote_message_',
     );
     print('  临时目录: ${tempDir.path}');
-    await DatabaseManager.instance.initialize(storagePath: tempDir.path);
+    await DatabaseManager.getInstance('test').initialize(storagePath: tempDir.path);
     print('  ✓ Hive 初始化完成');
   }
 
@@ -101,7 +101,7 @@ class RemoteSessionMessageTest {
 
   /// Device-A 连接并创建会话
   Future<void> _deviceAConnectAndCreateSession() async {
-    deviceA = DeviceClientImpl(
+    deviceA = DeviceClient.create(
       deviceId: deviceAId,
       deviceName: 'Device Alpha',
       host: host.localIp!,
@@ -176,7 +176,7 @@ class RemoteSessionMessageTest {
 
   /// Device-B 连接并同步数据
   Future<void> _deviceBConnectAndSync() async {
-    deviceB = DeviceClientImpl(
+    deviceB = DeviceClient.create(
       deviceId: deviceBId,
       deviceName: 'Device Beta',
       host: host.localIp!,
@@ -321,7 +321,7 @@ class RemoteSessionMessageTest {
 
   /// 等待消息处理完成
   Future<void> _waitForMessageComplete(
-    DeviceClientImpl device,
+    DeviceClient device,
     String messageId,
   ) async {
     print('    等待消息处理完成...');

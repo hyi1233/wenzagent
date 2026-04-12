@@ -10,8 +10,8 @@ import '../entities/message_entity.dart';
 class MessageStore {
   final DatabaseManager _dbManager;
 
-  MessageStore({DatabaseManager? dbManager})
-      : _dbManager = dbManager ?? DatabaseManager.instance;
+  MessageStore({String? deviceId, DatabaseManager? dbManager})
+      : _dbManager = dbManager ?? DatabaseManager.getInstance(deviceId ?? '');
 
   Database get _db => _dbManager.db;
 
@@ -37,6 +37,7 @@ class MessageStore {
       'createTime': row['create_time'],
       'updateTime': row['update_time'],
       'jsonData': row['json_data'],
+      'seq': row['seq'],
     };
     return AiEmployeeMessageEntity.fromMessageMap(map);
   }
@@ -63,6 +64,7 @@ class MessageStore {
       e.createTime.millisecondsSinceEpoch,
       e.updateTime.millisecondsSinceEpoch,
       e.jsonData,
+      e.seq,
     ];
   }
 
@@ -139,13 +141,17 @@ class MessageStore {
     String? deviceId,
     AiEmployeeMessageEntity entity,
   ) async {
+    // 如果 seq 为 0，自动分配下一个序列号
+    if (entity.seq == 0) {
+      entity.seq = getNextSeq();
+    }
     _db.execute('''
       INSERT OR REPLACE INTO messages (
         uuid, employee_id, role, type, content,
         tool_call_id, tool_name, tool_arguments, tool_result, tool_calls,
         processing_status, processing_error, input_tokens, output_tokens,
-        is_read, deleted, create_time, update_time, json_data
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        is_read, deleted, create_time, update_time, json_data, seq
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ''', _entityToParams(entity));
   }
 
@@ -162,13 +168,22 @@ class MessageStore {
     String? deviceId,
     AiEmployeeMessageEntity entity,
   ) async {
+    // 更新时保留原有 seq（如果当前 entity 的 seq 为 0 则从 DB 读取）
+    if (entity.seq == 0) {
+      final existing = await find(deviceId, entity.uuid);
+      if (existing != null) {
+        entity = entity.copyWith(seq: existing.seq);
+      } else {
+        entity.seq = getNextSeq();
+      }
+    }
     _db.execute('''
       INSERT OR REPLACE INTO messages (
         uuid, employee_id, role, type, content,
         tool_call_id, tool_name, tool_arguments, tool_result, tool_calls,
         processing_status, processing_error, input_tokens, output_tokens,
-        is_read, deleted, create_time, update_time, json_data
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        is_read, deleted, create_time, update_time, json_data, seq
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ''', _entityToParams(entity));
   }
 
@@ -237,19 +252,112 @@ class MessageStore {
     _db.execute('BEGIN');
     try {
       for (final entity in entities) {
+        if (entity.seq == 0) {
+          entity.seq = getNextSeq();
+        }
         _db.execute('''
           INSERT OR REPLACE INTO messages (
             uuid, employee_id, role, type, content,
             tool_call_id, tool_name, tool_arguments, tool_result, tool_calls,
             processing_status, processing_error, input_tokens, output_tokens,
-            is_read, deleted, create_time, update_time, json_data
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            is_read, deleted, create_time, update_time, json_data, seq
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', _entityToParams(entity));
       }
       _db.execute('COMMIT');
     } catch (e) {
       _db.execute('ROLLBACK');
       rethrow;
+    }
+  }
+
+  /// 获取下一个可用的 seq 值
+  int getNextSeq() {
+    final result = _db.select('SELECT COALESCE(MAX(seq), 0) + 1 as next_seq FROM messages');
+    return result.first['next_seq'] as int;
+  }
+
+  /// 获取当前最大 seq
+  int getMaxSeq() {
+    final result = _db.select('SELECT COALESCE(MAX(seq), 0) as max_seq FROM messages');
+    return result.first['max_seq'] as int;
+  }
+
+  /// 获取指定 employee 的最大 seq
+  int getMaxSeqForEmployee(String employeeId) {
+    final result = _db.select(
+      'SELECT COALESCE(MAX(seq), 0) as max_seq FROM messages WHERE employee_id = ? AND deleted = 0',
+      [employeeId],
+    );
+    return result.first['max_seq'] as int;
+  }
+
+  /// 增量拉取：获取 seq > lastSeq 的消息（包含已软删除的，供 Client 同步删除状态）
+  ///
+  /// 用于客户端增量同步，按 seq 升序返回。
+  /// 注意：包含 deleted=1 的消息，Client 端需根据 deleted 字段执行本地删除。
+  Future<List<AiEmployeeMessageEntity>> getMessagesAfterSeq(
+    String employeeId,
+    int lastSeq, {
+    int limit = 20,
+  }) async {
+    final resultSet = _db.select(
+      'SELECT * FROM messages WHERE employee_id = ? AND seq > ? ORDER BY seq ASC LIMIT ?',
+      [employeeId, lastSeq, limit],
+    );
+    return resultSet.map(_rowToEntity).toList();
+  }
+
+  /// 统计指定员工的未读消息数量（assistant 且 is_read=0）
+  int getUnreadCount(String employeeId) {
+    final result = _db.select(
+      'SELECT COUNT(*) as cnt FROM messages WHERE employee_id = ? AND role = ? AND is_read = 0 AND deleted = 0',
+      [employeeId, 'assistant'],
+    );
+    return result.first['cnt'] as int;
+  }
+
+  /// 批量标记指定员工的消息为已读（SQL 直接更新，返回受影响行数）
+  int markAsReadByEmployee(String employeeId) {
+    _db.execute(
+      'UPDATE messages SET is_read = 1, update_time = ? WHERE employee_id = ? AND role = ? AND is_read = 0 AND deleted = 0',
+      [DateTime.now().millisecondsSinceEpoch, employeeId, 'assistant'],
+    );
+    final result = _db.select(
+      'SELECT changes() as affected',
+    );
+    return result.first['affected'] as int;
+  }
+
+  /// 软删除消息并更新 seq（用于同步场景）
+  ///
+  /// 将消息标记为 deleted=1，同时将 seq 更新为新的更大值，
+  /// 使其能被 getMessagesAfterSeq 增量拉取，从而同步删除状态到 Client。
+  Future<void> softDeleteForSync(String uuid) async {
+    final newSeq = getNextSeq();
+    final now = DateTime.now().millisecondsSinceEpoch;
+    _db.execute(
+      'UPDATE messages SET deleted = 1, seq = ?, update_time = ? WHERE uuid = ?',
+      [newSeq, now, uuid],
+    );
+  }
+
+  /// 按会话软删除所有消息并更新 seq（用于 clearCurrentSession 同步场景）
+  ///
+  /// 将指定 employeeId 的所有消息标记为 deleted=1，
+  /// 并为每条消息分配新的 seq，使删除事件能被增量拉取。
+  Future<void> softDeleteBySessionForSync(String employeeId) async {
+    final messages = _db.select(
+      'SELECT uuid FROM messages WHERE employee_id = ? AND deleted = 0',
+      [employeeId],
+    );
+    final now = DateTime.now().millisecondsSinceEpoch;
+    for (final row in messages) {
+      final newSeq = getNextSeq();
+      _db.execute(
+        'UPDATE messages SET deleted = 1, seq = ?, update_time = ? WHERE uuid = ?',
+        [newSeq, now, row['uuid'] as String],
+      );
     }
   }
 }

@@ -71,6 +71,10 @@ class LanClientServiceImpl implements LanClientService {
   Timer? _reconnectTimer;
   static const int _reconnectDelay = 5;
 
+  // 心跳 ping 定时器
+  Timer? _pingTimer;
+  static const Duration _pingInterval = Duration(seconds: 10);
+
   final LanChunkService _chunkService = LanChunkService();
   final _uuid = const Uuid();
 
@@ -138,19 +142,6 @@ class LanClientServiceImpl implements LanClientService {
           
           _messageController.add(msg);
 
-          // 收到 Host 的 ping，自动回复 pong
-          if (msg.type == LanMessageType.ping) {
-            try {
-              final pong = LanMessage(
-                id: _uuid.v4(),
-                type: LanMessageType.pong,
-                fromId: _myId,
-                timestamp: DateTime.now(),
-              );
-              _channel?.sink.add(jsonEncode(pong.toJson()));
-            } catch (_) {}
-          }
-
           if (msg.type == LanMessageType.file && msg.fileId != null) {
             _autoDownloadFile(msg);
           }
@@ -184,6 +175,7 @@ class LanClientServiceImpl implements LanClientService {
     _addSystemMessage('已加入局域网 $hostIp:$port');
 
     _sendClientInfo();
+    _startPingTimer();
   }
 
   @override
@@ -196,6 +188,7 @@ class LanClientServiceImpl implements LanClientService {
     _manualDisconnect = true;
     _reconnectTimer?.cancel();
     _reconnectTimer = null;
+    _stopPingTimer();
 
     try {
       await _channel?.sink.close();
@@ -297,6 +290,30 @@ class LanClientServiceImpl implements LanClientService {
         _scheduleReconnect();
       }
     });
+  }
+
+  void _startPingTimer() {
+    _stopPingTimer();
+    _pingTimer = Timer.periodic(_pingInterval, (_) {
+      if (!_isConnected) {
+        _stopPingTimer();
+        return;
+      }
+      try {
+        final ping = LanMessage(
+          id: _uuid.v4(),
+          type: LanMessageType.ping,
+          fromId: _myId,
+          timestamp: DateTime.now(),
+        );
+        _channel?.sink.add(jsonEncode(ping.toJson()));
+      } catch (_) {}
+    });
+  }
+
+  void _stopPingTimer() {
+    _pingTimer?.cancel();
+    _pingTimer = null;
   }
 
   Future<void> _autoDownloadFile(LanMessage msg) async {
