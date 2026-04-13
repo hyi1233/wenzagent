@@ -350,7 +350,16 @@ class MessageStore {
   }
 
   /// 统计指定员工的未读消息数量（assistant 且 is_read=0）
-  int getUnreadCount(String employeeId) {
+  ///
+  /// [deviceId] 可选，传入时仅统计指定设备的消息，不传则统计所有设备。
+  int getUnreadCount(String employeeId, {String? deviceId}) {
+    if (deviceId != null && deviceId.isNotEmpty) {
+      final result = _db.select(
+        'SELECT COUNT(*) as cnt FROM messages WHERE employee_id = ? AND device_id = ? AND role = ? AND is_read = 0 AND deleted = 0',
+        [employeeId, deviceId, 'assistant'],
+      );
+      return result.first['cnt'] as int;
+    }
     final result = _db.select(
       'SELECT COUNT(*) as cnt FROM messages WHERE employee_id = ? AND role = ? AND is_read = 0 AND deleted = 0',
       [employeeId, 'assistant'],

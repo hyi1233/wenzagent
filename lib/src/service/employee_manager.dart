@@ -80,7 +80,7 @@ abstract class EmployeeManager {
   Future<EmployeeStats> getEmployeeStats();
 
   /// 员工变更通知流
-  Stream<EmployeeChangeEvent> get onEmployeeChanged;
+  Stream<EmployeeChangeEvent> get onEmployeeEvent;
 }
 
 /// 员工管理器实现
@@ -177,7 +177,7 @@ class EmployeeManagerImpl implements EmployeeManager {
   }
 
   @override
-  Stream<EmployeeChangeEvent> get onEmployeeChanged => _changeController.stream;
+  Stream<EmployeeChangeEvent> get onEmployeeEvent => _changeController.stream;
 
   void _notifyChange(EmployeeChangeType type, dynamic employeeOrUuid) {
     if (employeeOrUuid is AiEmployeeEntity) {

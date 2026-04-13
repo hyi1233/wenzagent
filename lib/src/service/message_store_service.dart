@@ -136,7 +136,9 @@ abstract class MessageStoreService {
   Future<ChatMessage?> getLastMessage(String employeeId);
 
   /// 统计指定员工的未读消息数量（assistant 且 is_read=0 且 deleted=0）
-  int getUnreadCount(String employeeId);
+  ///
+  /// [deviceId] 可选，传入时仅统计指定设备的消息，不传则统计所有设备。
+  int getUnreadCount(String employeeId, {String? deviceId});
 
   /// 批量标记指定员工的消息为已读（SQL 直接更新，返回受影响行数）
   int markAsReadInDb(String employeeId);
@@ -319,8 +321,8 @@ class MessageStoreServiceImpl implements MessageStoreService {
   }
 
   @override
-  int getUnreadCount(String employeeId) {
-    return _store.getUnreadCount(employeeId);
+  int getUnreadCount(String employeeId, {String? deviceId}) {
+    return _store.getUnreadCount(employeeId, deviceId: deviceId);
   }
 
   @override

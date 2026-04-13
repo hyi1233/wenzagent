@@ -57,29 +57,29 @@ class DeviceStateHolder {
   /// 订阅底层 manager 的变更流，转发到 DeviceClient 级别的 stream
   void _initSubscriptions() {
     final employeeManager = EmployeeManager.getInstance(deviceId);
-    _employeeChangeSub = employeeManager.onEmployeeChanged.listen((event) {
+    _employeeChangeSub = employeeManager.onEmployeeEvent.listen((event) {
       _employeeChangeController.add(event);
     });
 
     final sessionManager = SessionManager.getInstance(deviceId);
-    _sessionChangeSub = sessionManager.onSessionChanged.listen((event) {
+    _sessionChangeSub = sessionManager.onSessionEvent.listen((event) {
       _sessionChangeController.add(event);
     });
   }
 
   // ===== 流访问 =====
 
-  Stream<DeviceConnectionState> get onStateChanged => _stateController.stream;
+  Stream<DeviceConnectionState> get onConnectionStateChanged => _stateController.stream;
   Stream<AgentEvent> get onAgentEvent => _eventController.stream;
   Stream<LanMessage> get onLanMessage => _lanMessageController.stream;
   Stream<DeviceEvent> get onDeviceEvent => _deviceEventController.stream;
-  Stream<EmployeeOnlineEvent> get onEmployeeOnlineChanged =>
+  Stream<EmployeeOnlineEvent> get onEmployeeOnlineEvent =>
       _employeeOnlineController.stream;
-  Stream<EmployeeChangeEvent> get onEmployeeChanged =>
+  Stream<EmployeeChangeEvent> get onEmployeeEvent =>
       _employeeChangeController.stream;
-  Stream<SessionChangeEvent> get onSessionChanged =>
+  Stream<SessionChangeEvent> get onSessionEvent =>
       _sessionChangeController.stream;
-  Stream<DataSyncEvent> get onDataSynced => _syncEventController.stream;
+  Stream<DataSyncEvent> get onSyncEvent => _syncEventController.stream;
 
   // ===== 流控制 =====
 

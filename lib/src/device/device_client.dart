@@ -355,26 +355,26 @@ class DeviceClient {
 
   List<String> get remoteAgentProxyIds => _agentManager.remoteAgentProxyIds;
 
-  Stream<DeviceConnectionState> get onStateChanged =>
-      _stateHolder.onStateChanged;
+  Stream<DeviceConnectionState> get onConnectionStateChanged =>
+      _stateHolder.onConnectionStateChanged;
 
-  Stream<EmployeeOnlineEvent> get onEmployeeOnlineChanged =>
-      _stateHolder.onEmployeeOnlineChanged;
+  Stream<EmployeeOnlineEvent> get onEmployeeOnlineEvent =>
+      _stateHolder.onEmployeeOnlineEvent;
 
   Stream<AgentEvent> get onAgentEvent => _stateHolder.onAgentEvent;
 
   Stream<DeviceEvent> get onDeviceEvent => _stateHolder.onDeviceEvent;
 
   /// 员工数据变更通知（新增/更新/删除），由底层 EmployeeManager 触发
-  Stream<EmployeeChangeEvent> get onEmployeeChanged =>
-      _stateHolder.onEmployeeChanged;
+  Stream<EmployeeChangeEvent> get onEmployeeEvent =>
+      _stateHolder.onEmployeeEvent;
 
   /// 会话数据变更通知（新增/更新/删除），由底层 SessionManager 触发
-  Stream<SessionChangeEvent> get onSessionChanged =>
-      _stateHolder.onSessionChanged;
+  Stream<SessionChangeEvent> get onSessionEvent =>
+      _stateHolder.onSessionEvent;
 
   /// 跨设备数据同步完成事件（同步后如有数据变更则发射）
-  Stream<DataSyncEvent> get onDataSynced => _stateHolder.onDataSynced;
+  Stream<DataSyncEvent> get onSyncEvent => _stateHolder.onSyncEvent;
 
   List<LanDeviceInfo> get cachedDevices => _deviceRegistry.cachedDevices;
 

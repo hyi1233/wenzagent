@@ -72,7 +72,7 @@ abstract class SessionManager {
   Future<void> archiveSession(String employeeId, bool archived);
 
   /// Session变更通知
-  Stream<SessionChangeEvent> get onSessionChanged;
+  Stream<SessionChangeEvent> get onSessionEvent;
 }
 
 /// 会话管理器实现
@@ -177,7 +177,7 @@ class SessionManagerImpl implements SessionManager {
   }
 
   @override
-  Stream<SessionChangeEvent> get onSessionChanged => _changeController.stream;
+  Stream<SessionChangeEvent> get onSessionEvent => _changeController.stream;
 
   void _notifyChange(SessionChangeType type, dynamic sessionOrEmployeeId) {
     if (sessionOrEmployeeId is AiEmployeeSessionEntity) {
