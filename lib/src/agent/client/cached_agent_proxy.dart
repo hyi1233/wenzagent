@@ -187,7 +187,24 @@ class CachedAgentProxy {
     print('[CachedAgentProxy] 开始写入远程消息...');
 
     for (final message in unreceivedMessages) {
-      // 直接写入数据库（INSERT OR REPLACE），不做任何额外处理
+      // 检查消息是否已被远程删除
+      final deletedRaw = message.metadata?['deleted'];
+      final isDeleted = deletedRaw is bool
+          ? deletedRaw
+          : (deletedRaw is int ? deletedRaw != 0 : false);
+
+      if (isDeleted) {
+        // 已删除的消息：硬删除本地对应记录（若存在），避免垃圾数据积累
+        try {
+          await _messageStore.hardDeleteMessage(message.id, deviceId: _deviceId);
+          print('[CachedAgentProxy] 已删除本地消息（远程已删除）: ${message.id}');
+        } catch (_) {
+          // 本地不存在则忽略
+        }
+        continue;
+      }
+
+      // 正常消息：写入数据库
       final forceRead = message.role == 'assistant' &&
           (shouldSaveAsReadCallback?.call() ?? false);
       final chatMsg = _agentMessageToChatMessage(message, forceRead: forceRead);

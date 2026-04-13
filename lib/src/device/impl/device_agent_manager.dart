@@ -817,6 +817,11 @@ class DeviceAgentManager {
       _stateHolder.notificationHub.markAllAsRead(employeeId: employeeId);
       _notificationManager.clearLatestMessageCache(employeeId);
     };
+
+    // 单条消息删除回调：软删除 + 更新 seq，使离线客户端可通过增量同步获知撤回
+    adapter.deleteMessageCallback = (messageId) async {
+      await _messageStoreService.softDeleteMessage(messageId);
+    };
   }
 
   void _subscribeAgentEvents(String employeeId, IAgent agent) {

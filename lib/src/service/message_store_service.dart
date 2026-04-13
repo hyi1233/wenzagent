@@ -290,8 +290,8 @@ class MessageStoreServiceImpl implements MessageStoreService {
 
   @override
   int getMaxSeq(String employeeId) {
-    // 使用全局最大 seq（含已删除消息），确保清空水位线覆盖所有消息
-    return _store.getMaxSeq();
+    // 使用指定 employee 的最大 seq（含已软删除的消息），确保清空水位线覆盖所有消息
+    return _store.getMaxSeqForEmployeeAll(employeeId);
   }
 
   @override

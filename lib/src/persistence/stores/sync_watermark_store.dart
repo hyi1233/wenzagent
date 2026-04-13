@@ -38,11 +38,12 @@ class SyncWatermarkStore {
   /// 更新或插入水位线
   void upsert(SyncWatermarkEntity entity) {
     _db.execute('''
-      INSERT OR REPLACE INTO sync_watermark (employee_id, last_seq, update_time)
-        VALUES (?, ?, ?)
+      INSERT OR REPLACE INTO sync_watermark (employee_id, last_seq, clear_seq, update_time)
+        VALUES (?, ?, ?, ?)
     ''', [
       entity.employeeId,
       entity.lastSeq,
+      entity.clearSeq,
       entity.updateTime.millisecondsSinceEpoch,
     ]);
   }

@@ -716,14 +716,18 @@ class AgentImpl implements IAgent {
 
   @override
   Future<int> getMaxSeq({required String employeeId}) async {
-    final store = SyncWatermarkStore(deviceId: deviceId);
-    return store.getLastSeq(employeeId);
+    final store = MessageStore(deviceId: deviceId);
+    return store.getMaxSeqForEmployeeAll(employeeId);
   }
 
   @override
   Future<int> getMinSeq({required String employeeId}) async {
-    final store = SyncWatermarkStore(deviceId: deviceId);
-    return store.getClearSeq(employeeId) ?? 0;
+    final store = MessageStore(deviceId: deviceId);
+    final minSeq = store.getMinSeqForEmployee(employeeId);
+    if (minSeq > 0) return minSeq;
+    // 无未删除消息时回退到 clear_seq
+    final watermarkStore = SyncWatermarkStore(deviceId: deviceId);
+    return watermarkStore.getClearSeq(employeeId) ?? 0;
   }
 
   @override
@@ -819,8 +823,13 @@ class AgentImpl implements IAgent {
       await _processor?.revokeMessage(messageId);
     }
 
-    // 从内存中删除消息
-    _chatAdapter.removeMessageFromMemory(messageId);
+    // 从内存和数据库中删除消息（通过 deleteMessageCallback 软删除 + 更新 seq）
+    final adapter = _chatAdapter;
+    if (adapter is PersistentChatAdapter) {
+      await adapter.deleteMessage(messageId);
+    } else {
+      adapter.removeMessageFromMemory(messageId);
+    }
   }
 
   @override

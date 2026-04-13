@@ -291,6 +291,17 @@ class MessageStore {
     return result.first['max_seq'] as int;
   }
 
+  /// 获取指定 employee 的最大 seq（含已软删除的消息）
+  ///
+  /// 用于服务端上报 maxSeq 给客户端增量同步使用。
+  int getMaxSeqForEmployeeAll(String employeeId) {
+    final result = _db.select(
+      'SELECT COALESCE(MAX(seq), 0) as max_seq FROM messages WHERE employee_id = ?',
+      [employeeId],
+    );
+    return result.first['max_seq'] as int;
+  }
+
   /// 获取指定 employee 的最小 seq（未删除消息）
   ///
   /// 用于客户端同步时判断远程最早保留的消息位置，
