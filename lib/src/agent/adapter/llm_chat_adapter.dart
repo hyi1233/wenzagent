@@ -222,7 +222,7 @@ class LlmChatAdapter implements IChatAdapter {
 
       try {
         // 添加用户消息到历史
-        _addUserMessage(message);
+        await addUserMessage(message);
 
         final hasTools = _toolRegistry != null && !_toolRegistry!.isEmpty;
         final systemPrompt = _buildSystemPrompt();
@@ -570,7 +570,12 @@ class LlmChatAdapter implements IChatAdapter {
   }
 
   /// 添加用户消息到会话历史
-  void _addUserMessage(MessageInput message) {
+  ///
+  /// 子类 (PersistentChatAdapter) 可覆盖此方法以在添加到内存前执行持久化，
+  /// 确保用户消息在进入 LLM 处理流程前已获得 seq 并写入数据库，
+  /// 防止客户端同步清理时误删本地临时消息。
+  @protected
+  Future<void> addUserMessage(MessageInput message) async {
     final id = message.id ?? const Uuid().v4();
     final userMessage = shared.ChatMessage.user(
       id: id,

@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:uuid/uuid.dart';
+
 import '../agent_state.dart';
 import '../entity/entity.dart';
 import '../processor/cancellation_token.dart';
@@ -263,6 +265,27 @@ class PersistentChatAdapter extends LlmChatAdapter {
     _persistMessage(messageMap);
   }
 
+  @override
+  Future<void> addUserMessage(MessageInput message) async {
+    final id = message.id ?? const Uuid().v4();
+    final userMessage = ChatMessage.user(
+      id: id,
+      employeeId: currentEmployeeUuid!,
+      content: message.content,
+    );
+
+    // 立即持久化用户消息并等待完成，确保在 LLM 处理前已分配 seq 并写入 DB。
+    // 这样 getMinSeq() 能立即反映此消息，防止客户端同步时因 seq < minSeq
+    // 而误删本地临时消息。
+    await _persistUserMessageAndWait(userMessage);
+
+    memoryManager.addMessage(
+      currentEmployeeUuid!,
+      deviceId ?? 'default',
+      userMessage,
+    );
+  }
+
   /// 持久化新添加的消息（fire-and-forget，不等待完成）
   Future<void> _persistNewMessages(
     SessionHistory? session,
@@ -296,6 +319,26 @@ class PersistentChatAdapter extends LlmChatAdapter {
       print(
         '[PersistentChatAdapter] _persistNewMessages: persisted $messageId',
       );
+    }
+  }
+
+  /// 立即持久化用户消息并等待完成
+  ///
+  /// 在 addUserMessage 时调用，确保用户消息在进入 LLM 处理流程前
+  /// 已获得 seq 并写入数据库。这样 getMinSeq() 能立即反映此消息，
+  /// 防止客户端同步清理时误删 seq < minSeq 的本地临时消息。
+  Future<void> _persistUserMessageAndWait(ChatMessage userMessage) async {
+    if (persistMessage == null) return;
+
+    final messageMap = userMessage.toJson();
+    _persistedMessageIds.add(userMessage.id);
+    try {
+      await _persistMessageAndWait(messageMap);
+      print('[PersistentChatAdapter] 用户消息已立即持久化: ${userMessage.id}');
+    } catch (e) {
+      print('[PersistentChatAdapter] 立即持久化用户消息失败: $e');
+      // 不抛出异常，允许消息继续进入处理流程。
+      // 消息会在后续 _persistNewMessages 中被再次尝试持久化。
     }
   }
 
