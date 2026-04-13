@@ -739,6 +739,21 @@ class CachedAgentProxy {
         }
       }
 
+      // 8. 检查 clearSeq 水位线：服务端清空会话后设置，客户端需删除本地消息
+      try {
+        final clearSeq = await _proxy.getClearSeq();
+        if (clearSeq > 0) {
+          final deletedCount = _messageStore.deleteMessagesBeforeSeq(_employeeId, clearSeq);
+          if (deletedCount > 0) {
+            _messageStore.resetLastSeq(_employeeId, 0);
+            print('[CachedAgentProxy] clearSeq 机制：已删除 $deletedCount 条消息（seq < $clearSeq），水位线已重置');
+            _notifyMessagesChanged();
+          }
+        }
+      } catch (e) {
+        print('[CachedAgentProxy] 获取 clearSeq 失败: $e');
+      }
+
       print('[CachedAgentProxy] 消息同步完成');
     } catch (e, st) {
       print('[CachedAgentProxy] 同步远程消息失败: $e\n$st');

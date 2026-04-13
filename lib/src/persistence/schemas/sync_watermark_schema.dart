@@ -8,10 +8,12 @@ class SyncWatermarkSchema {
   static void create(Database db) {
     db.execute('''
       CREATE TABLE IF NOT EXISTS sync_watermark (
-        employee_id  TEXT PRIMARY KEY,
+        employee_id  TEXT NOT NULL,
+        device_id    TEXT NOT NULL DEFAULT '',
         last_seq     INTEGER NOT NULL DEFAULT 0,
         clear_seq    INTEGER DEFAULT NULL,
-        update_time  INTEGER NOT NULL
+        update_time  INTEGER NOT NULL,
+        PRIMARY KEY (employee_id, device_id)
       )
     ''');
   }

@@ -1,10 +1,13 @@
-﻿/// AI员工技能实体
+/// AI员工技能实体
 class AiEmployeeSkillEntity {
   /// 技能UUID
   final String uuid;
 
   /// 员工UUID
   String employeeId;
+
+  /// 设备ID
+  String deviceId;
 
   /// 技能名称
   String name;
@@ -36,6 +39,7 @@ class AiEmployeeSkillEntity {
   AiEmployeeSkillEntity({
     required this.uuid,
     required this.employeeId,
+    this.deviceId = '',
     required this.name,
     this.description,
     this.skillType = 'mcp',
@@ -52,6 +56,7 @@ class AiEmployeeSkillEntity {
     return AiEmployeeSkillEntity(
       uuid: map['uuid'] as String,
       employeeId: map['employeeId'] as String,
+      deviceId: map['deviceId'] as String? ?? '',
       name: map['name'] as String,
       description: map['description'] as String?,
       skillType: map['skillType'] as String? ?? 'mcp',
@@ -73,6 +78,7 @@ class AiEmployeeSkillEntity {
     return {
       'uuid': uuid,
       'employeeId': employeeId,
+      'deviceId': deviceId,
       'name': name,
       'description': description,
       'skillType': skillType,
@@ -89,6 +95,7 @@ class AiEmployeeSkillEntity {
   AiEmployeeSkillEntity copyWith({
     String? uuid,
     String? employeeId,
+    String? deviceId,
     String? name,
     String? description,
     String? skillType,
@@ -102,6 +109,7 @@ class AiEmployeeSkillEntity {
     return AiEmployeeSkillEntity(
       uuid: uuid ?? this.uuid,
       employeeId: employeeId ?? this.employeeId,
+      deviceId: deviceId ?? this.deviceId,
       name: name ?? this.name,
       description: description ?? this.description,
       skillType: skillType ?? this.skillType,

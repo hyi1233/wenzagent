@@ -249,6 +249,20 @@ class MessageStoreServiceImpl implements MessageStoreService {
     }
   }
 
+  /// 更新消息状态（指定 deviceId）
+  Future<void> updateMessageStatusWithDeviceId(
+    String? deviceId,
+    String uuid,
+    MessageStatus status, {
+    String? error,
+  }) async {
+    await _store.updateStatus(deviceId, uuid, status, error: error);
+    final message = await _store.find(deviceId, uuid);
+    if (message != null) {
+      _notifyChange(MessageChangeType.updated, message);
+    }
+  }
+
   @override
   Future<void> batchUpdateMessages(
     List<ChatMessage> messages, {
@@ -331,19 +345,19 @@ class MessageStoreServiceImpl implements MessageStoreService {
   @override
   int getLastSeq(String employeeId) {
     final store = SyncWatermarkStore(dbManager: _store.dbManager);
-    return store.getLastSeq(employeeId);
+    return store.getLastSeq(employeeId, deviceId: _deviceId ?? '');
   }
 
   @override
   void updateLastSeq(String employeeId, int lastSeq) {
     final store = SyncWatermarkStore(dbManager: _store.dbManager);
-    store.updateLastSeq(employeeId, lastSeq);
+    store.updateLastSeq(employeeId, lastSeq, deviceId: _deviceId ?? '');
   }
 
   @override
   void resetLastSeq(String employeeId, int lastSeq) {
     final store = SyncWatermarkStore(dbManager: _store.dbManager);
-    store.resetLastSeq(employeeId, lastSeq);
+    store.resetLastSeq(employeeId, lastSeq, deviceId: _deviceId ?? '');
   }
 
   void _notifyChange(MessageChangeType type, ChatMessage message) {

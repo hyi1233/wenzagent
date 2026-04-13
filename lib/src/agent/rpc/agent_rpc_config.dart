@@ -26,6 +26,7 @@ class AgentRpcConfig {
   static const String methodUpdateSyncWatermark = 'agentUpdateSyncWatermark';
   static const String methodGetMaxSeq = 'agentGetMaxSeq';
   static const String methodGetMinSeq = 'agentGetMinSeq';
+  static const String methodGetClearSeq = 'agentGetClearSeq';
   static const String methodMarkMessagesAsRead = 'agentMarkMessagesAsRead';
   static const String methodGetMessagesReadStatus = 'agentGetMessagesReadStatus';
   static const String methodCreateSession = 'agentCreateSession';

@@ -3,6 +3,7 @@ import 'dart:async';
 import '../../host/host_rpc_methods.dart';
 import '../../persistence/persistence.dart';
 import '../../service/service.dart';
+import 'device_agent_manager.dart';
 import 'device_connection_manager.dart';
 import 'device_registry.dart';
 import 'device_state_holder.dart';
@@ -23,6 +24,9 @@ class DataSyncManager {
     _deviceId,
   );
   late final DeviceStateHolder _stateHolder = DeviceStateHolder.getInstance(
+    _deviceId,
+  );
+  late final DeviceAgentManager _agentManager = DeviceAgentManager.getInstance(
     _deviceId,
   );
 
@@ -236,6 +240,7 @@ class DataSyncManager {
   /// 删除会话并同步到其他设备
   Future<void> deleteSessionWithSync(String employeeId) async {
     await _sessionManager.deleteSession(employeeId);
+    _agentManager.destroyAgentProxy(employeeId);
     _syncDeleteToDevices(employeeId);
   }
 

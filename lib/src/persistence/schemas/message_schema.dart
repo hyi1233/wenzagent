@@ -7,6 +7,7 @@ class MessageSchema {
       CREATE TABLE IF NOT EXISTS messages (
         uuid              TEXT PRIMARY KEY,
         employee_id       TEXT NOT NULL,
+        device_id         TEXT NOT NULL DEFAULT '',
         role              TEXT DEFAULT 'user',
         type              TEXT DEFAULT 'text',
         content           TEXT,
@@ -28,7 +29,7 @@ class MessageSchema {
     ''');
     db.execute('''
       CREATE INDEX IF NOT EXISTS idx_messages_employee
-        ON messages(employee_id, create_time);
+        ON messages(employee_id, device_id, create_time);
     ''');
     db.execute('''
       CREATE INDEX IF NOT EXISTS idx_messages_seq

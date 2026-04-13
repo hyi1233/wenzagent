@@ -372,7 +372,7 @@ class AgentImpl implements IAgent {
     final store = SkillStore(deviceId: deviceId);
     print('[Skill] 开始加载持久化技能, employeeId=$employeeId');
 
-    final entities = await store.findByEmployeeWithDeviceId(null, employeeId);
+    final entities = await store.findByEmployeeWithDeviceId(deviceId, employeeId);
     print('[Skill] 数据库查询完成, 共 ${entities.length} 条技能记录');
 
     int loaded = 0;
@@ -727,7 +727,7 @@ class AgentImpl implements IAgent {
     if (minSeq > 0) return minSeq;
     // 无未删除消息时回退到 clear_seq
     final watermarkStore = SyncWatermarkStore(deviceId: deviceId);
-    return watermarkStore.getClearSeq(employeeId) ?? 0;
+    return watermarkStore.getClearSeq(employeeId, deviceId: deviceId) ?? 0;
   }
 
   @override
@@ -919,7 +919,7 @@ class AgentImpl implements IAgent {
 
       // 1. 软删除当前员工的所有技能
       final existingSkills = await store.findByEmployeeWithDeviceId(
-        null,
+        deviceId,
         employeeId,
       );
       for (final skill in existingSkills) {
@@ -931,7 +931,7 @@ class AgentImpl implements IAgent {
           .map((m) => AiEmployeeSkillEntity.fromMap(m))
           .toList();
       for (final entity in entities) {
-        await store.save(entity);
+        await store.saveWithDeviceId(deviceId, entity);
       }
 
       // 3. 卸载当前运行时技能
@@ -990,7 +990,7 @@ class AgentImpl implements IAgent {
       // 2. 同步 MCP 技能实体到 SkillStore
       // 先删除旧的 MCP 类型技能
       final existingSkills = await skillStore.findByEmployeeWithDeviceId(
-        null,
+        deviceId,
         employeeId,
       );
       for (final skill in existingSkills) {
@@ -1011,7 +1011,7 @@ class AgentImpl implements IAgent {
           createTime: DateTime.now(),
           updateTime: DateTime.now(),
         );
-        await skillStore.save(entity);
+        await skillStore.saveWithDeviceId(deviceId, entity);
       }
 
       // 3. 卸载旧的 MCP 技能并重新加载
@@ -1026,7 +1026,7 @@ class AgentImpl implements IAgent {
 
       // 4. 重新加载所有持久化技能（仅 MCP 类型）
       final allSkills = await skillStore.findByEmployeeWithDeviceId(
-        null,
+        deviceId,
         employeeId,
       );
       for (final entity in allSkills) {

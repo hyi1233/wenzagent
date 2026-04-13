@@ -1,4 +1,4 @@
-﻿import 'package:sqlite3/sqlite3.dart';
+import 'package:sqlite3/sqlite3.dart';
 
 import '../database_manager.dart';
 import '../entities/skill_entity.dart';
@@ -19,6 +19,7 @@ class SkillStore {
     return AiEmployeeSkillEntity.fromMap({
       'uuid': row['uuid'],
       'employeeId': row['employee_id'],
+      'deviceId': row['device_id'] as String? ?? '',
       'name': row['name'],
       'description': row['description'],
       'skillType': row['skill_type'],
@@ -36,9 +37,10 @@ class SkillStore {
     String? deviceId,
     String employeeId,
   ) async {
+    final effDeviceId = deviceId ?? '';
     final resultSet = _db.select(
-      'SELECT * FROM skills WHERE employee_id = ? AND deleted = 0 ORDER BY sort_order ASC',
-      [employeeId],
+      'SELECT * FROM skills WHERE employee_id = ? AND device_id = ? AND deleted = 0 ORDER BY sort_order ASC',
+      [employeeId, effDeviceId],
     );
     return resultSet.map(_rowToEntity).toList();
   }
@@ -67,12 +69,13 @@ class SkillStore {
   Future<void> save(AiEmployeeSkillEntity entity) async {
     _db.execute('''
       INSERT OR REPLACE INTO skills (
-        uuid, employee_id, name, description, skill_type,
+        uuid, employee_id, device_id, name, description, skill_type,
         config, enabled, sort_order, deleted, create_time, update_time
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ''', [
       entity.uuid,
       entity.employeeId,
+      entity.deviceId,
       entity.name,
       entity.description,
       entity.skillType,
@@ -90,7 +93,8 @@ class SkillStore {
     String? deviceId,
     AiEmployeeSkillEntity entity,
   ) async {
-    await save(entity);
+    final updated = entity.copyWith(deviceId: deviceId ?? '');
+    await save(updated);
   }
 
   /// 删除技能（软删除）
@@ -111,17 +115,19 @@ class SkillStore {
     String? deviceId,
     String employeeId,
   ) async {
+    final effDeviceId = deviceId ?? '';
     _db.execute(
-      'UPDATE skills SET deleted = 1 WHERE employee_id = ?',
-      [employeeId],
+      'UPDATE skills SET deleted = 1 WHERE employee_id = ? AND device_id = ?',
+      [employeeId, effDeviceId],
     );
   }
 
   /// 获取技能数量
   Future<int> count(String? deviceId, String employeeId) async {
+    final effDeviceId = deviceId ?? '';
     final resultSet = _db.select(
-      'SELECT COUNT(*) as cnt FROM skills WHERE employee_id = ? AND deleted = 0',
-      [employeeId],
+      'SELECT COUNT(*) as cnt FROM skills WHERE employee_id = ? AND device_id = ? AND deleted = 0',
+      [employeeId, effDeviceId],
     );
     return resultSet.first['cnt'] as int;
   }

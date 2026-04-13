@@ -7,6 +7,7 @@ import '../database_manager.dart';
 ///
 /// 使用 SQLite 实现，所有方法直接返回 [ChatMessage]，
 /// 通过 [MessageMapper] 统一处理行数据转换。
+/// 消息按 employee_id + device_id 隔离，不同设备上同一员工有独立的消息历史。
 class MessageStore {
   final DatabaseManager _dbManager;
 
@@ -24,8 +25,8 @@ class MessageStore {
   }
 
   /// 将 ChatMessage 转换为数据库插入参数
-  List<Object?> _messageToParams(ChatMessage msg) {
-    return MessageMapper.toSqlParams(msg);
+  List<Object?> _messageToParams(ChatMessage msg, String deviceId) {
+    return MessageMapper.toSqlParams(msg, deviceId: deviceId);
   }
 
   /// 获取会话的消息列表
@@ -35,13 +36,14 @@ class MessageStore {
     int? limit,
     int? offset,
   }) async {
+    final effDeviceId = deviceId ?? '';
     // 无 offset 有 limit 时，取最后 N 条（与原实现一致）
     if (offset == null && limit != null && limit > 0) {
-      return _getLastNMessages(employeeId, limit);
+      return _getLastNMessages(employeeId, effDeviceId, limit);
     }
 
-    final conditions = <String>['employee_id = ?', 'deleted = 0'];
-    final params = <Object?>[employeeId];
+    final conditions = <String>['employee_id = ?', 'device_id = ?', 'deleted = 0'];
+    final params = <Object?>[employeeId, effDeviceId];
 
     final where = conditions.join(' AND ');
     String sql = 'SELECT * FROM messages WHERE $where ORDER BY create_time ASC';
@@ -61,11 +63,12 @@ class MessageStore {
   /// 获取最后 N 条消息
   Future<List<ChatMessage>> _getLastNMessages(
     String employeeId,
+    String deviceId,
     int limit,
   ) async {
     final resultSet = _db.select(
-      'SELECT * FROM messages WHERE employee_id = ? AND deleted = 0 ORDER BY create_time DESC LIMIT ?',
-      [employeeId, limit],
+      'SELECT * FROM messages WHERE employee_id = ? AND device_id = ? AND deleted = 0 ORDER BY create_time DESC LIMIT ?',
+      [employeeId, deviceId, limit],
     );
     final messages = resultSet.map(_rowToMessage).toList();
     messages.sort((a, b) {
@@ -97,14 +100,14 @@ class MessageStore {
   }
 
   /// 更新 sync_watermark.last_seq（MAX 语义，防止回退）
-  void _updateWatermarkLastSeq(String employeeId, int seq) {
+  void _updateWatermarkLastSeq(String employeeId, int seq, {String deviceId = ''}) {
     _db.execute('''
-      INSERT INTO sync_watermark (employee_id, last_seq, update_time)
-        VALUES (?, ?, ?)
-        ON CONFLICT(employee_id) DO UPDATE SET
+      INSERT INTO sync_watermark (employee_id, device_id, last_seq, update_time)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(employee_id, device_id) DO UPDATE SET
           last_seq = MAX(last_seq, excluded.last_seq),
           update_time = excluded.update_time
-    ''', [employeeId, seq, DateTime.now().millisecondsSinceEpoch]);
+    ''', [employeeId, deviceId, seq, DateTime.now().millisecondsSinceEpoch]);
   }
 
   /// 使用明确 deviceId 添加消息
@@ -116,6 +119,7 @@ class MessageStore {
     ChatMessage message, {
     bool updateWatermark = true,
   }) async {
+    final effDeviceId = deviceId ?? '';
     // 如果 seq 为 0，自动分配下一个序列号
     var msg = message;
     if (msg.seq == 0) {
@@ -123,14 +127,14 @@ class MessageStore {
     }
     _db.execute('''
       INSERT OR REPLACE INTO messages (
-        uuid, employee_id, role, type, content,
+        uuid, employee_id, device_id, role, type, content,
         tool_call_id, tool_name, tool_arguments, tool_result, tool_calls,
         processing_status, processing_error, input_tokens, output_tokens,
         is_read, deleted, create_time, update_time, seq
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ''', _messageToParams(msg));
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ''', _messageToParams(msg, effDeviceId));
     if (updateWatermark) {
-      _updateWatermarkLastSeq(msg.employeeId, msg.seq);
+      _updateWatermarkLastSeq(msg.employeeId, msg.seq, deviceId: effDeviceId);
     }
   }
 
@@ -146,6 +150,7 @@ class MessageStore {
     ChatMessage message, {
     bool updateWatermark = true,
   }) async {
+    final effDeviceId = deviceId ?? '';
     // 更新时保留原有 seq（如果当前 message 的 seq 为 0 则从 DB 读取）
     var msg = message;
     if (msg.seq == 0) {
@@ -158,41 +163,50 @@ class MessageStore {
     }
     _db.execute('''
       INSERT OR REPLACE INTO messages (
-        uuid, employee_id, role, type, content,
+        uuid, employee_id, device_id, role, type, content,
         tool_call_id, tool_name, tool_arguments, tool_result, tool_calls,
         processing_status, processing_error, input_tokens, output_tokens,
         is_read, deleted, create_time, update_time, seq
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ''', _messageToParams(msg));
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ''', _messageToParams(msg, effDeviceId));
     if (updateWatermark) {
-      _updateWatermarkLastSeq(msg.employeeId, msg.seq);
+      _updateWatermarkLastSeq(msg.employeeId, msg.seq, deviceId: effDeviceId);
     }
   }
 
   /// 更新消息状态
+  ///
+  /// 更新时同时更新 seq，使状态变更可通过增量同步传播到其他设备。
+  /// 这确保了工具调用状态等变更能被远程客户端感知。
   Future<void> updateStatus(
     String? deviceId,
     String uuid,
     MessageStatus status, {
     String? error,
+    bool updateWatermark = false,
   }) async {
     final msg = await find(deviceId, uuid);
     if (msg != null) {
+      // 分配新的 seq，使状态变更能被增量同步拉取
+      final newSeq = getNextSeq();
       final updated = msg.copyWith(
         status: status,
         processingError: error,
         updatedAt: DateTime.now(),
+        seq: newSeq,
       );
-      // 状态更新不更新水位线，避免本地临时消息的状态变更泄漏 seq 到同步水位线
-      await updateWithDeviceId(deviceId, updated, updateWatermark: false);
+      await updateWithDeviceId(deviceId, updated, updateWatermark: updateWatermark);
+      // 确保水位线反映最新的 seq（即使 updateWatermark=false，seq 本身需要更新）
+      final effDeviceId = deviceId ?? '';
+      _updateWatermarkLastSeq(msg.employeeId, newSeq, deviceId: effDeviceId);
     }
   }
 
   /// 删除会话的所有消息
   Future<void> deleteBySession(String? deviceId, String employeeId) async {
     _db.execute(
-      'DELETE FROM messages WHERE employee_id = ?',
-      [employeeId],
+      'DELETE FROM messages WHERE employee_id = ? AND device_id = ?',
+      [employeeId, deviceId ?? ''],
     );
   }
 
@@ -207,8 +221,8 @@ class MessageStore {
     String employeeId,
   ) async {
     final resultSet = _db.select(
-      'SELECT * FROM messages WHERE employee_id = ? AND deleted = 0 ORDER BY create_time DESC LIMIT 1',
-      [employeeId],
+      'SELECT * FROM messages WHERE employee_id = ? AND device_id = ? AND deleted = 0 ORDER BY create_time DESC LIMIT 1',
+      [employeeId, deviceId ?? ''],
     );
     for (final row in resultSet) {
       return _rowToMessage(row);
@@ -219,8 +233,8 @@ class MessageStore {
   /// 获取消息数量
   Future<int> count(String? deviceId, String employeeId) async {
     final resultSet = _db.select(
-      'SELECT COUNT(*) as cnt FROM messages WHERE employee_id = ? AND deleted = 0',
-      [employeeId],
+      'SELECT COUNT(*) as cnt FROM messages WHERE employee_id = ? AND device_id = ? AND deleted = 0',
+      [employeeId, deviceId ?? ''],
     );
     return resultSet.first['cnt'] as int;
   }
@@ -232,6 +246,7 @@ class MessageStore {
     String? deviceId,
     List<ChatMessage> messages,
   ) async {
+    final effDeviceId = deviceId ?? '';
     _db.execute('BEGIN');
     try {
       for (var msg in messages) {
@@ -240,16 +255,16 @@ class MessageStore {
         }
         _db.execute('''
           INSERT OR REPLACE INTO messages (
-            uuid, employee_id, role, type, content,
+            uuid, employee_id, device_id, role, type, content,
             tool_call_id, tool_name, tool_arguments, tool_result, tool_calls,
             processing_status, processing_error, input_tokens, output_tokens,
             is_read, deleted, create_time, update_time, seq
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', _messageToParams(msg));
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', _messageToParams(msg, effDeviceId));
       }
       // 更新 sync_watermark.last_seq
       for (var msg in messages) {
-        _updateWatermarkLastSeq(msg.employeeId, msg.seq);
+        _updateWatermarkLastSeq(msg.employeeId, msg.seq, deviceId: effDeviceId);
       }
       _db.execute('COMMIT');
     } catch (e) {
@@ -260,7 +275,8 @@ class MessageStore {
 
   /// 获取下一个可用的 seq 值
   ///
-  /// 同时从 messages 表和 sync_watermark 表取最大值，确保清空消息后 seq 不会重复。
+  /// 同时从 messages 表、sync_watermark.last_seq 和 sync_watermark.clear_seq 取最大值，
+  /// 确保清空消息后 seq 不会重复，也不会小于 clearSeq。
   int getNextSeq() {
     final msgResult = _db.select(
       'SELECT COALESCE(MAX(seq), 0) as max_seq FROM messages',
@@ -272,7 +288,12 @@ class MessageStore {
     );
     final wmMaxSeq = wmResult.first['max_seq'] as int;
 
-    final currentMax = msgMaxSeq > wmMaxSeq ? msgMaxSeq : wmMaxSeq;
+    final clearSeqResult = _db.select(
+      'SELECT COALESCE(MAX(clear_seq), 0) as max_clear FROM sync_watermark',
+    );
+    final clearMaxSeq = clearSeqResult.first['max_clear'] as int;
+
+    final currentMax = [msgMaxSeq, wmMaxSeq, clearMaxSeq].reduce((a, b) => a > b ? a : b);
     return currentMax + 1;
   }
 
@@ -363,21 +384,21 @@ class MessageStore {
   /// 批量标记指定员工的消息为已读（SQL 直接更新，返回受影响行数）
   ///
   /// 同时更新每条消息的 seq，使已读状态变更可通过 LSN 增量拉取同步到其他设备。
-  int markAsReadByEmployee(String employeeId) {
+  int markAsReadByEmployee(String employeeId, {String deviceId = ''}) {
     final now = DateTime.now().millisecondsSinceEpoch;
 
     // 查询需要标记已读的消息（用于后续更新 seq）
     final unreadMessages = _db.select(
-      'SELECT uuid FROM messages WHERE employee_id = ? AND role = ? AND is_read = 0 AND deleted = 0',
-      [employeeId, 'assistant'],
+      'SELECT uuid FROM messages WHERE employee_id = ? AND device_id = ? AND role = ? AND is_read = 0 AND deleted = 0',
+      [employeeId, deviceId, 'assistant'],
     );
 
     if (unreadMessages.isEmpty) return 0;
 
     // 批量更新 is_read
     _db.execute(
-      'UPDATE messages SET is_read = 1, update_time = ? WHERE employee_id = ? AND role = ? AND is_read = 0 AND deleted = 0',
-      [now, employeeId, 'assistant'],
+      'UPDATE messages SET is_read = 1, update_time = ? WHERE employee_id = ? AND device_id = ? AND role = ? AND is_read = 0 AND deleted = 0',
+      [now, employeeId, deviceId, 'assistant'],
     );
 
     // 为每条消息分配新 seq，使已读变更能被增量同步
@@ -394,7 +415,7 @@ class MessageStore {
 
     // 更新水位线
     if (maxSeq > 0) {
-      _updateWatermarkLastSeq(employeeId, maxSeq);
+      _updateWatermarkLastSeq(employeeId, maxSeq, deviceId: deviceId);
     }
 
     final result = _db.select('SELECT changes() as affected');
@@ -412,11 +433,11 @@ class MessageStore {
       'UPDATE messages SET deleted = 1, seq = ?, update_time = ? WHERE uuid = ?',
       [newSeq, now, uuid],
     );
-    // 更新 sync_watermark.last_seq（子查询获取 employeeId）
+    // 更新 sync_watermark.last_seq（子查询获取 employeeId + device_id）
     _db.execute('''
-      INSERT INTO sync_watermark (employee_id, last_seq, update_time)
-        SELECT employee_id, ?, ? FROM messages WHERE uuid = ?
-        ON CONFLICT(employee_id) DO UPDATE SET
+      INSERT INTO sync_watermark (employee_id, device_id, last_seq, update_time)
+        SELECT employee_id, COALESCE(device_id, ''), ?, ? FROM messages WHERE uuid = ?
+        ON CONFLICT(employee_id, device_id) DO UPDATE SET
           last_seq = MAX(last_seq, excluded.last_seq),
           update_time = excluded.update_time
     ''', [newSeq, now, uuid]);
@@ -426,10 +447,10 @@ class MessageStore {
   ///
   /// 将指定 employeeId 的所有消息标记为 deleted=1，
   /// 并为每条消息分配新的 seq，使删除事件能被增量拉取。
-  Future<void> softDeleteBySessionForSync(String employeeId) async {
+  Future<void> softDeleteBySessionForSync(String employeeId, {String deviceId = ''}) async {
     final messages = _db.select(
-      'SELECT uuid FROM messages WHERE employee_id = ? AND deleted = 0',
-      [employeeId],
+      'SELECT uuid FROM messages WHERE employee_id = ? AND device_id = ? AND deleted = 0',
+      [employeeId, deviceId],
     );
     final now = DateTime.now().millisecondsSinceEpoch;
     int maxSeq = 0;
@@ -442,7 +463,7 @@ class MessageStore {
       );
     }
     if (maxSeq > 0) {
-      _updateWatermarkLastSeq(employeeId, maxSeq);
+      _updateWatermarkLastSeq(employeeId, maxSeq, deviceId: deviceId);
     }
   }
 

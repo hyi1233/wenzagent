@@ -10,6 +10,8 @@ import 'migrations/v3_migration.dart';
 import 'migrations/v4_migration.dart';
 import 'migrations/v5_migration.dart';
 import 'migrations/v6_migration.dart';
+import 'migrations/v7_migration.dart';
+import 'migrations/v8_migration.dart';
 
 /// 数据库管理器
 ///
@@ -65,7 +67,7 @@ class DatabaseManager {
   bool _initialized = false;
 
   /// 当前 schema 版本号
-  static const int currentVersion = 6;
+  static const int currentVersion = 8;
 
   /// 版本迁移注册表
   ///
@@ -77,6 +79,8 @@ class DatabaseManager {
     V4Migration(),
     V5Migration(),
     V6Migration(),
+    V7Migration(),
+    V8Migration(),
   ];
 
   /// 获取数据库连接
@@ -163,8 +167,12 @@ class DatabaseManager {
         ['$deviceId-%'],
       );
       _db!.execute(
-        "DELETE FROM skills WHERE employee_id LIKE ? ESCAPE '\\'",
-        ['$deviceId-%'],
+        "DELETE FROM skills WHERE employee_id LIKE ? ESCAPE '\\' AND device_id = ?",
+        ['$deviceId-%', deviceId],
+      );
+      _db!.execute(
+        'DELETE FROM sync_watermark WHERE device_id = ?',
+        [deviceId],
       );
     }
   }

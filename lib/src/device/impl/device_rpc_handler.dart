@@ -147,6 +147,14 @@ class DeviceRpcHandler {
       return {'minSeq': minSeq};
     });
 
+    // 获取清空水位线
+    rpcServer.register(AgentRpcConfig.methodGetClearSeq, (params) async {
+      final request = GetClearSeqRequest.fromMap(params);
+      final watermarkStore = SyncWatermarkStore(deviceId: _deviceId);
+      final clearSeq = watermarkStore.getClearSeq(request.employeeId, deviceId: _deviceId) ?? 0;
+      return {'clearSeq': clearSeq};
+    });
+
     // 标记消息为已读
     rpcServer.register(AgentRpcConfig.methodMarkMessagesAsRead, (params) async {
       final request = MarkMessagesAsReadRequest.fromMap(params);
@@ -314,7 +322,7 @@ class DeviceRpcHandler {
     rpcServer.register(AgentRpcConfig.methodGetSkills, (params) async {
       final request = AgentGetSkillsRequest.fromMap(params);
       final store = SkillStore(deviceId: _deviceId);
-      final entities = await store.findByEmployeeWithDeviceId(null, request.employeeId);
+      final entities = await store.findByEmployeeWithDeviceId(_deviceId, request.employeeId);
       return {'skills': entities.map((e) => e.toMap()).toList()};
     });
 

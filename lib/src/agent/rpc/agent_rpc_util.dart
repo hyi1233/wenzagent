@@ -95,6 +95,13 @@ class AgentRpcUtil {
     return _rpcCall(AgentRpcConfig.methodGetMinSeq, request.toMap());
   }
 
+  /// 获取清空水位线
+  Future<Map<String, dynamic>> getClearSeq(
+    GetClearSeqRequest request,
+  ) async {
+    return _rpcCall(AgentRpcConfig.methodGetClearSeq, request.toMap());
+  }
+
   /// 标记消息为已读
   Future<Map<String, dynamic>> markMessagesAsRead(
     MarkMessagesAsReadRequest request,

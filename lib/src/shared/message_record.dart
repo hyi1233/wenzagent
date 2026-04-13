@@ -109,12 +109,13 @@ class MessageMapper {
 
   /// 将 ChatMessage 转换为 SQL INSERT/REPLACE 参数列表
   ///
-  /// 参数顺序与 messages 表列顺序一致（不含 json_data）。
-  static List<Object?> toSqlParams(ChatMessage msg) {
+  /// 参数顺序与 messages 表列顺序一致（含 device_id）。
+  static List<Object?> toSqlParams(ChatMessage msg, {String deviceId = ''}) {
     final record = toRecord(msg);
     return [
       record.uuid,
       record.employeeId,
+      deviceId,
       record.role,
       record.type,
       record.content,

@@ -424,6 +424,20 @@ class AgentProxy {
     return result['minSeq'] as int? ?? 0;
   }
 
+  /// 获取清空水位线
+  ///
+  /// 查询服务端是否设置了 clearSeq，如果 > 0，
+  /// 客户端应删除本地 seq < clearSeq 的所有消息。
+  Future<int> getClearSeq() async {
+    if (isLocalMode && _localAgent != null) {
+      // 本地模式：从 SyncWatermarkStore 读取
+      return 0; // 本地模式不需要此机制，清空事件通过内存事件直接传递
+    }
+    final request = GetClearSeqRequest(employeeId: employeeId);
+    final result = await _rpcUtil!.getClearSeq(request);
+    return result['clearSeq'] as int? ?? 0;
+  }
+
   /// 标记消息为已读
   ///
   /// 当用户打开会话查看消息时，通知 Agent 消息已读

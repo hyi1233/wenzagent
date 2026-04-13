@@ -809,7 +809,7 @@ class DeviceAgentManager {
       final watermarkStore = SyncWatermarkStore(deviceId: _deviceId);
       final maxSeq = _messageStoreService.getMaxSeq(employeeId);
       if (maxSeq > 0) {
-        watermarkStore.setClearSeq(employeeId, maxSeq);
+        watermarkStore.setClearSeq(employeeId, maxSeq, deviceId: _deviceId);
       }
 
       // 硬删除：直接从数据库删除会话所有消息
