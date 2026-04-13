@@ -3,7 +3,7 @@ import 'dart:convert';
 
 import 'package:uuid/uuid.dart';
 
-import '../../agent/adapter/persistent_chat_adapter.dart';
+import '../../agent/adapter/llm_chat_adapter.dart';
 import '../../agent/client/agent_proxy.dart';
 import '../../agent/client/cached_agent_proxy.dart';
 import '../../agent/entity/entity.dart';
@@ -581,8 +581,8 @@ class DeviceAgentManager {
     var agent = _localAgents[employeeId];
     if (agent != null) return agent;
 
-    final chatAdapter = PersistentChatAdapter();
-    _setupPersistCallbacks(chatAdapter, employeeId);
+    final chatAdapter = LlmChatAdapter();
+    _setupAdapter(chatAdapter, employeeId);
 
     final deviceId = employee.currentDeviceId;
     if (deviceId == null || deviceId.isEmpty) {
@@ -748,109 +748,35 @@ class DeviceAgentManager {
     return 'interval';
   }
 
-  void _setupPersistCallbacks(
-    PersistentChatAdapter adapter,
+  void _setupAdapter(
+    LlmChatAdapter adapter,
     String employeeId,
   ) {
-    adapter.persistSession = (session) async {
-      var existingSession = await _sessionManager.getSession(employeeId);
-      if (existingSession == null) return;
+    adapter.configurePersistence(
+      messageStore: _messageStoreService,
+      deviceId: _deviceId,
+    );
 
-      final title = session['title'] as String?;
-      if (title != null && title != existingSession.title) {
-        existingSession = existingSession.copyWith(
-          title: title,
-          updateTime: DateTime.now(),
-        );
-        await _sessionManager.save(existingSession);
-      }
+    adapter.shouldMarkAsRead = (empId) =>
+      _notificationManager.currentOpenSession?.employeeId == empId;
 
-      final providerConfig = session['providerConfig'];
-      final contextData = session['contextData'];
-
-      if (providerConfig != null || contextData != null) {
-        await _sessionManager.updateDeviceConfig(
-          employeeId,
-          _deviceId,
-          providerConfig: providerConfig != null
-              ? jsonEncode(providerConfig)
-              : null,
-          systemPromptOverride: null,
-        );
-      }
-    };
-
-    adapter.persistMessage = (message) async {
-      var msg = ChatMessage.fromJson(message);
-      if (msg.role == MessageRole.assistant && _notificationManager.currentOpenSession?.employeeId == employeeId) {
-        msg = msg.copyWith(isRead: true);
-      }
-      await _messageStoreService.addMessage(msg);
-    };
-
-    adapter.loadSession = (employeeId) async {
-      final session = await _sessionManager.getSession(employeeId);
-      if (session == null) return null;
-
-      final employee = await _employeeManager.getEmployee(employeeId);
-
-      final deviceConfig = session.getConfig(_deviceId);
-      return {
-        'uuid': employeeId,
-        'employeeId': session.employeeId,
-        'title': session.title,
-        'providerConfig': deviceConfig?.providerConfig != null
-            ? jsonDecode(deviceConfig!.providerConfig!)
-            : null,
-        'projectUuid': employee?.projectUuid,
-        'projectName': employee?.projectName,
-        'projectContext': employee?.projectContext,
-        'workPath': employee?.workPath,
-        'contextData': deviceConfig?.contextData != null
-            ? jsonDecode(deviceConfig!.contextData!)
-            : null,
-      };
-    };
-
-    adapter.loadMessages = (employeeId, {int? limit}) async {
-      final employee = await _employeeManager.getEmployee(employeeId);
-      final messageDeviceId = (employee?.currentDeviceId != null && employee!.currentDeviceId!.isNotEmpty)
-          ? employee.currentDeviceId
-          : _deviceId;
-
-      final messages = await _messageStoreService.getMessagesWithDeviceId(
-        messageDeviceId,
-        employeeId,
-        limit: limit,
-      );
-      return messages.map((m) => m.toJson()).toList();
-    };
-
-    adapter.updateMessageStatusCallback = (messageId, status, {error}) async {
-      await _messageStoreService.updateMessageStatus(
-        messageId,
-        MessageStatus.fromString(status),
-        error: error,
-      );
-    };
-
-    adapter.deleteMessagesCallback = (employeeId) async {
-      // 设置清空水位线，通知 Client 删除本地消息
+    // 会话清空回调：设置 clearSeq + 清理通知
+    adapter.onSessionCleared = (empId) async {
       final watermarkStore = SyncWatermarkStore(deviceId: _deviceId);
-      final maxSeq = _messageStoreService.getMaxSeq(employeeId);
+      final maxSeq = _messageStoreService.getMaxSeq(empId);
       if (maxSeq > 0) {
-        watermarkStore.setClearSeq(employeeId, maxSeq, deviceId: _deviceId);
+        watermarkStore.setClearSeq(empId, maxSeq, deviceId: _deviceId);
       }
-
-      // 硬删除：直接从数据库删除会话所有消息
-      await _messageStoreService.deleteMessages(employeeId);
-      _stateHolder.notificationHub.markAllAsRead(employeeId: employeeId);
-      _notificationManager.clearLatestMessageCache(employeeId);
+      _stateHolder.notificationHub.markAllAsRead(employeeId: empId);
+      _notificationManager.clearLatestMessageCache(empId);
     };
 
-    // 单条消息删除回调：软删除 + 更新 seq，使离线客户端可通过增量同步获知撤回
-    adapter.deleteMessageCallback = (messageId) async {
-      await _messageStoreService.softDeleteMessage(messageId);
+    // Provider 配置变更回调
+    adapter.onProviderConfigChanged = (providerConfig) async {
+      await _sessionManager.updateDeviceConfig(
+        employeeId, _deviceId,
+        providerConfig: jsonEncode(providerConfig),
+      );
     };
   }
 

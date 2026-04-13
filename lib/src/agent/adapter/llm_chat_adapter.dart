@@ -13,6 +13,7 @@ import '../tool/agent_tool.dart';
 import '../tool/cancellable_tool_executor.dart';
 import '../tool/permission_manager.dart';
 import '../tool/tool_registry.dart';
+import '../../service/message_store_service.dart';
 import '../../shared/shared.dart' as shared;
 import 'context_compressor.dart';
 import 'session_memory_manager.dart';
@@ -158,6 +159,28 @@ class LlmChatAdapter implements IChatAdapter {
 
   LlmChatAdapter();
 
+  /// 配置持久化（由 DeviceAgentManager/AgentFactoryImpl 调用）
+  void configurePersistence({
+    required MessageStoreService messageStore,
+    required String deviceId,
+  }) {
+    memoryManager.configurePersistence(messageStore: messageStore, deviceId: deviceId);
+  }
+
+  /// 设置 shouldMarkAsRead 回调（由外部注入）
+  set shouldMarkAsRead(bool Function(String employeeId)? callback) {
+    memoryManager.shouldMarkAsRead = callback;
+  }
+
+  /// 会话清空回调（由 DeviceAgentManager 注入，用于设置 clearSeq 和清理通知）
+  Future<void> Function(String employeeId)? onSessionCleared;
+
+  /// Provider 配置变更回调（由 DeviceAgentManager 注入）
+  void Function(Map<String, dynamic> providerConfig)? onProviderConfigChanged;
+
+  /// 项目 UUID 变更回调
+  void Function(String uuid)? onProjectUuidChanged;
+
   // ===== IChatAdapter 属性实现 =====
 
   String? get currentSessionUuid => currentEmployeeUuid;
@@ -187,11 +210,13 @@ class LlmChatAdapter implements IChatAdapter {
   }) async {
     currentEmployeeUuid = employeeId;
     memoryManager.getOrCreateSession(employeeId);
+    // 从 DB 分页加载全部消息，确保 AI 有完整上下文避免幻觉
+    await memoryManager.loadFromDb(employeeId);
   }
 
   @override
   Future<void> loadRemainingMessages() async {
-    // 基类无持久化，无需加载
+    // initSession 已加载全部消息，此处无需重复加载
   }
 
   @override
@@ -424,8 +449,9 @@ class LlmChatAdapter implements IChatAdapter {
   @override
   Future<void> clearCurrentSession() async {
     if (currentEmployeeUuid != null) {
-      memoryManager.clearSession(currentEmployeeUuid!);
+      await memoryManager.clearSessionFromDb(currentEmployeeUuid!);
       _compressor?.clearCache(currentEmployeeUuid!);
+      await onSessionCleared?.call(currentEmployeeUuid!);
     }
   }
 
@@ -522,7 +548,7 @@ class LlmChatAdapter implements IChatAdapter {
     AgentMessageStatus status, {
     String? error,
   }) {
-    // 内存适配器不需要持久化，子类 PersistentChatAdapter 可重写此方法
+    memoryManager.updateMessageStatusInDb(messageId, status.name, error: error);
   }
 
   @override
@@ -570,10 +596,6 @@ class LlmChatAdapter implements IChatAdapter {
   }
 
   /// 添加用户消息到会话历史
-  ///
-  /// 子类 (PersistentChatAdapter) 可覆盖此方法以在添加到内存前执行持久化，
-  /// 确保用户消息在进入 LLM 处理流程前已获得 seq 并写入数据库，
-  /// 防止客户端同步清理时误删本地临时消息。
   @protected
   Future<void> addUserMessage(MessageInput message) async {
     final id = message.id ?? const Uuid().v4();
@@ -1068,5 +1090,51 @@ class LlmChatAdapter implements IChatAdapter {
     } catch (_) {
       return {};
     }
+  }
+
+  /// 注入一条 assistant 消息到当前会话
+  Future<void> injectAssistantMessage(
+    String messageId, String content, String deviceIdentifier,
+  ) async {
+    final chatMessage = shared.ChatMessage.assistant(
+      id: messageId,
+      employeeId: currentEmployeeUuid!,
+      content: content,
+      createdAt: DateTime.now(),
+      metadata: {'status': 'completed'},
+    );
+    memoryManager.addMessage(currentEmployeeUuid!, deviceIdentifier, chatMessage);
+  }
+
+  /// 注入一条 system 消息到当前会话
+  void injectSystemMessage(
+    String messageId, String content, String deviceIdentifier,
+  ) {
+    final chatMessage = shared.ChatMessage.system(
+      id: messageId,
+      employeeId: currentEmployeeUuid!,
+      content: content,
+      createdAt: DateTime.now(),
+    ).copyWith(metadata: {'status': 'completed', 'trigger': 'scheduled_task'});
+    memoryManager.addMessage(currentEmployeeUuid!, deviceIdentifier, chatMessage);
+  }
+
+  /// 删除单条消息（从内存和数据库中删除）
+  Future<void> deleteMessage(String messageId) async {
+    final success = removeMessageFromMemory(messageId);
+    if (success) {
+      await memoryManager.softDeleteMessage(messageId);
+    }
+  }
+
+  /// 保存 Provider 配置并持久化到数据库
+  Future<void> saveProviderConfig(ProviderConfig config) async {
+    await updateProvider(config.toMap());
+    onProviderConfigChanged?.call(config.toMap());
+  }
+
+  /// 设置当前项目 UUID
+  Future<void> setCurrentProjectUuid(String uuid) async {
+    onProjectUuidChanged?.call(uuid);
   }
 }

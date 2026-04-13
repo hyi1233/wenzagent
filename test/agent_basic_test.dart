@@ -3,7 +3,7 @@ import 'dart:io';
 
 import 'package:test/test.dart';
 import 'package:uuid/uuid.dart';
-import 'package:wenzagent/src/agent/adapter/persistent_chat_adapter.dart';
+import 'package:wenzagent/src/agent/adapter/llm_chat_adapter.dart';
 import 'package:wenzagent/src/agent/agent_state.dart';
 import 'package:wenzagent/src/agent/client/agent_proxy.dart';
 import 'package:wenzagent/src/agent/client/cached_agent_proxy.dart';
@@ -73,27 +73,12 @@ void main() {
     // 每个测试前创建新的 Agent 实例
     messageStore = MessageStoreServiceImpl(deviceId: deviceId);
     
-    // 创建持久化适配器
-    final adapter = PersistentChatAdapter();
-    
-    // 设置持久化回调
-    adapter.persistMessage = (messageData) async {
-      final chatMsg = ChatMessage.fromJson(messageData as Map<String, dynamic>);
-      await messageStore.addMessage(chatMsg, deviceId: deviceId);
-    };
-    
-    adapter.loadMessages = (employeeId, {int? limit}) async {
-      final messages = await messageStore.getMessages(employeeId);
-      return messages.map((m) => m.toJson()).toList();
-    };
-    
-    adapter.updateMessageStatusCallback = (messageId, status, {error}) async {
-      await messageStore.updateMessageStatus(messageId, MessageStatus.values.byName(status), error: error);
-    };
-    
-    adapter.deleteMessagesCallback = (employeeId) async {
-      await messageStore.deleteMessages(employeeId, deviceId: deviceId);
-    };
+    // 创建适配器并配置持久化
+    final adapter = LlmChatAdapter();
+    adapter.configurePersistence(
+      messageStore: messageStore,
+      deviceId: deviceId,
+    );
     
     // 创建 Agent
     agent = AgentImpl(

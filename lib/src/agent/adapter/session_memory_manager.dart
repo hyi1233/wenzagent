@@ -1,5 +1,6 @@
 ﻿import 'package:uuid/uuid.dart';
 
+import '../../service/message_store_service.dart';
 import '../../shared/shared.dart';
 
 /// 会话消息历史
@@ -52,6 +53,11 @@ class SessionHistory {
   /// [metadata] 可选的元数据，用于携带额外信息（如 toolName）
   void addMessage(String deviceId, ChatMessage message) {
     messagesMap.putIfAbsent(deviceId, () => []).add(message);
+  }
+
+  /// 按时间升序排列指定设备的消息
+  void sortMessages(String deviceId) {
+    messagesMap[deviceId]?.sort((a, b) => a.createdAt.compareTo(b.createdAt));
   }
 
   /// 添加 ChatMessage 到指定设备（与 addMessage 相同，保留语义）
@@ -141,6 +147,24 @@ class SessionMemoryManager {
   /// 会话历史映射（key: employeeId）
   final Map<String, SessionHistory> _sessions = {};
 
+  MessageStoreService? _messageStore;
+  String? _deviceId;
+
+  /// 判断是否已配置持久化
+  bool get isPersisted => _messageStore != null;
+
+  /// isRead 判断回调（由外部注入，用于 assistant 消息立即标记已读）
+  bool Function(String employeeId)? shouldMarkAsRead;
+
+  /// 配置持久化（由 DeviceAgentManager/AgentFactoryImpl 调用）
+  void configurePersistence({
+    required MessageStoreService messageStore,
+    required String deviceId,
+  }) {
+    _messageStore = messageStore;
+    _deviceId = deviceId;
+  }
+
   /// 获取或创建会话历史
   SessionHistory getOrCreateSession(
     String employeeId, {
@@ -198,6 +222,15 @@ class SessionMemoryManager {
     if (session != null) {
       session.addMessage(deviceId, message);
     }
+    // 同步写入 DB
+    if (_messageStore != null && _deviceId != null) {
+      var msgToSave = message;
+      if (message.role == MessageRole.assistant &&
+          shouldMarkAsRead?.call(employeeId) == true) {
+        msgToSave = message.copyWith(isRead: true);
+      }
+      _messageStore!.addMessage(msgToSave, deviceId: _deviceId!);
+    }
   }
 
   /// 清空会话消息
@@ -242,6 +275,63 @@ class SessionMemoryManager {
     }
 
     return messages;
+  }
+
+  /// 从 DB 加载消息到内存（初始化时调用）
+  ///
+  /// [limit] 限制加载条数；为 null 时通过分页加载全部消息。
+  Future<void> loadFromDb(String employeeId, {int? limit}) async {
+    if (_messageStore == null || _deviceId == null) return;
+    final session = getOrCreateSession(employeeId);
+
+    if (limit != null) {
+      final messages = await _messageStore!.getMessagesWithDeviceId(
+        _deviceId!, employeeId, limit: limit,
+      );
+      for (final msg in messages) {
+        session.addMessage(_deviceId!, msg);
+      }
+    } else {
+      // 分页加载全部消息，避免单次查询过大
+      const pageSize = 200;
+      int offset = 0;
+      while (true) {
+        final messages = await _messageStore!.getMessagesWithDeviceId(
+          _deviceId!, employeeId, limit: pageSize, offset: offset,
+        );
+        if (messages.isEmpty) break;
+        for (final msg in messages) {
+          session.addMessage(_deviceId!, msg);
+        }
+        if (messages.length < pageSize) break;
+        offset += pageSize;
+      }
+    }
+
+    // 按时间排序，确保消息顺序正确
+    session.sortMessages(_deviceId!);
+  }
+
+  /// 清空会话（内存 + DB）
+  Future<void> clearSessionFromDb(String employeeId) async {
+    clearSession(employeeId);
+    if (_messageStore != null) {
+      await _messageStore!.deleteMessages(employeeId, deviceId: _deviceId);
+    }
+  }
+
+  /// 更新消息状态（写 DB）
+  Future<void> updateMessageStatusInDb(
+    String messageId, String status, {String? error}
+  ) async {
+    await _messageStore?.updateMessageStatus(
+      messageId, MessageStatus.fromString(status), error: error,
+    );
+  }
+
+  /// 软删除消息（写 DB）
+  Future<void> softDeleteMessage(String messageId) async {
+    await _messageStore?.softDeleteMessage(messageId);
   }
 
   /// 清理所有会话

@@ -3,7 +3,7 @@ import 'dart:convert';
 
 import 'package:uuid/uuid.dart';
 
-import '../agent/adapter/persistent_chat_adapter.dart';
+import '../agent/adapter/llm_chat_adapter.dart';
 import '../agent/entity/entity.dart';
 import '../agent/i_agent.dart';
 import '../agent/impl/agent_impl.dart';
@@ -11,7 +11,6 @@ import '../agent/tool/builtin/schedule_task_tool.dart';
 import '../agent/tool/permission_rule.dart';
 import '../persistence/persistence.dart';
 import 'employee_manager.dart';
-import 'session_manager.dart';
 import 'message_store_service.dart';
 import 'skill_manager.dart';
 import 'scheduled_task_manager.dart';
@@ -62,26 +61,18 @@ abstract class AgentFactory {
 class AgentFactoryImpl implements AgentFactory {
   final Map<String, IAgent> _agents = {};
   final EmployeeManager _employeeManager;
-  final SessionManager _sessionManager;
   final MessageStoreService _messageStore;
   final ScheduledTaskManager? _scheduledTaskManager;
-
-  /// 判断消息是否应直接写入已读状态的回调
-  ///
-  /// 由 DeviceClientImpl 注入，用于在消息持久化时判断当前会话是否打开。
-  bool Function(String employeeId)? shouldMarkMessageAsRead;
 
   final _lifecycleController =
       StreamController<AgentLifecycleEvent>.broadcast();
 
   AgentFactoryImpl({
     required EmployeeManager employeeManager,
-    required SessionManager sessionManager,
     required MessageStoreService messageStore,
     required SkillManager skillManager,
     ScheduledTaskManager? scheduledTaskManager,
   })  : _employeeManager = employeeManager,
-       _sessionManager = sessionManager,
        _messageStore = messageStore,
        _scheduledTaskManager = scheduledTaskManager;
 
@@ -112,9 +103,12 @@ class AgentFactoryImpl implements AgentFactory {
       throw StateError('员工 $employeeId 的 currentDeviceId 为空，无法创建 Agent');
     }
 
-    // 创建PersistentChatAdapter并设置持久化回调
-    final chatAdapter = PersistentChatAdapter();
-    _setupPersistCallbacks(chatAdapter, employeeId);
+    // 创建LlmChatAdapter并配置持久化
+    final chatAdapter = LlmChatAdapter();
+    chatAdapter.configurePersistence(
+      messageStore: _messageStore,
+      deviceId: deviceId,
+    );
 
     // 创建Agent
     agent = AgentImpl(employeeId: employeeId, deviceId: deviceId, chatAdapter: chatAdapter);
@@ -262,71 +256,6 @@ class AgentFactoryImpl implements AgentFactory {
       } catch (e) {
         print('[AgentFactory] Failed to save permission config: $e');
       }
-    };
-  }
-
-  void _setupPersistCallbacks(
-    PersistentChatAdapter adapter,
-    String employeeId,
-  ) {
-    // 持久化会话回调
-    adapter.persistSession = (session) async {
-      var existingSession = await _sessionManager.getSession(employeeId);
-      existingSession ??= await _sessionManager.getOrCreateSession(
-          employeeId,
-        );
-
-      // 更新标题
-      final title = session['title'] as String?;
-      if (title != null && title != existingSession.title) {
-        existingSession = existingSession.copyWith(
-          title: title,
-          updateTime: DateTime.now(),
-        );
-        await _sessionManager.save(existingSession);
-      }
-      // 注意：设备配置更新由DeviceClient负责，这里只更新标题
-    };
-
-    // 持久化消息回调
-    adapter.persistMessage = (message) async {
-      // 使用 fromMessageMap 将整个 Map 序列化为 JSON 字符串存入数据库
-      var msg = ChatMessage.fromJson(message);
-      // 如果当前正在查看该会话，直接写入已读状态（避免重启后因 DB 未更新而误显示未读）
-      if (msg.role == MessageRole.assistant && shouldMarkMessageAsRead?.call(employeeId) == true) {
-        msg = msg.copyWith(isRead: true);
-      }
-      await _messageStore.addMessage(msg);
-    };
-
-    // 加载会话回调
-    adapter.loadSession = (employeeId) async {
-      final session = await _sessionManager.getSession(employeeId);
-      if (session == null) return null;
-
-      // 返回基本会话数据（不包含设备特定配置）
-      return {
-        'uuid': employeeId, // 兼容旧格式
-        'employeeId': session.employeeId,
-        'title': session.title,
-        // 设备配置由DeviceClient负责
-      };
-    };
-
-    // 加载消息回调
-    adapter.loadMessages = (employeeId, {int? limit}) async {
-      final messages = await _messageStore.getMessages(employeeId, limit: limit);
-      // 优先从 jsonData 无损还原完整消息数据
-      return messages.map((m) => m.toJson()).toList();
-    };
-
-    // 更新消息状态回调
-    adapter.updateMessageStatusCallback = (messageId, status, {error}) async {
-      await _messageStore.updateMessageStatus(
-        messageId,
-        MessageStatus.fromString(status),
-        error: error,
-      );
     };
   }
 

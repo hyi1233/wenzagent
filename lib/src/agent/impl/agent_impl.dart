@@ -132,8 +132,8 @@ class AgentImpl implements IAgent {
   }) async {
     final eid = employeeId ?? this.employeeId;
 
-    // 初始化适配器：恢复 session 配置 + 加载最近 10 条消息（快速）
-    await _chatAdapter.initSession(employeeId: eid, recentLimit: 10);
+    // 初始化适配器：恢复 session 配置 + 分页加载全部消息
+    await _chatAdapter.initSession(employeeId: eid);
 
     // 注册内置工具（可选）
     if (enableBuiltinTools) {
@@ -217,17 +217,9 @@ class AgentImpl implements IAgent {
       _syncProcessorStatus(processorStatus);
     };
 
-    // 消息完成前回调：等待持久化队列中所有消息任务落盘，
-    // 确保 Client 增量拉取时消息已写入数据库、seq 已分配。
-    // （修复 async* generator 被取消导致 post-loop 持久化代码不执行的问题）
+    // 消息完成前回调：消息已通过 memoryManager.addMessage 同步持久化，无需等待
     _processor!.onBeforeMessageCompleted = () async {
-      if (_chatAdapter case final PersistentChatAdapter adapter) {
-        final pq = adapter.persistenceQueue;
-        if (pq.isProcessing || pq.queueLength > 0) {
-          print('[AgentImpl] onBeforeMessageCompleted: 等待持久化队列完成...');
-          await pq.waitForAll(timeout: const Duration(seconds: 10));
-        }
-      }
+      // no-op: addMessage 已同步写 DB
     };
 
     // 监听消息处理状态变更
@@ -823,12 +815,11 @@ class AgentImpl implements IAgent {
       await _processor?.revokeMessage(messageId);
     }
 
-    // 从内存和数据库中删除消息（通过 deleteMessageCallback 软删除 + 更新 seq）
-    final adapter = _chatAdapter;
-    if (adapter is PersistentChatAdapter) {
+    // 从内存和数据库中删除消息
+    if (_chatAdapter case final LlmChatAdapter adapter) {
       await adapter.deleteMessage(messageId);
     } else {
-      adapter.removeMessageFromMemory(messageId);
+      _chatAdapter.removeMessageFromMemory(messageId);
     }
   }
 
@@ -895,11 +886,7 @@ class AgentImpl implements IAgent {
   Future<void> setProvider(ProviderConfig providerConfig) async {
     _touch();
     await _withLock(() async {
-      if (_chatAdapter case final PersistentChatAdapter adapter) {
-        await adapter.saveProviderConfig(providerConfig);
-      } else {
-        await _chatAdapter.updateProvider(providerConfig.toMap());
-      }
+      await _chatAdapter.updateProvider(providerConfig.toMap());
     });
   }
 
@@ -1270,9 +1257,8 @@ class AgentImpl implements IAgent {
     if (_status == AgentStatus.disposed) return;
 
     // 1. 写入 adapter session + 持久化（等待持久化完成后再广播）
-    //    【修复】确保消息已落盘、seq 已分配，避免客户端增量拉取时消息尚未持久化。
-    if (_chatAdapter is PersistentChatAdapter) {
-      await _chatAdapter.injectAssistantMessage(messageId, content, 'default');
+    if (_chatAdapter case final LlmChatAdapter adapter) {
+      await adapter.injectAssistantMessage(messageId, content, 'default');
     }
 
     // 2. 广播 completed 事件（UI 监听此事件渲染消息）
@@ -1303,8 +1289,8 @@ class AgentImpl implements IAgent {
         ? '【定时任务：$taskName】\n$taskContent'
         : '【定时任务触发】\n$taskContent';
 
-    if (_chatAdapter is PersistentChatAdapter) {
-      _chatAdapter.injectSystemMessage(
+    if (_chatAdapter case final LlmChatAdapter adapter) {
+      adapter.injectSystemMessage(
         systemMsgId,
         systemContent,
         'default',
@@ -1347,9 +1333,9 @@ class AgentImpl implements IAgent {
     final msgId = const Uuid().v4();
     final now = DateTime.now();
 
-    // 【修复】等待持久化完成后再广播，确保消息已落盘、seq 已分配
-    if (_chatAdapter is PersistentChatAdapter) {
-      await _chatAdapter.injectAssistantMessage(
+    // 等待持久化完成后再广播，确保消息已落盘、seq 已分配
+    if (_chatAdapter case final LlmChatAdapter adapter) {
+      await adapter.injectAssistantMessage(
         msgId,
         content,
         'system',
