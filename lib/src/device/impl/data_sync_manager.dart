@@ -239,9 +239,20 @@ class DataSyncManager {
 
   /// 删除会话并同步到其他设备
   Future<void> deleteSessionWithSync(String employeeId) async {
+    // 先获取会话数据（删除前 getSession 可查到），用于广播
+    final session = await _sessionManager.getSession(employeeId);
+    // 软删除：设置 deleted=1、deleteTime=now
     await _sessionManager.deleteSession(employeeId);
     _agentManager.destroyAgentProxy(employeeId);
-    _syncDeleteToDevices(employeeId);
+    // 广播软删除的会话数据到其他设备（含 deleted=1 和 deleteTime）
+    // 使用 methodSyncSessions 让远端执行 deleteTime 合并，保证一致性
+    if (session != null) {
+      _syncSessionDeleteToDevices(session.copyWith(
+        deleted: 1,
+        deleteTime: DateTime.now(),
+        updateTime: DateTime.now(),
+      ));
+    }
   }
 
   // ===== 内部实现 =====
@@ -283,10 +294,11 @@ class DataSyncManager {
     for (final device in devices) {
       if (device.id == _deviceId) continue;
       try {
+        // 请求包含已删除的会话，以便正确同步删除状态
         final result = await _connectionManager.invokeRemote(
           device.id,
           HostRpcConfig.methodGetSessions,
-          {},
+          {'includeDeleted': true},
         );
         for (final data in (result['sessions'] as List? ?? [])) {
           final session = AiEmployeeSessionEntity.fromMap(
@@ -331,18 +343,24 @@ class DataSyncManager {
     });
   }
 
-  /// 将删除同步到所有在线设备
-  void _syncDeleteToDevices(String employeeId) {
+  /// 将会话删除同步到所有在线设备
+  ///
+  /// 广播软删除的会话数据（含 deleted=1 和 deleteTime），
+  /// 让其他设备通过 methodSyncSessions 执行 deleteTime 合并。
+  void _syncSessionDeleteToDevices(AiEmployeeSessionEntity session) {
     Future(() async {
       if (!_connectionManager.isConnected) return;
       try {
-        for (final device in await _deviceRegistry.getOnlineDevices()) {
+        final devices = await _deviceRegistry.getOnlineDevices();
+        for (final device in devices) {
           if (device.id == _deviceId) continue;
           try {
             await _connectionManager.invokeRemote(
               device.id,
-              HostRpcConfig.methodDeleteSession,
-              {'employeeId': employeeId},
+              HostRpcConfig.methodSyncSessions,
+              {
+                'sessions': [session.toMap()],
+              },
             );
           } catch (_) {}
         }

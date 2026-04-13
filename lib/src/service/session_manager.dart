@@ -42,6 +42,7 @@ abstract class SessionManager {
   /// 获取所有Session列表（用于显示会话列表）
   Future<List<AiEmployeeSessionEntity>> getAllSessions({
     bool includeArchived = false,
+    bool includeDeleted = false,
   });
 
   /// 更新设备配置（通过session.config[deviceId]访问）
@@ -102,8 +103,9 @@ class SessionManagerImpl implements SessionManager {
   @override
   Future<List<AiEmployeeSessionEntity>> getAllSessions({
     bool includeArchived = false,
+    bool includeDeleted = false,
   }) async {
-    return _sessionStore.findAll(includeArchived: includeArchived);
+    return _sessionStore.findAll(includeArchived: includeArchived, includeDeleted: includeDeleted);
   }
 
   @override

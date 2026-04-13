@@ -198,6 +198,26 @@ class DeviceMessageHandler {
               _notificationManager.updateLatestMessageCache(employeeId, fromDeviceId, remoteMsg);
             }
           }
+
+          // 远程设备发送消息时，更新最新消息缓存，让会话列表实时显示
+          if (status == 'queued' && messageId != null) {
+            final isLocal = fromDeviceId == _deviceId;
+            if (!isLocal) {
+              final content = data['content'] as String?;
+              if (content != null && content.isNotEmpty) {
+                final remoteMsg = AgentMessage(
+                  id: messageId,
+                  role: data['role'] as String? ?? 'user',
+                  type: data['type'] as String? ?? 'text',
+                  content: content,
+                  createdAt: DateTime.now(),
+                  status: status,
+                  metadata: Map<String, dynamic>.from(data),
+                );
+                _notificationManager.updateLatestMessageCache(employeeId, fromDeviceId, remoteMsg);
+              }
+            }
+          }
         }
 
         if (eventType == AgentEventType.agentStatusChanged) {
@@ -253,6 +273,14 @@ class DeviceMessageHandler {
               }
             });
           }
+        }
+
+        // 会话清空事件：清除未读计数和最新消息缓存
+        if (eventType == AgentEventType.sessionCleared) {
+          _stateHolder.notificationHub.markAllAsRead(
+            employeeId: employeeId,
+          );
+          _notificationManager.clearLatestMessageCache(employeeId);
         }
       }
     } catch (_) {}

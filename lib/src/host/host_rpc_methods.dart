@@ -104,8 +104,10 @@ void registerHostRpcMethods({
 
   // 获取会话列表
   rpcServer.register(HostRpcConfig.methodGetSessions, (params) async {
+    final includeDeleted = params['includeDeleted'] as bool? ?? false;
     final sessions = await sessionManager.getAllSessions(
       includeArchived: params['includeArchived'] as bool? ?? false,
+      includeDeleted: includeDeleted,
     );
     return {'sessions': sessions.map((s) => s.toMap()).toList()};
   });

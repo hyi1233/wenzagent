@@ -553,8 +553,10 @@ class DeviceRpcHandler {
     // 会话管理方法
     rpcServer.register(HostRpcConfig.methodGetSessions, (params) async {
       final request = GetSessionsRequest.fromMap(params);
+      final includeDeleted = params['includeDeleted'] as bool? ?? false;
       final sessions = await _sessionManager.getAllSessions(
         includeArchived: request.includeArchived,
+        includeDeleted: includeDeleted,
       );
       return {'sessions': sessions.map((s) => s.toMap()).toList()};
     });
