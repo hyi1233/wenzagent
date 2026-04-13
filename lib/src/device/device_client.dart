@@ -454,8 +454,16 @@ class DeviceClient {
         autoCreateSession: autoCreateSession,
       );
 
-  Future<void> destroyAgentProxy(String employeeId) =>
-      _agentManager.destroyAgentProxy(employeeId);
+  Future<void> destroyAgentProxy(
+    String employeeId, {
+    String? targetDeviceId,
+    bool keepLocalAgent = false,
+  }) =>
+      _agentManager.destroyAgentProxy(
+        employeeId,
+        targetDeviceId: targetDeviceId,
+        keepLocalAgent: keepLocalAgent,
+      );
 
   CachedAgentProxy? getAgentProxy(String employeeId) =>
       _agentManager.getAgentProxy(employeeId);

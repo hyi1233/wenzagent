@@ -98,6 +98,13 @@ class CachedAgentProxy {
   /// 是否已释放
   bool _isDisposed = false;
 
+  /// 会话清空标志：sessionCleared 事件处理中设为 true，
+  /// 防止 _debouncedSyncMessages 在清空后立即重新同步消息
+  bool _sessionClearPending = false;
+
+  /// 会话清空保护定时器：清空后短时间内跳过消息同步
+  Timer? _sessionClearGuardTimer;
+
   /// 是否已释放
   bool get isDisposed => _isDisposed;
 
@@ -628,6 +635,14 @@ class CachedAgentProxy {
 
     print('[CachedAgentProxy] 收到会话清空事件: employeeId=$_employeeId');
 
+    // 设置清空保护标志，防止 idle 状态触发的 _debouncedSyncMessages 重新同步消息
+    _sessionClearPending = true;
+    _sessionClearGuardTimer?.cancel();
+    _sessionClearGuardTimer = Timer(const Duration(seconds: 2), () {
+      _sessionClearPending = false;
+      _sessionClearGuardTimer = null;
+    });
+
     _pendingPermissionRequests.clear();
     await _messageStore.deleteMessages(_employeeId, deviceId: _deviceId);
     _messageStore.resetLastSeq(_employeeId, 0);
@@ -639,6 +654,12 @@ class CachedAgentProxy {
   /// 处理状态变更
   void _handleStateChange(AgentStateSnapshot state) {
     print('[CachedAgentProxy] 状态变更: ${state.status}');
+
+    // 会话清空保护期内，跳过消息同步
+    if (_sessionClearPending) {
+      print('[CachedAgentProxy] 会话清空保护期内，跳过状态变更同步');
+      return;
+    }
 
     // 根据状态决定是否触发消息同步
     if (state.status == AgentStatus.idle) {
@@ -672,9 +693,16 @@ class CachedAgentProxy {
 
   /// 去抖同步远程消息（500ms 内只触发一次，避免短时间内多次调用）
   void _debouncedSyncMessages() {
+    // 会话清空保护期内，跳过消息同步
+    if (_sessionClearPending) {
+      print('[CachedAgentProxy] 会话清空保护期内，跳过去抖同步');
+      return;
+    }
     _syncDebounceTimer?.cancel();
     _syncDebounceTimer = Timer(const Duration(milliseconds: 500), () {
-      _syncMessagesFromRemote();
+      if (!_sessionClearPending) {
+        _syncMessagesFromRemote();
+      }
     });
   }
 
@@ -1563,6 +1591,7 @@ class CachedAgentProxy {
     // 取消去抖定时器
     _syncDebounceTimer?.cancel();
     _notifyDebounceTimer?.cancel();
+    _sessionClearGuardTimer?.cancel();
 
     // 取消事件订阅
     await _eventSubscription?.cancel();

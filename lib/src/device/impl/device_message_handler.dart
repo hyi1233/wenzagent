@@ -5,6 +5,8 @@ import '../../agent/entity/agent_event.dart';
 import '../../agent/entity/agent_message.dart';
 import '../../entity/lan_device_info.dart';
 import '../../entity/lan_message.dart';
+import '../../persistence/persistence.dart';
+import '../../service/service.dart';
 import '../device_client.dart';
 import 'device_agent_manager.dart';
 import 'device_connection_manager.dart';
@@ -182,7 +184,7 @@ class DeviceMessageHandler {
             if (!isLocal) {
               final remoteMsg = AgentMessage(
                 id: messageId,
-                role: 'assistant',
+                role: data['role'] as String? ?? 'assistant',
                 type: data['type'] as String? ?? 'text',
                 content: data['content'] as String?,
                 createdAt: DateTime.now(),
@@ -213,6 +215,13 @@ class DeviceMessageHandler {
                   createdAt: DateTime.now(),
                   status: status,
                   metadata: Map<String, dynamic>.from(data),
+                );
+                // 通知 notificationHub，让会话列表实时更新最新消息
+                _stateHolder.notificationHub.onRemoteMessage(
+                  message: remoteMsg,
+                  fromDeviceId: fromDeviceId,
+                  toDeviceId: _deviceId,
+                  employeeId: employeeId,
                 );
                 _notificationManager.updateLatestMessageCache(employeeId, fromDeviceId, remoteMsg);
               }
@@ -275,12 +284,14 @@ class DeviceMessageHandler {
           }
         }
 
-        // 会话清空事件：清除未读计数和最新消息缓存
+        // 会话清空事件：清除未读计数、最新消息缓存，并同步消息（清除本地消息）
         if (eventType == AgentEventType.sessionCleared) {
           _stateHolder.notificationHub.markAllAsRead(
             employeeId: employeeId,
           );
           _notificationManager.clearLatestMessageCache(employeeId);
+          // 触发增量同步，清除本地消息并更新水位线
+          _syncAfterSessionCleared(employeeId, fromDeviceId);
         }
       }
     } catch (_) {}
@@ -423,6 +434,41 @@ class DeviceMessageHandler {
         });
       }
     } catch (_) {}
+  }
+
+  /// 会话清空后，触发增量同步以清除本地消息并更新水位线
+  void _syncAfterSessionCleared(String employeeId, String fromDeviceId) {
+    Future(() async {
+      try {
+        // 尝试通过已有的 AgentProxy 增量同步
+        var proxy = _agentManager.getAgentProxy(employeeId);
+        if (proxy != null) {
+          await proxy.syncWithRemote();
+          print('[DeviceMessageHandler] 会话清空后增量同步完成(已有proxy): employeeId=$employeeId');
+          return;
+        }
+
+        // 没有代理时，直接清除本地消息并更新水位线
+        // sessionCleared 事件本身就意味着所有消息已被清除
+        try {
+          final messageStore = MessageStoreService.getInstance(_deviceId);
+          final watermarkStore = SyncWatermarkStore(deviceId: _deviceId);
+
+          // 先获取当前最大seq，然后设置为clearSeq
+          final maxSeq = messageStore.getMaxSeq(employeeId);
+          if (maxSeq > 0) {
+            watermarkStore.setClearSeq(employeeId, maxSeq, deviceId: _deviceId);
+          }
+          // 删除本地消息
+          await messageStore.deleteMessages(employeeId);
+          print('[DeviceMessageHandler] 会话清空后直接清除完成: employeeId=$employeeId, clearSeq=$maxSeq');
+        } catch (e) {
+          print('[DeviceMessageHandler] 会话清空后直接清除失败: employeeId=$employeeId, $e');
+        }
+      } catch (e) {
+        print('[DeviceMessageHandler] 会话清空后增量同步失败: employeeId=$employeeId, $e');
+      }
+    });
   }
 
   void _handleUnreceivedMessagesBatch(LanMessage msg) {

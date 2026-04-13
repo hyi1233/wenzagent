@@ -243,32 +243,56 @@ class DeviceAgentManager {
   }
 
   /// 销毁 AgentProxy（同时清理本地和远程代理缓存）
-  Future<void> destroyAgentProxy(String employeeId) async {
+  ///
+  /// [targetDeviceId] 可选参数，如果指定，则只销毁指向该设备的远程代理。
+  /// 不指定时，销毁所有代理（向后兼容）。
+  ///
+  /// [keepLocalAgent] 如果为 true，保留本地 Agent 实例和事件订阅不销毁。
+  /// 用于设备切换场景：切换设备时只需要清理远程代理缓存，不中断本地运行的 Agent。
+  Future<void> destroyAgentProxy(String employeeId, {
+    String? targetDeviceId,
+    bool keepLocalAgent = false,
+  }) async {
     // 清理本地代理
-    final localProxy = _localProxies.remove(employeeId);
-    if (localProxy != null) {
-      await localProxy.dispose();
+    if (!keepLocalAgent) {
+      final localProxy = _localProxies.remove(employeeId);
+      if (localProxy != null) {
+        await localProxy.dispose();
+      }
+
+      // 清理本地 Agent 实例
+      final agent = _localAgents.remove(employeeId);
+      if (agent != null) {
+        await agent.dispose();
+      }
+
+      _agentEventSubscriptions[employeeId]?.cancel();
+      _agentEventSubscriptions.remove(employeeId);
+    } else {
+      // keepLocalAgent=true：只清理本地代理缓存（UI层），保留 Agent 实例和事件订阅
+      _localProxies.remove(employeeId);
     }
 
-    // 清理所有远程代理（不同 targetDeviceId 下可能有多个缓存）
-    final remoteKeysToRemove = _remoteProxies.keys
-        .where((key) => key.endsWith(':$employeeId'))
-        .toList();
-    for (final key in remoteKeysToRemove) {
+    // 清理远程代理
+    if (targetDeviceId != null) {
+      // 只销毁指向指定设备的远程代理
+      final key = '$targetDeviceId:$employeeId';
       final remoteProxy = _remoteProxies.remove(key);
       if (remoteProxy != null) {
         await remoteProxy.dispose();
       }
+    } else {
+      // 清理所有远程代理（不同 targetDeviceId 下可能有多个缓存）
+      final remoteKeysToRemove = _remoteProxies.keys
+          .where((key) => key.endsWith(':$employeeId'))
+          .toList();
+      for (final key in remoteKeysToRemove) {
+        final remoteProxy = _remoteProxies.remove(key);
+        if (remoteProxy != null) {
+          await remoteProxy.dispose();
+        }
+      }
     }
-
-    // 清理本地 Agent 实例
-    final agent = _localAgents.remove(employeeId);
-    if (agent != null) {
-      await agent.dispose();
-    }
-
-    _agentEventSubscriptions[employeeId]?.cancel();
-    _agentEventSubscriptions.remove(employeeId);
   }
 
   /// 获取已创建的 AgentProxy
