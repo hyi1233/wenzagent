@@ -15,6 +15,7 @@ import '../tool/permission_manager.dart';
 import '../tool/tool_registry.dart';
 import '../../service/message_store_service.dart';
 import '../../shared/shared.dart' as shared;
+import '../../utils/logger.dart';
 import 'context_compressor.dart';
 import 'session_memory_manager.dart';
 
@@ -115,6 +116,8 @@ class _ToolExecSummary {
 /// 使用 llm_dart 库实现 IChatAdapter 接口，
 /// 支持 OpenAI、Anthropic、Google AI、Ollama 等多种 LLM 提供商。
 class LlmChatAdapter implements IChatAdapter {
+  static final _log = Logger('LlmChatAdapter');
+
   /// llm_dart ChatCapability 实例
   llm.ChatCapability? _chatCapability;
 
@@ -225,7 +228,7 @@ class LlmChatAdapter implements IChatAdapter {
     CancellationToken? cancellationToken,
   }) {
     final controller = StreamController<StreamResponse>();
-    print('[LlmChatAdapter] stream start, model: ${_providerConfig?.model}');
+    _log.debug('stream start, model: ${_providerConfig?.model}');
     () async {
       // 前置校验
       final error = _validateStreamReady();
@@ -307,18 +310,16 @@ class LlmChatAdapter implements IChatAdapter {
                 ),
               );
             }
-            print('[LlmChatAdapter] tool use empty, stop tool calling loop');
+            _log.info('tool use empty, stop tool calling loop');
             if (llmResult.isDone) {
-              print(
-                '[LlmChatAdapter] ai call tool done: ${llmResult.aiContentBuffer.toString()}',
-              );
+              _log.debug('ai call tool done: ${llmResult.aiContentBuffer.toString()}');
               break;
             } else {
               if (notReplyRecord.tooLongNotReply()) {
-                print('[LlmChatAdapter] ai not reply, too long no reply:${notReplyRecord.notReplyCount}');
+                _log.warn('ai not reply, too long no reply:${notReplyRecord.notReplyCount}');
                 break;
               }
-              print('[LlmChatAdapter] ai not reply, wait for ai reply');
+              _log.debug('ai not reply, wait for ai reply');
               await Future.delayed(Duration(seconds: 3));
               continue;
             }
@@ -399,19 +400,17 @@ class LlmChatAdapter implements IChatAdapter {
                 '已达到最大工具调用轮次（$_maxToolCallIterations 次），请尝试简化您的需求或拆分为多个问题',
               ),
             );
-            print(
-              '[LlmChatAdapter] ERROR: 已达到最大工具调用轮次（$_maxToolCallIterations 次），请尝试简化您的需求或拆分为多个问题',
-            );
+            _log.error('已达到最大工具调用轮次（$_maxToolCallIterations 次），请尝试简化您的需求或拆分为多个问题');
             return;
           }
         }
 
         controller.add(StreamResponse.done());
-        print('[LlmChatAdapter] done');
+        _log.debug('stream done');
       } catch (e) {
         controller.add(StreamResponse.error('LLM 请求失败: $e'));
 
-        print('[LlmChatAdapter] ERROR: $e');
+        _log.error('stream error', e);
       } finally {
         cancelSubscription?.cancel();
         _isStreaming = false;
@@ -471,15 +470,13 @@ class LlmChatAdapter implements IChatAdapter {
   @override
   bool removeMessageFromMemory(String messageId) {
     if (currentEmployeeUuid == null) {
-      print(
-        '[LlmChatAdapter] removeMessageFromMemory: currentEmployeeUuid is null',
-      );
+      _log.warn('removeMessageFromMemory: currentEmployeeUuid is null');
       return false;
     }
 
     final session = memoryManager.getSession(currentEmployeeUuid!);
     if (session == null) {
-      print('[LlmChatAdapter] removeMessageFromMemory: session not found');
+      _log.warn('removeMessageFromMemory: session not found');
       return false;
     }
 
@@ -489,15 +486,13 @@ class LlmChatAdapter implements IChatAdapter {
   @override
   Future<void> updateProvider(Map<String, dynamic> providerConfig) async {
     final config = ProviderConfig.fromMap(providerConfig);
-    print(
-      '[LlmChatAdapter] parsed config: provider=${config.provider}, model=${config.model}, baseUrl=${config.baseUrl}',
-    );
+    _log.debug('parsed config: provider=${config.provider}, model=${config.model}, baseUrl=${config.baseUrl}');
     config.validate();
-    print('[LlmChatAdapter] config validated successfully');
+    _log.debug('config validated successfully');
 
     _chatCapability = await _buildChatCapability(config);
     _providerConfig = config;
-    print('[LlmChatAdapter] _chatCapability created: $_chatCapability');
+    _log.debug('_chatCapability created: $_chatCapability');
 
     // 配置上下文压缩器
     final compression = config.compressionConfig;
@@ -584,15 +579,15 @@ class LlmChatAdapter implements IChatAdapter {
   /// 前置校验，返回 null 表示通过，否则返回错误信息
   String? _validateStreamReady() {
     if (_chatCapability == null) {
-      print('[LlmChatAdapter] ERROR: _chatCapability is null');
+      _log.error('_chatCapability is null');
       return '未配置 LLM Provider，请先调用 updateProvider()';
     }
     if (_isStreaming) {
-      print('[LlmChatAdapter] ERROR: already streaming');
+      _log.error('already streaming');
       return '正在处理中，请等待当前请求完成';
     }
     if (currentEmployeeUuid == null) {
-      print('[LlmChatAdapter] ERROR: currentEmployeeUuid is null');
+      _log.error('currentEmployeeUuid is null');
       return '未初始化会话，请先调用 initSession()';
     }
     return null;
@@ -611,7 +606,7 @@ class LlmChatAdapter implements IChatAdapter {
     final session = memoryManager.getSession(currentEmployeeUuid!);
     if (session != null && session.allMessages.any((m) => m.id == id)) {
       session.removeMessage(id);
-      print('[LlmChatAdapter] 用户消息已从内存移除，准备重新持久化: $id');
+      _log.debug('用户消息已从内存移除，准备重新持久化: $id');
     }
 
     // 用当前时间创建消息，确保 createdAt 和 seq 反映实际发送顺序
@@ -679,11 +674,9 @@ class LlmChatAdapter implements IChatAdapter {
       llmTools = null;
     }
     if (hasTools) {
-      print('[LlmChatAdapter] 已注册工具列表 (${_toolRegistry!.length} 个):');
+      _log.debug('已注册工具列表 (${_toolRegistry!.length} 个):');
     }
-    print(
-      '[LlmChatAdapter] calling LLM, messages count: ${llmMessages.length}, hasTools: $hasTools',
-    );
+    _log.debug('calling LLM, messages count: ${llmMessages.length}, hasTools: $hasTools');
 
     final aiContentBuffer = StringBuffer();
     final thinkingContentBuffer = StringBuffer();
@@ -719,15 +712,15 @@ class LlmChatAdapter implements IChatAdapter {
             break;
           case llm.CompletionEvent():
             finalResponse = event.response;
-            print('[LlmChatAdapter] finalResponse:${finalResponse.text},${finalResponse.usage.toString()},${finalResponse.toolCalls}');
+            _log.debug('finalResponse:${finalResponse.text},${finalResponse.usage.toString()},${finalResponse.toolCalls}');
             break;
           case llm.ErrorEvent():
-            print('[LlmChatAdapter] LLM stream error event: ${event.error}');
+            _log.warn('LLM stream error event: ${event.error}');
             return _LlmStreamResult.error('LLM 调用异常: ${event.error.message}');
         }
       }
     } catch (e) {
-      print('[LlmChatAdapter] LLM stream error: $e');
+      _log.error('LLM stream error', e);
       return _LlmStreamResult.error('LLM 调用异常: $e');
     }
 
@@ -788,7 +781,7 @@ class LlmChatAdapter implements IChatAdapter {
 
     if (currentSignature == lastSignature) {
       final newCount = currentCount + 1;
-      print('[LlmChatAdapter] 检测到重复工具调用 (第 $newCount 次): $currentSignature');
+      _log.warn('检测到重复工具调用 (第 $newCount 次): $currentSignature');
       return _DuplicateCheckResult(
         updatedSignature: currentSignature,
         updatedCount: newCount,
@@ -828,7 +821,8 @@ class LlmChatAdapter implements IChatAdapter {
       try {
         toolArguments =
             jsonDecode(toolCall.function.arguments) as Map<String, dynamic>;
-      } catch (_) {
+      } catch (e) {
+        _log.debug('failed to parse tool arguments as JSON, using empty map: $e');
         toolArguments = {};
       }
 
@@ -973,8 +967,8 @@ class LlmChatAdapter implements IChatAdapter {
     final resultPreview = result.content.length > 100
         ? '${result.content.substring(0, 100)}...(truncated, total ${result.content.length} chars)'
         : result.content;
-    print(
-      '[LlmChatAdapter] 工具执行完成: $toolName, isError=${result.isError}, '
+    _log.debug(
+      '工具执行完成: $toolName, isError=${result.isError}, '
       'duration=${stopwatch.elapsedMilliseconds}ms, result=$resultPreview',
     );
     return _ToolExecResult(
@@ -1104,7 +1098,8 @@ class LlmChatAdapter implements IChatAdapter {
     if (argumentsJson.isEmpty) return {};
     try {
       return jsonDecode(argumentsJson) as Map<String, dynamic>;
-    } catch (_) {
+    } catch (e) {
+      _log.debug('failed to parse arguments JSON, using empty map: $e');
       return {};
     }
   }

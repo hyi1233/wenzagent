@@ -1,4 +1,5 @@
 import '../../agent/tool/agent_tool.dart';
+import '../../utils/logger.dart';
 import 'mcp_client.dart';
 
 /// MCP Skill 工具适配器
@@ -6,6 +7,8 @@ import 'mcp_client.dart';
 /// 将 Type 1 MCP Skill 的远程工具包装为 [AgentTool]。
 /// execute 时通过 MCP 客户端调用远程服务器。
 class McpToolAdapter extends AgentTool {
+  static final _log = Logger('McpToolAdapter');
+
   final McpClient client;
   final McpToolDefinition definition;
 
@@ -34,7 +37,7 @@ class McpToolAdapter extends AgentTool {
           ? ToolResult.error(result.content)
           : ToolResult.success(result.content);
     } catch (e) {
-      print(e);
+      _log.error('MCP tool execution failed', e);
       return ToolResult.error('MCP 工具执行失败: $e');
     }
   }

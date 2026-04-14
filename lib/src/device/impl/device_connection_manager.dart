@@ -3,6 +3,7 @@ import 'dart:io';
 
 import '../../entity/lan_message.dart';
 import '../../host/host_rpc_methods.dart';
+import '../../utils/logger.dart';
 import '../../lan/impl/lan_client_service_impl.dart';
 import '../../rpc/remote_call_manager.dart';
 import '../../rpc/remote_call_server.dart';
@@ -19,6 +20,8 @@ import 'employee_online_tracker.dart';
 ///
 /// 负责 LAN 连接的生命周期管理、状态监控。
 class DeviceConnectionManager {
+  static final _log = Logger('DeviceConnectionManager');
+
   final String _deviceId;
   String _host;
   int _port;
@@ -247,8 +250,9 @@ class DeviceConnectionManager {
       try {
         await _deviceRegistry.refreshDeviceList();
         _onlineTracker.refreshEmployeeOnlineStates();
-      } catch (_) {
+      } catch (e) {
         // 即使刷新设备列表失败，也尝试刷新在线状态
+        _log.debug('refreshDeviceList failed, falling back: $e');
         _onlineTracker.refreshEmployeeOnlineStates();
       }
     }();
@@ -296,7 +300,9 @@ class DeviceConnectionManager {
           }
         }
       }
-    } catch (_) {}
+    } catch (e) {
+      _log.debug('getLocalIp failed: $e');
+    }
     return null;
   }
 }

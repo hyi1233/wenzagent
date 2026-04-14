@@ -6,6 +6,7 @@ import '../../agent/entity/agent_message.dart';
 import '../../entity/lan_device_info.dart';
 import '../../entity/lan_message.dart';
 import '../../service/service.dart';
+import '../../utils/logger.dart';
 import '../device_client.dart';
 import 'device_agent_manager.dart';
 import 'device_connection_manager.dart';
@@ -18,6 +19,8 @@ import 'employee_online_tracker.dart';
 ///
 /// 负责接收 LAN 消息并分发到对应的处理器。
 class DeviceMessageHandler {
+  static final _log = Logger('DeviceMessageHandler');
+
   final String _deviceId;
   String? _deviceName;
   String? _topic;
@@ -116,7 +119,9 @@ class DeviceMessageHandler {
       final content = jsonDecode(msg.content ?? '{}') as Map<String, dynamic>;
       final payload = content['payload'] as Map<String, dynamic>? ?? {};
       rpcServer.handleRequest(payload);
-    } catch (_) {}
+    } catch (e) {
+      _log.debug('handleRpcRequest failed: $e');
+    }
   }
 
   void _handleRpcResponse(LanMessage msg) {
@@ -126,7 +131,9 @@ class DeviceMessageHandler {
       final content = jsonDecode(msg.content ?? '{}') as Map<String, dynamic>;
       final payload = content['payload'] as Map<String, dynamic>? ?? content;
       rpcManager.handleResponse(payload);
-    } catch (_) {}
+    } catch (e) {
+      _log.debug('handleRpcResponse failed: $e');
+    }
   }
 
   void _handleRpcError(LanMessage msg) {
@@ -136,7 +143,9 @@ class DeviceMessageHandler {
       final content = jsonDecode(msg.content ?? '{}') as Map<String, dynamic>;
       final payload = content['payload'] as Map<String, dynamic>? ?? content;
       rpcManager.handleError(payload);
-    } catch (_) {}
+    } catch (e) {
+      _log.debug('handleRpcError failed: $e');
+    }
   }
 
   void _handleStreamChunk(LanMessage msg) {
@@ -146,7 +155,9 @@ class DeviceMessageHandler {
       final content = jsonDecode(msg.content ?? '{}') as Map<String, dynamic>;
       final payload = content['payload'] as Map<String, dynamic>? ?? content;
       rpcManager.handleStreamChunk(payload);
-    } catch (_) {}
+    } catch (e) {
+      _log.debug('handleStreamChunk failed: $e');
+    }
   }
 
   void _handleStreamEnd(LanMessage msg) {
@@ -156,7 +167,9 @@ class DeviceMessageHandler {
       final content = jsonDecode(msg.content ?? '{}') as Map<String, dynamic>;
       final payload = content['payload'] as Map<String, dynamic>? ?? content;
       rpcManager.handleStreamEnd(payload);
-    } catch (_) {}
+    } catch (e) {
+      _log.debug('handleStreamEnd failed: $e');
+    }
   }
 
   void _handleAgentEvent(LanMessage msg) {
@@ -303,7 +316,9 @@ class DeviceMessageHandler {
           _syncAfterSessionCleared(employeeId, fromDeviceId);
         }
       }
-    } catch (_) {}
+    } catch (e) {
+      _log.debug('handleAgentEvent failed: $e');
+    }
   }
 
   void _handleSystemMessage(LanMessage msg) {
@@ -322,7 +337,8 @@ class DeviceMessageHandler {
         try {
           await _deviceRegistry.refreshDeviceList();
           _onlineTracker.refreshEmployeeOnlineStates();
-        } catch (_) {
+        } catch (e) {
+          _log.debug('refreshDeviceList failed, falling back to refreshEmployeeOnlineStates: $e');
           _onlineTracker.refreshEmployeeOnlineStates();
         }
       }();
@@ -367,7 +383,9 @@ class DeviceMessageHandler {
         ),
         timestamp: msg.timestamp,
       ));
-    } catch (_) {}
+    } catch (e) {
+      _log.debug('handleDeviceEventMessage failed: $e');
+    }
   }
 
   void _handleDeviceInfoRequest(LanMessage msg) {
@@ -442,7 +460,9 @@ class DeviceMessageHandler {
           }
         });
       }
-    } catch (_) {}
+    } catch (e) {
+      _log.debug('handleRemoteReadStatus failed: $e');
+    }
   }
 
   /// 会话清空后，触发增量同步以清除本地消息并更新水位线
@@ -456,16 +476,16 @@ class DeviceMessageHandler {
         await messageStore.deleteMessages(_deviceId, employeeId);
         // 重置水位线为0，确保后续增量同步能正确拉取远程消息
         messageStore.resetLastSeq(_deviceId, employeeId, 0);
-        print('[DeviceMessageHandler] 会话清空后本地消息已清除，水位线已重置: employeeId=$employeeId');
+        _log.info('会话清空后本地消息已清除，水位线已重置: employeeId=$employeeId');
 
         // 尝试通过已有的 AgentProxy 增量同步（拉取远程最新状态）
         var proxy = _agentManager.getAgentProxy(employeeId);
         if (proxy != null) {
           await proxy.syncWithRemote();
-          print('[DeviceMessageHandler] 会话清空后增量同步完成(已有proxy): employeeId=$employeeId');
+          _log.info('会话清空后增量同步完成(已有proxy): employeeId=$employeeId');
         }
       } catch (e) {
-        print('[DeviceMessageHandler] 会话清空后增量同步失败: employeeId=$employeeId, $e');
+        _log.error('会话清空后增量同步失败: employeeId=$employeeId', e);
       }
     });
   }
@@ -488,6 +508,8 @@ class DeviceMessageHandler {
         fromDeviceId: msg.fromId ?? '',
         messageMaps: messageMaps,
       );
-    } catch (_) {}
+    } catch (e) {
+      _log.debug('handleUnreceivedMessagesBatch failed: $e');
+    }
   }
 }

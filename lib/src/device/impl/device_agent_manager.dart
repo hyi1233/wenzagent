@@ -15,6 +15,7 @@ import '../../entity/lan_message.dart';
 import '../../host/host_rpc_methods.dart';
 import '../../persistence/persistence.dart';
 import '../../service/service.dart';
+import '../../utils/logger.dart';
 import 'data_sync_manager.dart';
 import 'device_connection_manager.dart';
 import 'device_notification_manager.dart';
@@ -45,6 +46,8 @@ class DeviceAgentManager {
   late final DataSyncManager _dataSyncManager = DataSyncManager.getInstance(
     _deviceId,
   );
+
+  static final _log = Logger('DeviceAgentManager');
 
   /// 本地 Agent 实例缓存
   final Map<String, IAgent> _localAgents = {};
@@ -145,8 +148,8 @@ class DeviceAgentManager {
           ? Future.value(employee)
           : _employeeManager.getEmployee(employeeId),
     ]);
-    print(
-      '[DeviceAgentManager] Future.wait (session+employee): ${sw.elapsedMilliseconds}ms',
+    _log.debug(
+      'Future.wait (session+employee): ${sw.elapsedMilliseconds}ms',
     );
     var session = results[0] as AiEmployeeSessionEntity?;
     employee = results[1] as AiEmployeeEntity?;
@@ -182,8 +185,8 @@ class DeviceAgentManager {
 
       sw.reset();
       final agent = await _getOrCreateLocalAgent(employeeId, employee, session);
-      print(
-        '[DeviceAgentManager] _getOrCreateLocalAgent: ${sw.elapsedMilliseconds}ms',
+      _log.info(
+        '_getOrCreateLocalAgent: ${sw.elapsedMilliseconds}ms',
       );
       final proxy = AgentProxy.local(
         employeeId: employeeId,
@@ -234,11 +237,11 @@ class DeviceAgentManager {
     final key = '$targetDeviceId:$employeeId';
     var cachedProxy = _remoteProxies[key];
     if (cachedProxy != null) {
-      print('[DeviceAgentManager] remote proxy cache HIT');
+      _log.debug('remote proxy cache HIT');
       return cachedProxy;
     }
 
-    print('[DeviceAgentManager] remote proxy cache MISS, creating...');
+    _log.debug('remote proxy cache MISS, creating...');
     sw.reset();
     final proxy = AgentProxy.remote(
       employeeId: employeeId,
@@ -247,8 +250,8 @@ class DeviceAgentManager {
           _connectionManager.invokeRemote(targetDeviceId, method, params),
       remoteEventStream: _stateHolder.onAgentEvent,
     );
-    print(
-      '[DeviceAgentManager] AgentProxy.remote created: ${sw.elapsedMilliseconds}ms',
+    _log.debug(
+      'AgentProxy.remote created: ${sw.elapsedMilliseconds}ms',
     );
 
     cachedProxy = CachedAgentProxy(
@@ -433,8 +436,9 @@ class DeviceAgentManager {
           await _employeeManager.saveEmployee(employee);
           return employee;
         }
-      } catch (_) {
+      } catch (e) {
         // 该设备没有此员工，尝试下一个
+        _log.debug('fetchEmployeeFromRemote: device ${device.id} failed: $e');
       }
     }
     return null;
@@ -454,8 +458,8 @@ class DeviceAgentManager {
         employee.permissionConfig!,
       );
       manager.configure(config);
-      print(
-        '[DeviceAgentManager] Permission config reloaded for $employeeId'
+      _log.info(
+        'Permission config reloaded for $employeeId'
         ' (${config.whitelist.length} whitelist, ${config.blacklist.length} blacklist rules)',
       );
     }
@@ -539,8 +543,8 @@ class DeviceAgentManager {
   }) async {
     if (messageMaps.isEmpty) return;
 
-    print(
-      '[DeviceAgentManager] 收到来自设备 $fromDeviceId 的广播消息通知'
+    _log.info(
+      '收到来自设备 $fromDeviceId 的广播消息通知'
       '（员工: $employeeId, ${messageMaps.length} 条）',
     );
 
@@ -575,12 +579,12 @@ class DeviceAgentManager {
     if (proxy != null) {
       try {
         await proxy.syncWithRemote();
-        print('[DeviceAgentManager] 增量同步完成: employeeId=$employeeId');
+        _log.debug('增量同步完成: employeeId=$employeeId');
       } catch (e) {
-        print('[DeviceAgentManager] 增量同步失败: employeeId=$employeeId, $e');
+        _log.debug('增量同步失败: employeeId=$employeeId, $e');
       }
     } else {
-      print('[DeviceAgentManager] 未找到代理，跳过增量同步: employeeId=$employeeId');
+      _log.debug('未找到代理，跳过增量同步: employeeId=$employeeId');
     }
   }
 
@@ -627,7 +631,7 @@ class DeviceAgentManager {
       );
       await cachedProxy.syncFromRemote();
     } catch (e) {
-      print('[DeviceAgentManager] 后台同步远程代理失败: $e');
+      _log.debug('后台同步远程代理失败: $e');
     } finally {
       _syncingRemoteKeys.remove(cacheKey);
     }
@@ -666,7 +670,9 @@ class DeviceAgentManager {
             jsonDecode(deviceConfig!.providerConfig!) as Map<String, dynamic>;
         final config = ProviderConfig.fromMap(configMap);
         await agent.setProvider(config);
-      } catch (_) {}
+      } catch (e) {
+        _log.debug('setProvider from session config failed: $e');
+      }
     } else if (employee.provider != null && employee.provider!.isNotEmpty) {
       final providerConfigMap = <String, dynamic>{
         'provider': employee.provider,
@@ -683,7 +689,9 @@ class DeviceAgentManager {
       if (employee.modelConfig != null) {
         try {
           providerConfigMap['modelConfig'] = jsonDecode(employee.modelConfig!);
-        } catch (_) {}
+        } catch (e) {
+          _log.debug('parse modelConfig failed: $e');
+        }
       }
       final providerConfig = ProviderConfig.fromMap(providerConfigMap);
       await agent.setProvider(providerConfig);
@@ -725,8 +733,8 @@ class DeviceAgentManager {
         employee.permissionConfig!,
       );
       manager.configure(config);
-      print(
-        '[DeviceAgentManager] Permission config injected for ${employee.uuid}'
+      _log.info(
+        'Permission config injected for ${employee.uuid}'
         ' (${config.whitelist.length} whitelist, ${config.blacklist.length} blacklist rules)',
       );
     }
@@ -742,12 +750,12 @@ class DeviceAgentManager {
             updateTime: DateTime.now(),
           );
           await _employeeManager.updateEmployee(saved);
-          print(
-            '[DeviceAgentManager] Permission config saved for ${employee.uuid}',
+          _log.info(
+            'Permission config saved for ${employee.uuid}',
           );
         }
       } catch (e) {
-        print('[DeviceAgentManager] Failed to save permission config: $e');
+        _log.debug('Failed to save permission config: $e');
       }
     };
   }
@@ -811,13 +819,14 @@ class DeviceAgentManager {
       try {
         await _scheduledTaskManager.deleteTask(taskId);
         return true;
-      } catch (_) {
+      } catch (e) {
+        _log.debug('cancelTask failed: $e');
         return false;
       }
     };
 
-    print(
-      '[DeviceAgentManager] ScheduleTaskTool callbacks injected for $agentEmployeeId',
+    _log.info(
+      'ScheduleTaskTool callbacks injected for $agentEmployeeId',
     );
   }
 
@@ -965,7 +974,9 @@ class DeviceAgentManager {
                 lanClient.sendLanMessage(lanMsg);
               }
             })
-            .catchError((_) {});
+            .catchError((e) {
+              _log.debug('getSessionMessagesByUserCount failed: $e');
+            });
       }
     });
     _agentEventSubscriptions[employeeId] = subscription;

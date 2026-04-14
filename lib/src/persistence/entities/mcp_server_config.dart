@@ -1,5 +1,9 @@
 import 'dart:convert';
 
+import '../../utils/logger.dart';
+
+final _log = Logger('McpServerConfig');
+
 /// MCP重试配置
 class McpRetryConfig {
   /// 最大重试次数
@@ -305,6 +309,7 @@ class McpServerConfig {
 
       return [];
     } catch (e) {
+      _log.debug('parse MCP server config list failed, returning empty: $e');
       return [];
     }
   }

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import '../persistence/entities/scheduled_task_entity.dart';
 import '../scheduler/cron_expression.dart';
+import '../utils/logger.dart';
 
 /// 定时任务调度器
 ///
@@ -17,6 +18,8 @@ import '../scheduler/cron_expression.dart';
 /// - 持久化（由上层 ScheduledTaskManager 负责）
 /// - 具体执行逻辑（通过 onExecute 回调）
 class TaskScheduler {
+  static final _log = Logger('TaskScheduler');
+
   /// 任务执行回调
   ///
   /// [task] 到期的任务
@@ -112,7 +115,7 @@ class TaskScheduler {
     for (final taskId in timedOut) {
       _executingTasks.remove(taskId);
       _executionStartTimes.remove(taskId);
-      print('[TaskScheduler] 任务执行超时: $taskId');
+      _log.warn('任务执行超时: $taskId');
     }
 
     // ② 遍历查找到期任务
@@ -203,8 +206,8 @@ class TaskScheduler {
         // 连续失败超限 → 自动禁用
         if (updated.maxConsecutiveFailures > 0 &&
             failures >= updated.maxConsecutiveFailures) {
-          print(
-              '[TaskScheduler] 任务连续失败 $failures 次，自动禁用: ${task.name}');
+          _log.debug(
+              '任务连续失败 $failures 次，自动禁用: ${task.name}');
           updated = updated.copyWith(
             enabled: 0,
             lastExecutionError: '连续失败 $failures 次，自动禁用',
@@ -224,7 +227,7 @@ class TaskScheduler {
       // 通知上层持久化
       onTaskUpdated?.call(updated);
     } catch (e) {
-      print('[TaskScheduler] 任务执行异常: ${task.uuid}, $e');
+      _log.error('任务执行异常: ${task.uuid}', e);
 
       final updated = task.copyWith(
         lastExecutedAt: DateTime.now(),
@@ -261,7 +264,7 @@ class TaskScheduler {
         final next = cron.next(base);
         return task.copyWith(nextExecutionAt: next);
       } catch (e) {
-        print('[TaskScheduler] Cron 解析失败: ${task.scheduleExpression}, $e');
+        _log.error('Cron 解析失败: ${task.scheduleExpression}', e);
         return task.copyWith(
           enabled: 0,
           lastExecutionError: 'Cron 表达式非法: $e',
@@ -275,8 +278,8 @@ class TaskScheduler {
         final base = task.lastExecutedAt ?? task.startAt ?? now;
         return task.copyWith(nextExecutionAt: duration.next(base));
       } catch (e) {
-        print(
-            '[TaskScheduler] Duration 解析失败: ${task.scheduleExpression}, $e');
+        _log.debug(
+            'Duration 解析失败: ${task.scheduleExpression}, $e');
         return task.copyWith(
           enabled: 0,
           lastExecutionError: 'Duration 表达式非法: $e',

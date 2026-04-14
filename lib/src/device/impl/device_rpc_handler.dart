@@ -11,11 +11,14 @@ import '../../service/service.dart';
 import 'data_sync_manager.dart';
 import 'device_agent_manager.dart';
 import 'device_config_manager.dart';
+import '../../utils/logger.dart';
 
 /// RPC 方法注册器
 ///
 /// 负责将所有 Agent 和 Host RPC 方法注册到 [RemoteCallServer]。
 class DeviceRpcHandler {
+  static final _log = Logger('DeviceRpcHandler');
+
   final String _deviceId;
   late final EmployeeManager _employeeManager = EmployeeManager.getInstance(_deviceId);
   late final SessionManager _sessionManager = SessionManager.getInstance(_deviceId);
@@ -54,14 +57,14 @@ class DeviceRpcHandler {
       final request = SendMessageRequest.fromMap(params);
       final agent = await _agentManager.ensureLocalAgentForRpc(request.employeeId);
 
-      print('[DeviceRpcHandler] RPC sendMessage 接收到消息数据: ${request.messageData}');
-      print('[DeviceRpcHandler] 消息ID: ${request.messageData['id']}');
+      _log.debug('RPC sendMessage 接收到消息数据: ${request.messageData}');
+      _log.debug('消息ID: ${request.messageData['id']}');
 
       final input = MessageInput.fromMap(request.messageData);
-      print('[DeviceRpcHandler] MessageInput.id: ${input.id}');
+      _log.debug('MessageInput.id: ${input.id}');
 
       final messageId = await agent.sendMessage(input);
-      print('[DeviceRpcHandler] Agent返回的消息ID: $messageId');
+      _log.debug('Agent返回的消息ID: $messageId');
 
       return {'messageId': messageId};
     });
@@ -135,7 +138,7 @@ class DeviceRpcHandler {
 
     // 获取最大 seq
     rpcServer.register(AgentRpcConfig.methodGetMaxSeq, (params) async {
-      print('[DeviceRpcHandler] RPC getMaxSeq');
+      _log.debug('RPC getMaxSeq');
       final request = GetSessionMessagesRequest.fromMap(params);
       final agent = await _agentManager.ensureLocalAgentForRpc(request.employeeId);
       final maxSeq = await agent.getMaxSeq(employeeId: request.employeeId);
@@ -231,7 +234,7 @@ class DeviceRpcHandler {
               apiBaseUrl: newBaseUrl,
             ),
           );
-          print('[DeviceRpcHandler] methodSetProvider: Employee provider synced: provider=$newProvider, model=$newModel');
+          _log.info('methodSetProvider: Employee provider synced: provider=$newProvider, model=$newModel');
         }
       }
 
@@ -349,12 +352,12 @@ class DeviceRpcHandler {
     // 项目管理
     rpcServer.register(AgentRpcConfig.methodSetProject, (params) async {
       final request = SetProjectRequest.fromMap(params);
-      print('[DeviceRpcHandler] agentSetProject RPC: employeeId=${request.employeeId}, projectData=${request.projectData}');
+      _log.debug('agentSetProject RPC: employeeId=${request.employeeId}, projectData=${request.projectData}');
       final agent = await _agentManager.ensureLocalAgentForRpc(request.employeeId);
       final projectData = request.projectData != null
           ? ProjectData.fromMap(request.projectData!)
           : null;
-      print('[DeviceRpcHandler] agentSetProject: parsed projectUuid=${projectData?.projectUuid}, projectName=${projectData?.projectName}');
+      _log.debug('agentSetProject: parsed projectUuid=${projectData?.projectUuid}, projectName=${projectData?.projectName}');
       await agent.setProject(projectData);
 
       // 同步更新 Employee 实体的项目信息
@@ -369,7 +372,7 @@ class DeviceRpcHandler {
             workPath: projectData?.workPath,
           ),
         );
-        print('[DeviceRpcHandler] agentSetProject: Employee project synced: uuid=${employee.projectUuid} -> $projectUuid, name=${projectData?.projectName}');
+        _log.info('agentSetProject: Employee project synced: uuid=${employee.projectUuid} -> $projectUuid, name=${projectData?.projectName}');
       }
 
       // 广播到其他设备
@@ -421,7 +424,8 @@ class DeviceRpcHandler {
               'size': stat.size,
               'modified': stat.modified.toIso8601String(),
             });
-          } catch (_) {
+          } catch (e) {
+            _log.debug('listDirectory: stat failed for entry: $e');
             continue;
           }
         }

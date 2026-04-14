@@ -1,6 +1,7 @@
 import '../../agent/tool/agent_tool.dart';
 import '../../persistence/entities/mcp_server_config.dart';
 import '../../persistence/entities/skill_entity.dart';
+import '../../utils/logger.dart';
 import '../skill.dart';
 import 'mcp_client.dart';
 import 'mcp_client_impl.dart';
@@ -11,6 +12,8 @@ import 'mcp_tool_adapter.dart';
 /// 通过 MCP 协议连接远程服务器，获取工具列表并包装为 AgentTool。
 /// 执行时通过 MCP 客户端直接调用远程工具，无 prompt，无需二次 LLM 调用。
 class McpSkill implements Skill {
+  static final _log = Logger('McpSkill');
+
   final String _id;
   final String _name;
   final String _description;
@@ -72,9 +75,9 @@ class McpSkill implements Skill {
       _tools = mcpTools
           .map((t) => McpToolAdapter(client: _client!, definition: t))
           .toList();
-      print('[McpSkill] 加载完成: $_name, 共 ${_tools.length} 个工具');
+      _log.debug('加载完成: $_name, 共 ${_tools.length} 个工具');
       for (final tool in _tools) {
-        print('[McpSkill]   工具名称: "${tool.name}" (原始MCP名称: "${mcpTools[_tools.indexOf(tool)].name}")');
+        _log.debug('  工具名称: "${tool.name}" (原始MCP名称: "${mcpTools[_tools.indexOf(tool)].name}")');
       }
       _status = SkillStatus.active;
     } catch (e) {
@@ -104,7 +107,8 @@ class McpSkill implements Skill {
     if (_client == null) return false;
     try {
       return await _client!.ping();
-    } catch (_) {
+    } catch (e) {
+      _log.debug('healthCheck ping failed, using fallback: $e');
       return false;
     }
   }

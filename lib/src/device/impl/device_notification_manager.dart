@@ -3,6 +3,7 @@ import '../../agent/notification/agent_notification_hub.dart';
 import '../../entity/lan_message.dart';
 import '../../shared/shared.dart';
 import '../../service/service.dart';
+import '../../utils/logger.dart';
 import '../device_client.dart';
 import 'device_connection_manager.dart';
 import 'device_agent_manager.dart';
@@ -12,6 +13,8 @@ import 'device_state_holder.dart';
 ///
 /// 负责未读消息计数、已读状态管理、最新消息缓存等。
 class DeviceNotificationManager {
+  static final _log = Logger('DeviceNotificationManager');
+
   final String _deviceId;
   String? _topic;
   late final EmployeeManager _employeeManager = EmployeeManager.getInstance(_deviceId);
@@ -154,7 +157,9 @@ class DeviceNotificationManager {
                 _deviceId, message.copyWith(isRead: true),
               );
             }
-          }).catchError((_) {});
+          }).catchError((e) {
+            _log.debug('getMessage/updateMessage failed: $e');
+          });
         }
       }
 
@@ -162,7 +167,9 @@ class DeviceNotificationManager {
       if (hasRead) {
         _stateHolder.notificationHub.markAllAsRead(employeeId: employeeId);
       }
-    } catch (_) {}
+    } catch (e) {
+      _log.debug('syncReadStatusFromAgent failed: $e');
+    }
   }
 
   Future<void> restoreUnreadStatus() async {
@@ -236,7 +243,9 @@ class DeviceNotificationManager {
           );
         }
       }
-    } catch (_) {}
+    } catch (e) {
+      _log.debug('restoreUnreadStatus failed: $e');
+    }
   }
 
   Future<List<ChatMessage>> getLatestMessages({
@@ -306,7 +315,8 @@ class DeviceNotificationManager {
       _messageStoreService.markAsReadInDb(_deviceId, employeeId);
       // 从 DB SQL 统计未读数量
       return _messageStoreService.getUnreadCount(_deviceId, employeeId);
-    } catch (_) {
+    } catch (e) {
+      _log.debug('markMessagesAsReadInDb failed: $e');
       return -1;
     }
   }
@@ -364,6 +374,8 @@ class DeviceNotificationManager {
     agent.markMessagesAsRead(
       readerDeviceId: _deviceId,
       employeeId: employeeId,
-    ).catchError((_) {});
+    ).catchError((e) {
+      _log.debug('notifyAgentReadStatus failed: $e');
+    });
   }
 }

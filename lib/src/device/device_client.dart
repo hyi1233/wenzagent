@@ -7,6 +7,7 @@ import '../entity/lan_device_info.dart';
 import '../entity/lan_message.dart';
 import '../persistence/persistence.dart';
 import '../service/service.dart';
+import '../utils/logger.dart';
 import 'impl/async_lock.dart';
 import 'impl/data_sync_manager.dart';
 import 'impl/device_agent_manager.dart';
@@ -111,6 +112,8 @@ typedef LanMessageHandler = void Function(LanMessage message);
 /// await client.connect();
 /// ```
 class DeviceClient {
+  static final _log = Logger('DeviceClient');
+
   final String _deviceId;
   String? _deviceName;
   String _host = '';
@@ -214,8 +217,9 @@ class DeviceClient {
         try {
           final dbConfig = await _configManager.getDeviceConfig();
           _mergeDbConfig(dbConfig);
-        } catch (_) {
+        } catch (e) {
           // DB 中无配置，忽略
+          _log.debug('read config from DB failed: $e');
         }
       }
 

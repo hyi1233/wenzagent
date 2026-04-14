@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import '../utils/logger.dart';
 import 'skill.dart';
 import 'skill_context.dart';
 
@@ -26,6 +27,8 @@ class SkillEvent {
 /// - SkillManager / SkillManagerImpl：数据库 CRUD、持久化
 /// - SkillLifecycleManager（此类）：运行时生命周期管理、工具注册/注销
 class SkillLifecycleManager {
+  static final _log = Logger('SkillLifecycle');
+
   final SkillContext _context;
   final Map<String, Skill> _skills = {};
   final _eventController = StreamController<SkillEvent>.broadcast(sync: true);
@@ -35,22 +38,22 @@ class SkillLifecycleManager {
   /// 加载并激活技能
   Future<void> loadSkill(Skill skill) async {
     try {
-      print('[SkillLifecycle] 开始加载技能: id=${skill.id}, name=${skill.name}, type=${skill.runtimeType}');
+      _log.debug('开始加载技能: id=${skill.id}, name=${skill.name}, type=${skill.runtimeType}');
 
       await skill.initialize();
-      print('[SkillLifecycle] 技能初始化完成: ${skill.name}, tools=[${skill.tools.map((t) => t.name).join(', ')}]');
+      _log.debug('技能初始化完成: ${skill.name}, tools=[${skill.tools.map((t) => t.name).join(', ')}]');
 
       await skill.activate();
-      print('[SkillLifecycle] 技能激活完成: ${skill.name}');
+      _log.debug('技能激活完成: ${skill.name}');
 
       for (final tool in skill.tools) {
         final existed = _context.toolRegistry.contains(tool.name);
         if (existed) {
           _context.toolRegistry.registerOrReplaceTool(tool);
-          print('[SkillLifecycle] 工具已替换: ${tool.name}');
+          _log.debug('工具已替换: ${tool.name}');
         } else {
           _context.toolRegistry.registerTool(tool);
-          print('[SkillLifecycle] 工具已注册: ${tool.name}');
+          _log.debug('工具已注册: ${tool.name}');
         }
       }
 
@@ -60,7 +63,7 @@ class SkillLifecycleManager {
         type: 'added',
         data: {'name': skill.name, 'toolCount': skill.tools.length},
       ));
-      print('[SkillLifecycle] 技能加载成功: ${skill.name}, 共注册 ${skill.tools.length} 个工具');
+      _log.debug('技能加载成功: ${skill.name}, 共注册 ${skill.tools.length} 个工具');
     } catch (e, st) {
       _context.logger('error', '技能加载失败: ${skill.name}, $e\n$st');
       _eventController.add(SkillEvent(
@@ -123,7 +126,9 @@ class SkillLifecycleManager {
     for (final skill in _skills.values) {
       try {
         await skill.dispose();
-      } catch (_) {}
+      } catch (e) {
+        _log.warn('释放技能资源失败: ${skill.id}, $e');
+      }
     }
     _skills.clear();
     await _eventController.close();

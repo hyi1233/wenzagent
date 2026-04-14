@@ -1,3 +1,4 @@
+import '../../../utils/logger.dart';
 import '../agent_tool.dart';
 
 /// 定时任务工具
@@ -11,6 +12,8 @@ import '../agent_tool.dart';
 /// 3. 通过 onCreateTask 回调注册到 ScheduledTaskManager
 /// 4. 到达触发时间 → TaskExecutor 执行 → 结果送达用户
 class ScheduleTaskTool extends AgentTool {
+  static final _log = Logger('ScheduleTaskTool');
+
   /// 创建任务回调（由 ScheduledTaskManager 注入）
   ///
   /// 参数: {name, message, schedule}
@@ -124,9 +127,9 @@ class ScheduleTaskTool extends AgentTool {
   @override
   Future<ToolResult> execute(Map<String, dynamic> arguments) async {
     final action = arguments['action'] as String?;
-    print('[ScheduleTaskTool] execute called, arguments: $arguments');
-    print(
-      '[ScheduleTaskTool] action=$action, '
+    _log.debug('execute called, arguments: $arguments');
+    _log.debug(
+      'action=$action, '
       'onCreateTask=${onCreateTask != null}, '
       'onCancelTask=${onCancelTask != null}, '
       'onListTasks=${onListTasks != null}',
@@ -159,8 +162,8 @@ class ScheduleTaskTool extends AgentTool {
     final name = arguments['name'] as String?;
     final taskType = arguments['taskType'] as String? ?? 'reminder';
 
-    print(
-      '[ScheduleTaskTool] _create: name=$name, '
+    _log.debug(
+      '_create: name=$name, '
       'message=${message != null
           ? message.length > 50
                 ? "${message.substring(0, 50)}..."
@@ -170,17 +173,17 @@ class ScheduleTaskTool extends AgentTool {
     );
 
     if (message == null || message.isEmpty) {
-      print('[ScheduleTaskTool] _create failed: message is empty');
+      _log.error('_create failed: message is empty');
       // return ToolResult.error('message is required');
       message = name ?? 'Scheduled task';
     }
     if (schedule == null || schedule.isEmpty) {
-      print('[ScheduleTaskTool] _create failed: schedule is empty');
+      _log.error('_create failed: schedule is empty');
       return ToolResult.error('schedule is required');
     }
     if (onCreateTask == null) {
-      print(
-        '[ScheduleTaskTool] _create failed: onCreateTask callback is NOT injected! '
+      _log.error(
+        '_create failed: onCreateTask callback is NOT injected! '
         'ScheduledTaskManager may not be wired up.',
       );
       return ToolResult.error(
@@ -195,7 +198,7 @@ class ScheduleTaskTool extends AgentTool {
         'schedule': schedule,
         'taskType': taskType,
       });
-      print('[ScheduleTaskTool] _create success: result=$result');
+      _log.info('_create success: result=$result');
       return ToolResult.success(
         '✅ Scheduled task created successfully.\n'
         'Task ID: ${result['taskId']}\n'
@@ -208,7 +211,7 @@ class ScheduleTaskTool extends AgentTool {
         metadata: result,
       );
     } catch (e, st) {
-      print('[ScheduleTaskTool] _create exception: $e\n$st');
+      _log.error('_create exception: $e', e, st);
       return ToolResult.error('Failed to create task: $e');
     }
   }

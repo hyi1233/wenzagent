@@ -1,4 +1,5 @@
 import '../../service/service.dart';
+import '../../utils/logger.dart';
 import '../device_client.dart';
 import 'device_agent_manager.dart';
 import 'device_registry.dart';
@@ -8,6 +9,8 @@ import 'device_state_holder.dart';
 ///
 /// 负责维护员工在线状态缓存并发布变化事件。
 class EmployeeOnlineTracker {
+  static final _log = Logger('EmployeeOnlineTracker');
+
   final String _deviceId;
   late final EmployeeManager _employeeManager = EmployeeManager.getInstance(_deviceId);
   late final DeviceAgentManager _agentManager = DeviceAgentManager.getInstance(_deviceId);
@@ -56,7 +59,9 @@ class EmployeeOnlineTracker {
           }
           _updateEmployeeOnlineState(employee.uuid, online, devId);
         }
-      } catch (_) {}
+      } catch (e) {
+        _log.debug('refreshEmployeeOnlineStates failed: $e');
+      }
     }();
   }
 
@@ -92,7 +97,9 @@ class EmployeeOnlineTracker {
             );
           }
         }
-      } catch (_) {}
+      } catch (e) {
+        _log.debug('markAllRemoteEmployeesOffline failed: $e');
+      }
     }();
   }
 

@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:mcp_dart/mcp_dart.dart' as mcp_sdk;
 
 import '../../persistence/entities/mcp_server_config.dart';
+import '../../utils/logger.dart';
 import 'mcp_client.dart';
 
 /// 基于 mcp_dart SDK 的 MCP 客户端实现
@@ -18,6 +19,8 @@ import 'mcp_client.dart';
 /// - 传输层断开时自动触发后台重连
 /// - `callTool()` / `listTools()` 在连接断开时尝试自动重连后重试一次
 class McpClientImpl implements McpClient {
+  static final _log = Logger('McpClientImpl');
+
   final McpServerConfig _config;
   mcp_sdk.McpClient? _client;
   mcp_sdk.Transport? _transport;
@@ -67,8 +70,8 @@ class McpClientImpl implements McpClient {
         final delay = retry.exponentialBackoff
             ? retry.retryDelay * (1 << (attempt - 1))
             : retry.retryDelay;
-        stderr.writeln(
-          '[McpClient] 连接重试 $attempt/${retry.maxRetries}，'
+        _log.info(
+          '连接重试 $attempt/${retry.maxRetries}，'
           '等待 ${delay}ms...',
         );
         await Future.delayed(Duration(milliseconds: delay));
@@ -79,8 +82,8 @@ class McpClientImpl implements McpClient {
         return;
       } catch (e) {
         lastError = e is Exception ? e : Exception(e.toString());
-        stderr.writeln(
-          '[McpClient] 连接失败 (尝试 $attempt/${retry.maxRetries}): $e',
+        _log.warn(
+          '连接失败 (尝试 $attempt/${retry.maxRetries}): $e',
         );
       }
     }
@@ -101,12 +104,12 @@ class McpClientImpl implements McpClient {
     _transport!.onclose = () {
       if (_connected && !_disposed) {
         _connected = false;
-        stderr.writeln('[McpClient] 传输层断开，触发自动重连');
+        _log.warn('传输层断开，触发自动重连');
         _scheduleReconnect();
       }
     };
     _transport!.onerror = (error) {
-      stderr.writeln('[McpClient] transport error: $error');
+      _log.warn('transport error: $error');
     };
 
     await _client!.connect(_transport!);
@@ -124,7 +127,9 @@ class McpClientImpl implements McpClient {
     if (_client != null) {
       try {
         await _client!.close();
-      } catch (_) {}
+      } catch (e) {
+        _log.debug('关闭客户端连接失败: $e');
+      }
     }
     _client = null;
     _transport = null;
@@ -198,7 +203,8 @@ class McpClientImpl implements McpClient {
     try {
       await _client!.ping();
       return true;
-    } catch (_) {
+    } catch (e) {
+      _log.debug('ping failed, using fallback: $e');
       return false;
     }
   }
@@ -209,12 +215,12 @@ class McpClientImpl implements McpClient {
   Future<void> _ensureConnected() async {
     if (_connected) return;
 
-    stderr.writeln('[McpClient] 调用时检测到连接断开，尝试恢复...');
+    _log.info('调用时检测到连接断开，尝试恢复...');
     try {
       await _connectWithRetry();
-      stderr.writeln('[McpClient] 连接恢复成功');
+      _log.info('连接恢复成功');
     } catch (e) {
-      stderr.writeln('[McpClient] 连接恢复失败: $e');
+      _log.warn('连接恢复失败: $e');
       rethrow;
     }
   }
@@ -244,15 +250,15 @@ class McpClientImpl implements McpClient {
           final delay = retry.exponentialBackoff
               ? retry.retryDelay * (1 << attempt)
               : retry.retryDelay;
-          stderr.writeln(
-            '[McpClient] $action 调用失败 '
+          _log.warn(
+            '$action 调用失败 '
             '(尝试 ${attempt + 1}/${retry.maxRetries + 1})，'
             '${retry.maxRetries - attempt} 次重试后重连，等待 ${delay}ms...',
           );
           await Future.delayed(Duration(milliseconds: delay));
         } else {
-          stderr.writeln(
-            '[McpClient] $action 调用失败，'
+          _log.warn(
+            '$action 调用失败，'
             '所有重试已耗尽，尝试重连...',
           );
         }
@@ -263,10 +269,10 @@ class McpClientImpl implements McpClient {
     _connected = false;
     try {
       await reconnect();
-      stderr.writeln('[McpClient] 重连成功，重新调用 $action');
+      _log.info('重连成功，重新调用 $action');
       return await call();
     } catch (reconnectError) {
-      stderr.writeln('[McpClient] 重连后调用 $action 仍失败: $reconnectError');
+      _log.error('重连后调用 $action 仍失败', reconnectError);
       throw lastError ?? reconnectError;
     }
   }
@@ -296,8 +302,8 @@ class McpClientImpl implements McpClient {
         final delay = retry.exponentialBackoff
             ? retry.retryDelay * (1 << (attempt - 1))
             : retry.retryDelay;
-        stderr.writeln(
-          '[McpClient] 自动重连 $attempt/${retry.maxRetries}，'
+        _log.info(
+          '自动重连 $attempt/${retry.maxRetries}，'
           '等待 ${delay}ms...',
         );
         await Future.delayed(Duration(milliseconds: delay));
@@ -308,11 +314,11 @@ class McpClientImpl implements McpClient {
           await _connectOnce();
           _reconnecting = false;
           _reconnectController.add(McpReconnectEvent('reconnected'));
-          stderr.writeln('[McpClient] 自动重连成功');
+          _log.info('自动重连成功');
           return;
         } catch (e) {
-          stderr.writeln(
-            '[McpClient] 自动重连失败 (尝试 $attempt/${retry.maxRetries}): $e',
+          _log.warn(
+            '自动重连失败 (尝试 $attempt/${retry.maxRetries}): $e',
           );
         }
       }
@@ -320,7 +326,7 @@ class McpClientImpl implements McpClient {
       _reconnecting = false;
       if (!_connected) {
         _reconnectController.add(McpReconnectEvent('reconnect_failed'));
-        stderr.writeln('[McpClient] 自动重连失败，所有重试已耗尽');
+        _log.error('自动重连失败，所有重试已耗尽');
       }
     });
   }
@@ -332,7 +338,7 @@ class McpClientImpl implements McpClient {
       throw StateError('MCP 客户端已释放');
     }
 
-    stderr.writeln('[McpClient] 手动触发重连...');
+    _log.info('手动触发重连...');
     await _reconnectLock.synchronized(() async {
       _reconnecting = true;
       _reconnectController.add(McpReconnectEvent('reconnecting'));
@@ -341,11 +347,11 @@ class McpClientImpl implements McpClient {
         await _connectWithRetry();
         _reconnecting = false;
         _reconnectController.add(McpReconnectEvent('reconnected'));
-        stderr.writeln('[McpClient] 手动重连成功');
+        _log.info('手动重连成功');
       } catch (e) {
         _reconnecting = false;
         _reconnectController.add(McpReconnectEvent('reconnect_failed'));
-        stderr.writeln('[McpClient] 手动重连失败: $e');
+        _log.error('手动重连失败', e);
         rethrow;
       }
     });

@@ -5,6 +5,7 @@ import 'package:uuid/uuid.dart';
 
 import '../entity/lan_message.dart';
 import '../lan/lan_client_service.dart';
+import '../utils/logger.dart';
 import 'rpc_protocol.dart';
 import 'rpc_config.dart';
 
@@ -15,6 +16,7 @@ import 'rpc_config.dart';
 /// - 管理方法处理器注册
 /// - 构造并发送响应消息
 class RemoteCallServer {
+  static final _log = Logger('RemoteCallServer');
   final LanClientService _clientService;
   final String _localDeviceId;
 
@@ -107,7 +109,7 @@ class RemoteCallServer {
         );
       }
     } catch (e) {
-      // 处理失败
+      _log.warn('handle RPC request failed: $e');
     }
   }
 

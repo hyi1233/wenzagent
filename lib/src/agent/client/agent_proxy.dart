@@ -8,6 +8,7 @@ import '../entity/entity.dart';
 import '../i_agent.dart';
 import '../rpc/agent_rpc_util.dart';
 import '../tool/agent_tool.dart';
+import '../../utils/logger.dart';
 
 /// RPC 调用回调类型
 typedef RpcCall =
@@ -24,6 +25,8 @@ typedef RpcCall =
 /// - 本地模式：直接调用 [IAgent] 实例
 /// - 远程模式：通过 RPC 回调调用远程 Agent
 class AgentProxy {
+  static final _log = Logger('AgentProxy');
+
   /// 员工UUID
   final String employeeId;
 
@@ -115,30 +118,30 @@ class AgentProxy {
 
   /// 发送消息
   Future<String> sendMessage(MessageInput input) async {
-    print('[AgentProxy] sendMessage isLocalMode: $isLocalMode');
+    _log.debug('sendMessage isLocalMode: $isLocalMode');
     
     // 🔑 关键：在客户端生成UUID，确保远程和本地ID一致
     final messageId = input.id ?? const Uuid().v4();
-    print('[AgentProxy] 消息ID: $messageId (${input.id != null ? "客户端提供" : "客户端生成"})');
+    _log.debug('消息ID: $messageId (${input.id != null ? "客户端提供" : "客户端生成"})');
     
     // 创建带有ID的input副本
     final inputWithId = input.id != null ? input : input.copyWith(id: messageId);
-    print('[AgentProxy] inputWithId.id: ${inputWithId.id}');
+    _log.debug('inputWithId.id: ${inputWithId.id}');
     
     // 🔑 如果是客户端生成的ID，验证UUID格式
     // 如果是用户提供ID，不验证（允许自定义格式）
     if (input.id == null && !_isValidUUID(messageId)) {
-      print('[AgentProxy] ⚠️ 警告: 生成的消息ID不是有效的UUID格式: $messageId');
+      _log.warn('生成的消息ID不是有效的UUID格式: $messageId');
       // 但不抛出异常，继续使用
     }
     
     if (isLocalMode && _localAgent != null) {
-      print('[AgentProxy] 调用本地Agent sendMessage');
+      _log.info('调用本地Agent sendMessage');
       final returnedId = await _localAgent.sendMessage(inputWithId);
       
       // 🔑 验证本地Agent没有修改ID
       if (returnedId != messageId) {
-        print('[AgentProxy] ⚠️ 严重错误：本地Agent修改了消息ID！期望: $messageId, 实际: $returnedId');
+        _log.error('严重错误：本地Agent修改了消息ID！期望: $messageId, 实际: $returnedId');
         // 记录错误但继续使用客户端生成的ID
       }
       
@@ -150,11 +153,11 @@ class AgentProxy {
       return messageId;
     }
     
-    print('[AgentProxy] 调用RPC sendMessage');
+    _log.info('调用RPC sendMessage');
     // 将 MessageInput 转换为 Map 以便 RPC 传输
     final messageData = inputWithId.toMap();
-    print('[AgentProxy] 发送的消息数据: $messageData');
-    print('[AgentProxy] 消息数据中的ID: ${messageData['id']}');
+    _log.debug('发送的消息数据: $messageData');
+    _log.debug('消息数据中的ID: ${messageData['id']}');
     
     final request = SendMessageRequest(
       employeeId: employeeId,
@@ -165,17 +168,17 @@ class AgentProxy {
     // ✅ 使用客户端生成的ID，而不是远程返回的ID
     // 远程服务器应该使用客户端提供的ID
     final returnedId = result['messageId'] as String? ?? '';
-    print('[AgentProxy] 远程返回的消息ID: $returnedId');
+    _log.debug('远程返回的消息ID: $returnedId');
     
     if (returnedId.isNotEmpty && returnedId != messageId) {
-      print('[AgentProxy] ⚠️ 严重错误：远程Agent修改了消息ID！期望: $messageId, 实际: $returnedId');
+      _log.error('严重错误：远程Agent修改了消息ID！期望: $messageId, 实际: $returnedId');
     }
     
     // 将完整消息数据添加到待确认队列
     final pendingMessage = _createPendingMessage(inputWithId, messageId);
     _pendingMessageQueue.add(pendingMessage);
     
-    print('[AgentProxy] 返回消息ID: $messageId');
+    _log.debug('返回消息ID: $messageId');
     return messageId;
   }
   
@@ -217,7 +220,7 @@ class AgentProxy {
       return _localAgent.removeMessageFromMemory(messageId);
     }
     // 远程模式不支持此操作
-    print('[AgentProxy] removeMessageFromMemory: 远程模式不支持此操作');
+    _log.warn('removeMessageFromMemory: 远程模式不支持此操作');
   }
 
   /// 获取当前权限请求（如果有，同步版本仅适用于本地模式）
@@ -619,7 +622,7 @@ class AgentProxy {
   // ===== 项目管理 =====
 
   Future<void> setProject(ProjectData? projectData) async {
-    print('[AgentProxy] setProject called: employeeId=$employeeId, projectUuid=${projectData?.projectUuid}, projectName=${projectData?.projectName}, isLocalMode=$isLocalMode');
+    _log.info('setProject called: employeeId=$employeeId, projectUuid=${projectData?.projectUuid}, projectName=${projectData?.projectName}, isLocalMode=$isLocalMode');
     if (isLocalMode && _localAgent != null) {
       return _localAgent.setProject(projectData);
     }
@@ -629,7 +632,7 @@ class AgentProxy {
     );
     await _rpcUtil!.setProject(request);
     _remoteCache.projectUuid = projectData?.projectUuid;
-    print('[AgentProxy] setProject completed: cached projectUuid=${_remoteCache.projectUuid}');
+    _log.info('setProject completed: cached projectUuid=${_remoteCache.projectUuid}');
   }
 
   String? getCurrentProjectUuid() {
@@ -689,7 +692,8 @@ class AgentProxy {
               size: stat.size,
               modified: stat.modified.toIso8601String(),
             ));
-          } catch (_) {
+          } catch (e) {
+            _log.debug('failed to stat directory entry, skipping: $e');
             continue;
           }
         }

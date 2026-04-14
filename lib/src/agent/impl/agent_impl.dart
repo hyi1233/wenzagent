@@ -5,6 +5,8 @@ import 'dart:io';
 import 'package:uuid/uuid.dart';
 import 'package:wenzagent/wenzagent.dart';
 
+import '../../utils/logger.dart';
+
 /// Agent 主体实现类（纯 Dart）
 ///
 /// 实现 [IAgent] 接口，组装所有内部组件：
@@ -18,6 +20,8 @@ import 'package:wenzagent/wenzagent.dart';
 /// - Completer-based 加锁保证多客户端一致性
 /// - 引用计数管理生命周期
 class AgentImpl implements IAgent {
+  static final _log = Logger('AgentImpl');
+
   @override
   final String employeeId;
 
@@ -263,7 +267,7 @@ class AgentImpl implements IAgent {
       // 2. 初始化技能系统（MCP / 持久化技能 / 文件夹技能）
       await _initSkillSystem(employeeId);
     } catch (e) {
-      print('[AgentImpl] warmup 失败: $e');
+      _log.error('warmup 失败', e);
     } finally {
       _warmupCompleter!.complete();
       _warmupCompleter = null;
@@ -338,13 +342,13 @@ class AgentImpl implements IAgent {
 
   /// 初始化技能系统
   Future<void> _initSkillSystem(String employeeId) async {
-    print('[Skill] ========== 开始初始化技能系统, employeeId=$employeeId ==========');
+    _log.info('开始初始化技能系统, employeeId=$employeeId');
 
     final context = SkillContext(
       toolRegistry: _toolRegistry,
       employeeId: employeeId,
       invokeLlm: (prompt) => _chatAdapter.invokeOnce(prompt),
-      logger: (level, msg) => print('[Skill][$level] $msg'),
+      logger: (level, msg) => _log.debug('[$level] $msg'),
     );
 
     _skillManager = SkillLifecycleManager(context);
@@ -356,30 +360,30 @@ class AgentImpl implements IAgent {
     await _scanFolderSkills(context);
 
     _enableSkills = true;
-    print('[Skill] ========== 技能系统初始化完成 ==========');
+    _log.info('技能系统初始化完成');
   }
 
   /// 从数据库加载持久化技能
   Future<void> _loadPersistedSkills(String employeeId) async {
     final store = SkillStore(deviceId: deviceId);
-    print('[Skill] 开始加载持久化技能, employeeId=$employeeId');
+    _log.debug('开始加载持久化技能, employeeId=$employeeId');
 
     final entities = await store.findByEmployeeWithDeviceId(deviceId, employeeId);
-    print('[Skill] 数据库查询完成, 共 ${entities.length} 条技能记录');
+    _log.debug('数据库查询完成, 共 ${entities.length} 条技能记录');
 
     int loaded = 0;
     int skipped = 0;
     int failed = 0;
 
     for (final entity in entities) {
-      print(
-        '[Skill] 处理技能: uuid=${entity.uuid}, name=${entity.name}, '
+      _log.debug(
+        '处理技能: uuid=${entity.uuid}, name=${entity.name}, '
         'type=${entity.skillType}, enabled=${entity.enabled}, '
         'config=${entity.config?.substring(0, entity.config!.length > 80 ? 80 : entity.config!.length)}',
       );
 
       if (entity.enabled != 1) {
-        print('[Skill] 跳过已禁用技能: ${entity.name}');
+        _log.debug('跳过已禁用技能: ${entity.name}');
         skipped++;
         continue;
       }
@@ -389,17 +393,17 @@ class AgentImpl implements IAgent {
         case 'mcp':
           try {
             skill = McpSkill.fromEntity(entity);
-            print('[Skill] MCP 技能实体创建成功: ${entity.name}');
+            _log.info('MCP 技能实体创建成功: ${entity.name}');
           } catch (e) {
-            print('[Skill] MCP 技能实体创建失败: ${entity.name}, $e');
+            _log.error('MCP 技能实体创建失败: ${entity.name}', e);
           }
           break;
         case 'config':
           try {
             skill = ConfigSkill.fromEntity(entity);
-            print('[Skill] Config 技能实体创建成功: ${entity.name}');
+            _log.info('Config 技能实体创建成功: ${entity.name}');
           } catch (e) {
-            print('[Skill] Config 技能实体创建失败: ${entity.name}, $e');
+            _log.error('Config 技能实体创建失败: ${entity.name}', e);
           }
           break;
         case 'folder':
@@ -408,7 +412,8 @@ class AgentImpl implements IAgent {
             final configMap =
                 jsonDecode(entity.config!) as Map<String, dynamic>;
             folderPath = configMap['folder_path'] as String?;
-          } catch (_) {
+          } catch (e) {
+            _log.debug('failed to parse folder skill config as JSON, using raw config: $e');
             folderPath = entity.config;
           }
           if (folderPath != null && folderPath.isNotEmpty) {
@@ -422,33 +427,33 @@ class AgentImpl implements IAgent {
                 toolRegistry: _toolRegistry,
                 employeeId: employeeId,
                 invokeLlm: (prompt) => _chatAdapter.invokeOnce(prompt),
-                logger: (level, msg) => print('[Skill][$level] $msg'),
+                logger: (level, msg) => _log.debug('[$level] $msg'),
               ),
             );
             skill = s;
-            print('[Skill] Folder 技能实体创建成功: ${entity.name}, path=$folderPath');
+            _log.info('Folder 技能实体创建成功: ${entity.name}, path=$folderPath');
           } else {
-            print('[Skill] Folder 技能跳过(无路径): ${entity.name}');
+            _log.debug('Folder 技能跳过(无路径): ${entity.name}');
           }
           break;
         default:
-          print('[Skill] 未知技能类型: ${entity.skillType}, name=${entity.name}');
+          _log.warn('未知技能类型: ${entity.skillType}, name=${entity.name}');
           break;
       }
 
       if (skill != null) {
         try {
           await _skillManager!.loadSkill(skill);
-          print('[Skill] 技能加载并激活成功: ${entity.name}');
+          _log.info('技能加载并激活成功: ${entity.name}');
           loaded++;
         } catch (e, st) {
-          print('[Skill] 技能加载失败: ${entity.name}, error=$e\n$st');
+          _log.error('技能加载失败: ${entity.name}', e, st);
           failed++;
         }
       }
     }
 
-    print('[Skill] 持久化技能加载完成: 成功=$loaded, 跳过=$skipped, 失败=$failed');
+    _log.info('持久化技能加载完成: 成功=$loaded, 跳过=$skipped, 失败=$failed');
   }
 
   /// 扫描文件夹技能
@@ -463,7 +468,7 @@ class AgentImpl implements IAgent {
       try {
         await _skillManager!.loadSkill(skill);
       } catch (e) {
-        print('[Skill] 文件夹加载失败: ${entity.path}, $e');
+        _log.error('文件夹加载失败: ${entity.path}', e);
       }
     }
   }
@@ -479,8 +484,8 @@ class AgentImpl implements IAgent {
       await _warmupCompleter!.future;
     }
 
-    print(
-      '[AgentImpl] sendMessage: ${input.content.substring(0, input.content.length.clamp(0, 50))}',
+    _log.debug(
+      'sendMessage: ${input.content.substring(0, input.content.length.clamp(0, 50))}',
     );
 
     return await _withLock(() async {
@@ -494,7 +499,7 @@ class AgentImpl implements IAgent {
       // 🔑 关键：如果客户端提供了ID，强制使用它，覆盖metadata中的id
       if (clientProvidedId != null && clientProvidedId.isNotEmpty) {
         messageData['id'] = clientProvidedId;
-        print('[AgentImpl] 使用客户端提供的消息ID: $clientProvidedId (强制覆盖metadata)');
+        _log.debug('使用客户端提供的消息ID: $clientProvidedId (强制覆盖metadata)');
       } else {
         // 客户端没有提供ID，检查messageData中是否有ID（可能来自metadata）
         final existingId = messageData['id'] as String?;
@@ -502,9 +507,9 @@ class AgentImpl implements IAgent {
           // 没有任何ID，生成一个新的
           final newMessageId = const Uuid().v4();
           messageData['id'] = newMessageId;
-          print('[AgentImpl] 生成新消息ID: $newMessageId');
+          _log.debug('生成新消息ID: $newMessageId');
         } else {
-          print('[AgentImpl] 使用metadata中的消息ID: $existingId');
+          _log.debug('使用metadata中的消息ID: $existingId');
         }
       }
 
@@ -526,10 +531,10 @@ class AgentImpl implements IAgent {
           deviceId,
           userMessage,
         );
-        print('[AgentImpl] 用户消息已提前持久化: $finalMessageId');
+        _log.debug('用户消息已提前持久化: $finalMessageId');
       }
 
-      print('[AgentImpl] 提交消息到处理器，最终消息ID: $finalMessageId');
+      _log.debug('提交消息到处理器，最终消息ID: $finalMessageId');
       // 提交到处理器
       await _processor?.submitMessage(finalMessageId, messageData);
 
@@ -666,8 +671,8 @@ class AgentImpl implements IAgent {
     // 4. 分页
     final pagedMessages = unreceivedMessages.skip(offset).take(limit).toList();
 
-    print(
-      '[AgentImpl] 查询设备 $receiverDeviceId 的未接收消息，共 ${unreceivedMessages.length} 条，返回第 ${offset + 1}-${offset + pagedMessages.length} 条',
+    _log.debug(
+      '查询设备 $receiverDeviceId 的未接收消息，共 ${unreceivedMessages.length} 条，返回第 ${offset + 1}-${offset + pagedMessages.length} 条',
     );
     return pagedMessages;
   }
@@ -687,8 +692,8 @@ class AgentImpl implements IAgent {
           info.updateTime;
     }
 
-    print(
-      '[AgentImpl] 已标记设备 $receiverDeviceId 接收 ${messageReceiveList.length} 条消息',
+    _log.debug(
+      '已标记设备 $receiverDeviceId 接收 ${messageReceiveList.length} 条消息',
     );
   }
 
@@ -719,8 +724,8 @@ class AgentImpl implements IAgent {
       return AgentMessage.fromMap(map);
     }).toList();
 
-    print(
-      '[AgentImpl] getMessagesAfterSeq: employeeId=$employeeId, deviceId=$deviceId, lastSeq=$lastSeq, 返回 ${messages.length} 条',
+    _log.debug(
+      'getMessagesAfterSeq: employeeId=$employeeId, deviceId=$deviceId, lastSeq=$lastSeq, 返回 ${messages.length} 条',
     );
     return messages;
   }
@@ -756,7 +761,7 @@ class AgentImpl implements IAgent {
         _messageReadStatus[messageId] ??= {};
         _messageReadStatus[messageId]![readerDeviceId] = DateTime.now();
       }
-      print('[AgentImpl] 已标记设备 $readerDeviceId 对 ${ids.length} 条消息的已读状态');
+      _log.info('已标记设备 $readerDeviceId 对 ${ids.length} 条消息的已读状态');
     } else {
       // 获取所有消息并标记已读
       final allMessages = await _chatAdapter.getSessionMessages(employeeId);
@@ -764,7 +769,7 @@ class AgentImpl implements IAgent {
         _messageReadStatus[message.id] ??= {};
         _messageReadStatus[message.id]![readerDeviceId] = DateTime.now();
       }
-      print('[AgentImpl] 已标记设备 $readerDeviceId 对员工 $employeeId 所有消息的已读状态');
+      _log.info('已标记设备 $readerDeviceId 对员工 $employeeId 所有消息的已读状态');
     }
 
     // 广播已读状态变更事件
@@ -827,7 +832,7 @@ class AgentImpl implements IAgent {
 
     // 如果正在处理的是要删除的消息，先打断
     if (_processor?.currentProcessingMessageId == messageId) {
-      print('[AgentImpl] 正在处理的消息被删除，打断处理: $messageId');
+      _log.info('正在处理的消息被删除，打断处理: $messageId');
       await _processor?.interruptCurrentTask();
     } else {
       // 否则只从队列中撤回
@@ -855,7 +860,7 @@ class AgentImpl implements IAgent {
     await _withLock(() async {
       // 如果有正在处理的消息，先打断
       if (_processor?.currentProcessingMessageId != null) {
-        print('[AgentImpl] 清空会话，打断正在处理的消息');
+        _log.info('清空会话，打断正在处理的消息');
         await _processor?.interruptCurrentTask();
       }
 
@@ -1041,7 +1046,7 @@ class AgentImpl implements IAgent {
           final skill = McpSkill.fromEntity(entity);
           await _skillManager?.loadSkill(skill);
         } catch (e) {
-          print('[AgentImpl] 重新加载 MCP 技能失败: ${entity.name}, $e');
+          _log.error('重新加载 MCP 技能失败: ${entity.name}', e);
         }
       }
     });
@@ -1177,7 +1182,7 @@ class AgentImpl implements IAgent {
     };
 
     _permissionManager.addApproval(rule);
-    print('[AgentImpl] 权限规则已添加: $rule');
+    _log.debug('权限规则已添加: $rule');
   }
 
   // ===== IAgent: 状态查询 =====

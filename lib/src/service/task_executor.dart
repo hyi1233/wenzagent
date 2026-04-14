@@ -8,6 +8,7 @@ import '../agent/entity/entity.dart';
 import '../agent/tool/agent_tool.dart';
 import '../agent/tool/builtin/builtin_tools.dart';
 import '../agent/tool/tool_registry.dart';
+import '../utils/logger.dart';
 import 'entity/agent_runtime_config.dart';
 import 'permission_forwarder.dart';
 
@@ -42,6 +43,7 @@ class TaskExecutionResult {
 ///
 /// 执行完成后把结果通过 [deliverResult] 送入正式 Agent 通道。
 class TaskExecutor {
+  static final _log = Logger('TaskExecutor');
   /// 获取 Agent 配置（provider、systemPrompt 等）
   Future<AgentRuntimeConfig?> Function(String employeeId)? getAgentConfig;
 
@@ -200,7 +202,9 @@ class TaskExecutor {
       // ⑨ 销毁临时环境
       try {
         await adapter.dispose();
-      } catch (_) {}
+      } catch (e) {
+        _log.debug('dispose temporary adapter failed: $e');
+      }
     }
   }
 }

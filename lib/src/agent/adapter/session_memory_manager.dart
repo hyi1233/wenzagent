@@ -2,6 +2,7 @@
 
 import '../../service/message_store_service.dart';
 import '../../shared/shared.dart';
+import '../../utils/logger.dart';
 
 /// 会话消息历史
 ///
@@ -9,6 +10,8 @@ import '../../shared/shared.dart';
 /// ChatMessage 自身已包含 uuid、createdAt、metadata 等字段，
 /// 无需再使用 MessageWrapper 包装。
 class SessionHistory {
+  static final _log = Logger('SessionHistory');
+
   final String employeeId;
   final String? title;
   final DateTime createdAt;
@@ -89,7 +92,7 @@ class SessionHistory {
       if (index >= 0) {
         messages.removeAt(index);
         removed = true;
-        print('[SessionHistory] 已删除消息: $messageId (设备: $deviceId)');
+        _log.debug('已删除消息: $messageId (设备: $deviceId)');
       }
     }
     return removed;

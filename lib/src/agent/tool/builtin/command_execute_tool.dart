@@ -2,12 +2,15 @@ import 'dart:async';
 import 'dart:io';
 
 import '../agent_tool.dart';
+import '../../../utils/logger.dart';
 
 /// 命令执行工具
 ///
 /// 执行 shell 命令并返回输出。
 /// 支持中断正在执行的命令。
 class CommandExecuteTool extends AgentTool {
+  static final _log = Logger('CommandExecuteTool');
+
   /// 当前正在执行的进程
   Process? _currentProcess;
 
@@ -205,7 +208,7 @@ class CommandExecuteTool extends AgentTool {
     try {
       _currentProcess?.kill();
     } catch (e) {
-      // 忽略杀死进程时的错误
+      _log.warn('failed to kill process: $e');
     }
   }
 }

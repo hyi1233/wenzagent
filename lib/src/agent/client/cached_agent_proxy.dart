@@ -10,6 +10,7 @@ import '../../shared/chat_message.dart' show ToolCall;
 import '../../shared/shared.dart' as shared;
 import '../../service/message_store_service.dart';
 import '../../persistence/stores/mark_read_queue_store.dart';
+import '../../utils/logger.dart';
 
 /// 缓存状态
 enum CacheState {
@@ -38,6 +39,8 @@ enum CacheState {
 /// 3. 智能合并本地和远程消息（避免重复）
 /// 4. 更新本地缓存（保持最新状态）
 class CachedAgentProxy {
+  static final _log = Logger('CachedAgentProxy');
+
   final AgentProxy _proxy;
   final MessageStoreService _messageStore;
   final String _deviceId;
@@ -173,16 +176,16 @@ class CachedAgentProxy {
       try {
         // 同步远程消息
         await _syncMessagesFromRemote();
-      } catch (e, st) {
-        print('[CachedAgentProxy] 同步远程消息失败: $e\n$st');
+      } catch (e) {
+        _log.error('同步远程消息失败: $e');
       }
 
       // 同步远程状态和权限请求
       try {
         await _syncRemoteStateAndPermission();
-        print('[CachedAgentProxy] 同步远程状态成功');
+        _log.info('同步远程状态成功');
       } catch (e) {
-        print('[CachedAgentProxy] 同步远程状态失败: $e');
+        _log.error('同步远程状态失败', e);
       }
 
       // 同步完成后，重发待处理的标记已读队列
@@ -190,7 +193,7 @@ class CachedAgentProxy {
       _syncCompleter!.complete();
       _syncCompleter = null;
     } catch (e, st) {
-      print(e);
+      _log.error('unknown error', e);
       _syncCompleter!.completeError(e, st);
       _syncCompleter = null;
     }
@@ -199,7 +202,7 @@ class CachedAgentProxy {
 
   /// 初始化事件监听
   void _initializeEventListeners() {
-    print('[CachedAgentProxy] 初始化事件监听...');
+    _log.debug('初始化事件监听...');
 
     // 监听Agent事件（本地和远程模式都需要）
     _eventSubscription = _proxy.onEvent.listen((event) {
@@ -223,7 +226,7 @@ class CachedAgentProxy {
       return;
     }
 
-    print('[CachedAgentProxy] 收到事件: $type');
+    _log.debug('收到事件: $type');
 
     switch (type) {
       case AgentEventType.messageStatusChanged:
@@ -268,9 +271,7 @@ class CachedAgentProxy {
 
     if (messageId == null || status == null) return;
 
-    print('[CachedAgentProxy] 消息状态变更: $messageId -> $status${error != null
-        ? ", error: $error"
-        : ""}');
+    _log.debug('消息状态变更: $messageId -> $status${error != null ? ", error: $error" : ""}');
 
     // 更新本地缓存中的消息状态（包含错误信息）
     _updateMessageStatus(messageId, status, error: error);
@@ -318,13 +319,13 @@ class CachedAgentProxy {
     // 添加到缓存
     await _addMessageToCache(errorMessage);
 
-    print('[CachedAgentProxy] 已创建错误消息: ${errorMessage.id}');
+    _log.info('已创建错误消息: ${errorMessage.id}');
   }
 
   /// 处理Agent状态变更事件
   void _handleAgentStatusChanged(Map<String, dynamic> data) {
     final status = data['status'] as String?;
-    print('[CachedAgentProxy] Agent状态变更: $status');
+    _log.debug('Agent状态变更: $status');
 
     // 如果是空闲状态，可能意味着消息处理完成
     if (status == 'idle') {
@@ -335,7 +336,7 @@ class CachedAgentProxy {
 
   /// 处理工具事件
   void _handleToolEvent(String eventType, Map<String, dynamic> data) {
-    print('[CachedAgentProxy] 工具事件: $eventType');
+    _log.debug('工具事件: $eventType');
 
     if (eventType == 'toolCallStart') {
       // 工具调用开始：创建工具调用消息
@@ -361,12 +362,11 @@ class CachedAgentProxy {
     final localId = 'local_toolcall_$toolCallId';
     final exists = await _messageStore.getMessage(_deviceId, localId);
     if (exists != null) {
-      print(
-          '[CachedAgentProxy] 工具调用临时消息已存在，跳过: $toolName ($toolCallId)');
+      _log.debug('工具调用临时消息已存在，跳过: $toolName ($toolCallId)');
       return;
     }
 
-    print('[CachedAgentProxy] 创建工具调用消息: $toolName ($toolCallId)');
+    _log.debug('创建工具调用消息: $toolName ($toolCallId)');
 
     // 创建工具调用消息：role 为 assistant（functionCall 是 assistant 发出的），
     // ID 使用前缀避免与远程同步的消息 ID 冲突
@@ -404,7 +404,7 @@ class CachedAgentProxy {
 
     if (toolCallId == null) return;
 
-    print('[CachedAgentProxy] 更新工具调用消息: $toolCallId');
+    _log.debug('更新工具调用消息: $toolCallId');
 
     // 根据错误类型确定状态
     String newStatus;
@@ -412,7 +412,7 @@ class CachedAgentProxy {
       newStatus = 'completed';
     } else if (result != null && result.contains('权限被拒绝')) {
       newStatus = 'interrupted';
-      print('[CachedAgentProxy] 工具调用被权限打断: $toolCallId');
+      _log.warn('工具调用被权限打断: $toolCallId');
     } else {
       newStatus = 'failed';
     }
@@ -468,7 +468,7 @@ class CachedAgentProxy {
       await _messageStore.addMessage(
           _deviceId, chatMsg, updateWatermark: false);
     } catch (e) {
-      print('[CachedAgentProxy] 保存工具调用消息失败: $e');
+      _log.error('保存工具调用消息失败', e);
     }
   }
 
@@ -478,7 +478,7 @@ class CachedAgentProxy {
       final chatMsg = _agentMessageToChatMessage(message);
       await _messageStore.updateMessage(_deviceId, chatMsg, updateWatermark: false);
     } catch (e) {
-      print('[CachedAgentProxy] 更新工具调用消息失败: $e');
+      _log.error('更新工具调用消息失败', e);
     }
   }
 
@@ -513,14 +513,13 @@ class CachedAgentProxy {
       try {
         await _messageStore.hardDeleteMessage(_deviceId, localId);
         deletedCount++;
-      } catch (_) {
-        // 消息不存在则忽略
+      } catch (e) {
+        _log.debug('cleanup superseded local tool call failed, message not found: $e');
       }
     }
 
     if (deletedCount > 0) {
-      print(
-          '[CachedAgentProxy] 已清理 $deletedCount 条被远程消息取代的本地工具调用临时消息');
+      _log.info('已清理 $deletedCount 条被远程消息取代的本地工具调用临时消息');
     }
   }
 
@@ -529,13 +528,12 @@ class CachedAgentProxy {
     try {
       final request = AgentPermissionRequest.fromMap(data);
       _pendingPermissionRequests[request.requestId] = request;
-      print('[CachedAgentProxy] 收到权限请求: ${request
-          .requestId}, 函数: ${request.functionName}');
+      _log.info('收到权限请求: ${request.requestId}, 函数: ${request.functionName}');
 
       // 通知客户端重新加载消息
       _notifyMessagesChanged();
     } catch (e) {
-      print('[CachedAgentProxy] 处理权限请求失败: $e');
+      _log.error('处理权限请求失败', e);
     }
   }
 
@@ -546,7 +544,7 @@ class CachedAgentProxy {
 
     final removed = _pendingPermissionRequests.remove(requestId);
     if (removed != null) {
-      print('[CachedAgentProxy] 收到权限响应（其他设备已处理）: $requestId');
+      _log.info('收到权限响应（其他设备已处理）: $requestId');
       _notifyMessagesChanged();
     }
   }
@@ -558,8 +556,7 @@ class CachedAgentProxy {
 
     if (originalMessageId == null || replyMessageId == null) return;
 
-    print(
-        '[CachedAgentProxy] 消息被回复: $originalMessageId -> $replyMessageId');
+    _log.debug('消息被回复: $originalMessageId -> $replyMessageId');
 
     // 从数据库查找并更新原消息
     final existing = await _messageStore.getMessage(
@@ -588,7 +585,7 @@ class CachedAgentProxy {
 
     if (messageId == null) return;
 
-    print('[CachedAgentProxy] 消息进入队列: $messageId, 位置: $queuePosition');
+    _log.debug('消息进入队列: $messageId, 位置: $queuePosition');
 
     // 从数据库查找并更新消息状态
     final existing = await _messageStore.getMessage(
@@ -615,7 +612,7 @@ class CachedAgentProxy {
 
     if (messageId == null) return;
 
-    print('[CachedAgentProxy] 消息开始处理: $messageId');
+    _log.debug('消息开始处理: $messageId');
 
     // 更新消息状态为processing
     _updateMessageStatus(messageId, 'processing');
@@ -627,7 +624,7 @@ class CachedAgentProxy {
   Future<void> _handleSessionCleared(Map<String, dynamic> data) async {
     if (_proxy.isLocalMode) return;
 
-    print('[CachedAgentProxy] 收到会话清空事件: employeeId=$_employeeId');
+    _log.info('收到会话清空事件: employeeId=$_employeeId');
 
     // 设置清空保护标志，防止 idle 状态触发的 _debouncedSyncMessages 重新同步消息
     _sessionClearPending = true;
@@ -647,16 +644,16 @@ class CachedAgentProxy {
     }
     _notifyMessagesChanged();
 
-    print('[CachedAgentProxy] 本地会话已清空，水位线: clearSeq=lastSeq=$maxSeq');
+    _log.info('本地会话已清空，水位线: clearSeq=lastSeq=$maxSeq');
   }
 
   /// 处理状态变更
   void _handleStateChange(AgentStateSnapshot state) {
-    print('[CachedAgentProxy] 状态变更: ${state.status}');
+    _log.debug('状态变更: ${state.status}');
 
     // 会话清空保护期内，跳过消息同步
     if (_sessionClearPending) {
-      print('[CachedAgentProxy] 会话清空保护期内，跳过状态变更同步');
+      _log.debug('会话清空保护期内，跳过状态变更同步');
       return;
     }
 
@@ -675,20 +672,19 @@ class CachedAgentProxy {
     if (_isDisposed || _proxy.isLocalMode) return;
 
     try {
-      print('[CachedAgentProxy] 查询待处理的权限请求...');
+      _log.debug('查询待处理的权限请求...');
 
       final permissionRequest = await _proxy.getPendingPermissionRequestAsync();
       if (permissionRequest != null) {
         _pendingPermissionRequests[permissionRequest.requestId] =
             permissionRequest;
-        print('[CachedAgentProxy] 已缓存权限请求: ${permissionRequest
-            .requestId}');
+        _log.info('已缓存权限请求: ${permissionRequest.requestId}');
 
         // 通知客户端重新加载消息
         _notifyMessagesChanged();
       }
     } catch (e) {
-      print('[CachedAgentProxy] 查询权限请求失败: $e');
+      _log.error('查询权限请求失败', e);
     }
   }
 
@@ -696,7 +692,7 @@ class CachedAgentProxy {
   void _debouncedSyncMessages() {
     // 会话清空保护期内，跳过消息同步
     if (_sessionClearPending) {
-      print('[CachedAgentProxy] 会话清空保护期内，跳过去抖同步');
+      _log.debug('会话清空保护期内，跳过去抖同步');
       return;
     }
     _syncDebounceTimer?.cancel();
@@ -716,7 +712,7 @@ class CachedAgentProxy {
     if (_isDisposed || _proxy.isLocalMode) return;
 
     try {
-      print('[CachedAgentProxy] 开始从远程同步消息...');
+      _log.debug('开始从远程同步消息...');
 
       // 1. 查询服务端 clearSeq，硬删除本地旧消息
       try {
@@ -726,13 +722,12 @@ class CachedAgentProxy {
             _deviceId, _employeeId, remoteClearSeq,
           );
           if (deletedCount > 0) {
-            print(
-                '[CachedAgentProxy] 根据 clearSeq=$remoteClearSeq 删除了 $deletedCount 条本地消息');
+            _log.info('根据 clearSeq=$remoteClearSeq 删除了 $deletedCount 条本地消息');
             _messageStore.resetLastSeq(_deviceId, _employeeId, remoteClearSeq);
           }
         }
       } catch (e) {
-        print('[CachedAgentProxy] 获取远程 clearSeq 失败: $e');
+        _log.error('获取远程 clearSeq 失败', e);
       }
 
       // 2. 查询本地消息 localLastSeq
@@ -743,12 +738,11 @@ class CachedAgentProxy {
       try {
         remoteLastSeq = await _proxy.getMaxSeq();
       } catch (e) {
-        print('[CachedAgentProxy] 获取远程 lastSeq 失败: $e');
+        _log.error('获取远程 lastSeq 失败', e);
         return;
       }
 
-      print(
-          '[CachedAgentProxy] localLastSeq=$localLastSeq, remoteLastSeq=$remoteLastSeq');
+      _log.debug('localLastSeq=$localLastSeq, remoteLastSeq=$remoteLastSeq');
 
       // 4. 增量拉取：远程有更新的消息时，拉取 seq > localMaxSeq 的消息
       if (remoteLastSeq > localLastSeq) {
@@ -786,7 +780,9 @@ class CachedAgentProxy {
               try {
                 await _messageStore.hardDeleteMessage(
                     _deviceId, message.id);
-              } catch (_) {}
+              } catch (e) {
+                _log.debug('hard delete synced deleted message failed: $e');
+              }
               continue;
             }
 
@@ -803,14 +799,13 @@ class CachedAgentProxy {
           // 水位线已在 addMessage 内部逐条更新，此处无需重复
           _notifyMessagesChanged();
 
-          print('[CachedAgentProxy] 同步完成: 拉取 ${allNewMessages
-              .length} 条, lastSeq=$currentSeq');
+          _log.info('同步完成: 拉取 ${allNewMessages.length} 条, lastSeq=$currentSeq');
         }
       } else {
-        print('[CachedAgentProxy] 无新消息需要同步');
+        _log.debug('无新消息需要同步');
       }
-    } catch (e, st) {
-      print('[CachedAgentProxy] 同步远程消息失败: $e\n$st');
+    } catch (e) {
+      _log.error('同步远程消息失败: $e');
     }
 
     // 清理残留的本地工具调用临时消息
@@ -834,7 +829,7 @@ class CachedAgentProxy {
         error: '工具调用无结果（agent 可能已重启）',
       );
     }
-    print('[CachedAgentProxy] 已清理 ${staleIds.length} 条残留工具调用消息');
+    _log.info('已清理 ${staleIds.length} 条残留工具调用消息');
   }
 
   /// 重发待处理的标记已读队列
@@ -847,8 +842,7 @@ class CachedAgentProxy {
     final pending = _markReadQueueStore.getPending(employeeId: _employeeId);
     if (pending.isEmpty) return;
 
-    print(
-        '[CachedAgentProxy] 开始重发 ${pending.length} 条待处理的标记已读请求');
+    _log.info('开始重发 ${pending.length} 条待处理的标记已读请求');
 
     final successIds = <int>[];
     for (final entry in pending) {
@@ -860,15 +854,13 @@ class CachedAgentProxy {
         successIds.add(entry.id);
       } catch (e) {
         // 单条失败不影响后续发送，保留在队列中等待下次重发
-        print(
-            '[CachedAgentProxy] 重发标记已读请求失败: ${entry.id}, error: $e');
+        _log.error('重发标记已读请求失败: ${entry.id}', e);
       }
     }
 
     if (successIds.isNotEmpty) {
       _markReadQueueStore.removeAll(successIds);
-      print('[CachedAgentProxy] 标记已读队列已清理 ${successIds
-          .length} 条成功记录');
+      _log.info('标记已读队列已清理 ${successIds.length} 条成功记录');
     }
   }
 
@@ -880,52 +872,51 @@ class CachedAgentProxy {
     if (_isDisposed || _proxy.isLocalMode) return;
 
     try {
-      print('[CachedAgentProxy] 开始同步远程会话状态和权限请求...');
+      _log.debug('开始同步远程会话状态和权限请求...');
 
       // 1. 查询远程 Agent 状态
       final stateSnapshot = await _proxy.getStateSnapshotAsync();
-      print('[CachedAgentProxy] 远程 Agent 状态: ${stateSnapshot.status}');
+      _log.debug('远程 Agent 状态: ${stateSnapshot.status}');
 
       // 2. 同步远程 Provider 配置
       try {
         final providerConfig = await _proxy.getProviderConfigAsync();
         if (providerConfig != null) {
-          print('[CachedAgentProxy] 远程 Provider 配置: ${providerConfig
-              .provider} · ${providerConfig.model}');
+          _log.debug('远程 Provider 配置: ${providerConfig.provider} · ${providerConfig.model}');
         } else {
-          print('[CachedAgentProxy] 远程无 Provider 配置');
+          _log.debug('远程无 Provider 配置');
         }
       } catch (e) {
-        print('[CachedAgentProxy] 同步远程 Provider 配置失败: $e');
+        _log.error('同步远程 Provider 配置失败', e);
       }
 
       // 3. 同步远程项目 UUID
       try {
         final projectUuid = await _proxy.getCurrentProjectUuidAsync();
-        print('[CachedAgentProxy] 远程项目 UUID: $projectUuid');
+        _log.debug('远程项目 UUID: $projectUuid');
       } catch (e) {
-        print('[CachedAgentProxy] 同步远程项目 UUID 失败: $e');
+        _log.error('同步远程项目 UUID 失败', e);
       }
 
       // 4. 同步远程技能配置
       try {
         final skills = await _proxy.getSkillsConfigAsync();
-        print('[CachedAgentProxy] 远程技能配置: ${skills.length} 个');
+        _log.debug('远程技能配置: ${skills.length} 个');
       } catch (e) {
-        print('[CachedAgentProxy] 同步远程技能配置失败: $e');
+        _log.error('同步远程技能配置失败', e);
       }
 
       // 5. 同步远程 MCP 配置
       try {
         final mcpConfigs = await _proxy.getMcpConfigsAsync();
-        print('[CachedAgentProxy] 远程 MCP 配置: ${mcpConfigs.length} 个');
+        _log.debug('远程 MCP 配置: ${mcpConfigs.length} 个');
       } catch (e) {
-        print('[CachedAgentProxy] 同步远程 MCP 配置失败: $e');
+        _log.error('同步远程 MCP 配置失败', e);
       }
 
-      print('[CachedAgentProxy] 远程状态同步完成');
+      _log.info('远程状态同步完成');
     } catch (e) {
-      print('[CachedAgentProxy] 同步远程会话状态失败: $e');
+      _log.error('同步远程会话状态失败', e);
     }
   }
 
@@ -1011,7 +1002,7 @@ class CachedAgentProxy {
       await _messageStore.addMessage(
           _deviceId, chatMsg, updateWatermark: updateWatermark);
     } catch (e) {
-      print('保存消息到数据库失败: $e');
+      _log.error('保存消息到数据库失败', e);
     }
   }
 
@@ -1121,7 +1112,7 @@ class CachedAgentProxy {
   Future<String> sendMessage(MessageInput input) async {
     // 1. 客户端生成UUID作为消息ID
     final messageId = input.id ?? _generateMessageId();
-    print('[CachedAgentProxy] 客户端生成消息ID: $messageId');
+    _log.debug('客户端生成消息ID: $messageId');
 
     // 2. 创建本地消息（立即可见）
     final localMessage = AgentMessage(
@@ -1142,8 +1133,7 @@ class CachedAgentProxy {
       status: 'pending',
     );
 
-    print('[CachedAgentProxy] 创建本地消息: ID=${localMessage
-        .id}, role=${localMessage.role}');
+    _log.debug('创建本地消息: ID=${localMessage.id}, role=${localMessage.role}');
 
     // 3. 添加到本地缓存（立即可见，不更新同步水位线）
     await _addMessageToCache(localMessage, updateWatermark: false);
@@ -1152,29 +1142,28 @@ class CachedAgentProxy {
     try {
       // 传递生成的messageId，确保远程使用相同的ID
       final inputWithId = input.copyWith(id: messageId);
-      print('[CachedAgentProxy] 发送消息到远程: ID=$messageId');
+      _log.debug('发送消息到远程: ID=$messageId');
 
       final returnedId = await _proxy.sendMessage(inputWithId);
 
-      print('[CachedAgentProxy] AgentProxy返回的消息ID: $returnedId');
+      _log.debug('AgentProxy返回的消息ID: $returnedId');
 
       // 🔑 验证返回的ID是否一致
       if (returnedId != messageId) {
-        print(
-            '[CachedAgentProxy] ⚠️ 严重错误：AgentProxy返回了不同的ID！期望: $messageId, 实际: $returnedId');
+        _log.warn('严重错误：AgentProxy返回了不同的ID！期望: $messageId, 实际: $returnedId');
         // 强制使用客户端生成的ID
       }
 
       // 发送成功，更新状态
       if (!_proxy.isLocalMode) {
         _updateMessageStatus(messageId, 'sent');
-        print('[CachedAgentProxy] 消息状态更新为sent: ID=$messageId');
+        _log.debug('消息状态更新为sent: ID=$messageId');
       }
     } catch (e) {
       // 发送失败，更新状态
       if (!_proxy.isLocalMode) {
         _updateMessageStatus(messageId, 'failed');
-        print('[CachedAgentProxy] 消息发送失败: ID=$messageId, error: $e');
+        _log.error('消息发送失败: ID=$messageId', e);
       }
       rethrow;
     }
@@ -1257,7 +1246,7 @@ class CachedAgentProxy {
     // 从数据库中删除消息
     try {
       await _messageStore.hardDeleteMessage(_deviceId, messageId);
-      print('[CachedAgentProxy] 已从数据库删除消息: $messageId');
+      _log.info('已从数据库删除消息: $messageId');
 
       // 本地模式：还需要删除助手回复消息（它们的时间戳紧随用户消息之后）
       if (_proxy.isLocalMode) {
@@ -1274,12 +1263,12 @@ class CachedAgentProxy {
               try {
                 await _messageStore.hardDeleteMessage(
                     _deviceId, msg.id);
-                print('[CachedAgentProxy] 已从数据库删除助手消息: ${msg.id}');
+                _log.info('已从数据库删除助手消息: ${msg.id}');
 
                 // 从 Agent 内存中删除助手消息
                 await _proxy.removeMessageFromMemory(msg.id);
               } catch (e) {
-                print('[CachedAgentProxy] 删除助手消息失败: $e');
+                _log.error('删除助手消息失败', e);
               }
             } else {
               // 遇到下一条用户消息，停止删除
@@ -1292,7 +1281,7 @@ class CachedAgentProxy {
         await _proxy.removeMessageFromMemory(messageId);
       }
     } catch (e) {
-      print('[CachedAgentProxy] 从数据库删除消息失败: $e');
+      _log.error('从数据库删除消息失败', e);
     }
   }
 
@@ -1325,7 +1314,7 @@ class CachedAgentProxy {
       // 【修复】重置水位线，避免后续增量同步拉取大量删除事件
       // 注意：updateLastSeq 使用 MAX 语义无法降为 0，必须用 resetLastSeq
       _messageStore.resetLastSeq(_deviceId, _employeeId, 0);
-      print('[CachedAgentProxy] 会话已清空，水位线已重置为 0');
+      _log.info('会话已清空，水位线已重置为 0');
       _notifyMessagesChanged();
     }
   }
@@ -1431,7 +1420,7 @@ class CachedAgentProxy {
 
     // 清除缓存的权限请求
     _pendingPermissionRequests.remove(requestId);
-    print('[CachedAgentProxy] 已响应权限请求并清除缓存: $requestId');
+    _log.info('已响应权限请求并清除缓存: $requestId');
   }
 
   /// 获取状态快照
@@ -1508,7 +1497,7 @@ class CachedAgentProxy {
       _markReadQueueStore.clear(employeeId: _employeeId);
     }).catchError((_) {
       // 远程调用失败，队列保留，断线重连后会重发
-      print('[CachedAgentProxy] 标记已读远程调用失败，已保留到队列等待重发');
+      _log.error('标记已读远程调用失败，已保留到队列等待重发');
     });
   }
 

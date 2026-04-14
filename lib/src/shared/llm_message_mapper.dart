@@ -8,7 +8,10 @@ import 'dart:convert';
 
 import 'package:llm_dart/llm_dart.dart' as llm;
 
+import '../utils/logger.dart';
 import 'chat_message.dart';
+
+final _log = Logger('LlmMessageMapper');
 
 /// ChatMessage 与 llm_dart ChatMessage 的双向映射器
 ///
@@ -236,7 +239,8 @@ class LlmMessageMapper {
     if (argumentsJson.isEmpty) return {};
     try {
       return jsonDecode(argumentsJson) as Map<String, dynamic>;
-    } catch (_) {
+    } catch (e) {
+      _log.debug('parse tool arguments failed, using empty map: $e');
       return {};
     }
   }

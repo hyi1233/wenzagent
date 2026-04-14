@@ -8,6 +8,7 @@ import '../persistence/entities/scheduled_task_entity.dart';
 import '../persistence/stores/scheduled_task_store.dart';
 import '../scheduler/cron_expression.dart';
 import '../scheduler/task_scheduler.dart';
+import '../utils/logger.dart';
 import 'task_executor.dart';
 
 /// 定时任务事件类型
@@ -66,6 +67,8 @@ abstract class ScheduledTaskManager {
 /// 组合 Store + Scheduler，提供完整的定时任务生命周期管理。
 /// 定时任务触发时通过主 Agent 的 triggerSystemTask 注入 system 消息并触发 LLM 处理。
 class ScheduledTaskManagerImpl implements ScheduledTaskManager {
+  static final _log = Logger('ScheduledTaskManager');
+
   final ScheduledTaskStore _store;
   final TaskScheduler _scheduler = TaskScheduler();
   final TaskExecutor _taskExecutor = TaskExecutor();
@@ -289,14 +292,14 @@ class ScheduledTaskManagerImpl implements ScheduledTaskManager {
     _scheduler.start(readyTasks);
     _started = true;
 
-    print('[ScheduledTaskManager] 已启动，加载 ${readyTasks.length} 个定时任务');
+    _log.info('已启动，加载 ${readyTasks.length} 个定时任务');
   }
 
   @override
   Future<void> stop() async {
     _scheduler.stop();
     _started = false;
-    print('[ScheduledTaskManager] 已停止');
+    _log.info('已停止');
   }
 
   @override
@@ -309,17 +312,17 @@ class ScheduledTaskManagerImpl implements ScheduledTaskManager {
 
   /// 核心执行逻辑
   Future<bool> _doExecute(AiScheduledTaskEntity task) async {
-    print('[ScheduledTaskManager] 执行任务: ${task.name} (${task.uuid}), '
+    _log.info('执行任务: ${task.name} (${task.uuid}), '
         'taskType: ${task.taskType}');
 
     if (task.employeeId == null || task.employeeId!.isEmpty) {
-      print('[ScheduledTaskManager] 任务无 employeeId，跳过');
+      _log.warn('任务无 employeeId，跳过');
       return false;
     }
 
     try {
       if (task.taskConfig == null || task.taskConfig!.isEmpty) {
-        print('[ScheduledTaskManager] 任务无 taskConfig，跳过');
+        _log.warn('任务无 taskConfig，跳过');
         return false;
       }
 
@@ -334,7 +337,7 @@ class ScheduledTaskManagerImpl implements ScheduledTaskManager {
           return await _executeReminder(task, config);
       }
     } catch (e) {
-      print('[ScheduledTaskManager] 任务执行异常: $e');
+      _log.error('任务执行异常', e);
       return false;
     }
   }
@@ -346,13 +349,13 @@ class ScheduledTaskManagerImpl implements ScheduledTaskManager {
   Future<bool> _executeReminder(AiScheduledTaskEntity task,
       Map<String, dynamic> config) async {
     if (getAgent == null) {
-      print('[ScheduledTaskManager] getAgent 未注入');
+      _log.error('getAgent 未注入');
       return false;
     }
 
     final agent = await getAgent!(task.employeeId!);
     if (agent == null) {
-      print('[ScheduledTaskManager] Agent ${task.employeeId} 不存在');
+      _log.warn('Agent ${task.employeeId} 不存在');
       return false;
     }
 
@@ -370,7 +373,7 @@ class ScheduledTaskManagerImpl implements ScheduledTaskManager {
         taskName: task.name,
         taskId: task.uuid,
       );
-      print('[ScheduledTaskManager] injectReminderMessage: msgId=$msgId');
+      _log.debug('injectReminderMessage: msgId=$msgId');
       return msgId != null;
     }
 
@@ -397,13 +400,13 @@ class ScheduledTaskManagerImpl implements ScheduledTaskManager {
   Future<bool> _executeTask(AiScheduledTaskEntity task,
       Map<String, dynamic> config) async {
     if (getAgent == null) {
-      print('[ScheduledTaskManager] getAgent 未注入');
+      _log.error('getAgent 未注入');
       return false;
     }
 
     final agent = await getAgent!(task.employeeId!);
     if (agent == null) {
-      print('[ScheduledTaskManager] Agent ${task.employeeId} 不存在');
+      _log.warn('Agent ${task.employeeId} 不存在');
       return false;
     }
 
@@ -421,7 +424,7 @@ class ScheduledTaskManagerImpl implements ScheduledTaskManager {
         taskContent: taskContent,
         taskName: task.name,
       );
-      print('[ScheduledTaskManager] triggerSystemTask (task): msgId=$msgId');
+      _log.debug('triggerSystemTask (task): msgId=$msgId');
       return msgId != null;
     }
 
@@ -481,7 +484,8 @@ class ScheduledTaskManagerImpl implements ScheduledTaskManager {
       }
 
       return task.copyWith(nextExecutionAt: next);
-    } catch (_) {
+    } catch (e) {
+      _log.debug('recalculate next execution failed: $e');
       return task;
     }
   }

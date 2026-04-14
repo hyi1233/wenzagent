@@ -9,7 +9,10 @@ import 'dart:convert';
 
 import 'package:sqlite3/sqlite3.dart';
 
+import '../utils/logger.dart';
 import 'chat_message.dart';
+
+final _log = Logger('MessageMapper');
 
 // ──────────────────────────────────────────────
 // MessageRecord —— 数据库行 1:1 映射
@@ -200,7 +203,8 @@ class MessageMapper {
     if (value is String && value.isNotEmpty) {
       try {
         return jsonDecode(value) as Map<String, dynamic>;
-      } catch (_) {
+      } catch (e) {
+        _log.debug('parse JSON map failed, returning null: $e');
         return null;
       }
     }

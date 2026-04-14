@@ -5,6 +5,7 @@ import 'dart:io';
 import '../../entity/lan_device_info.dart';
 import '../../entity/lan_message.dart';
 import '../../service/service.dart';
+import '../../utils/logger.dart';
 import '../device_client.dart';
 import 'device_config_manager.dart';
 import 'device_connection_manager.dart';
@@ -13,6 +14,8 @@ import 'device_connection_manager.dart';
 ///
 /// 负责设备列表缓存、设备注册、在线设备查询。
 class DeviceRegistry {
+  static final _log = Logger('DeviceRegistry');
+
   final String _deviceId;
   String? _deviceName;
   String _host;
@@ -127,7 +130,7 @@ class DeviceRegistry {
         return device;
       }).toList();
     } catch (e) {
-      print('获取在线设备列表失败: $e');
+      _log.warn('获取在线设备列表失败: $e');
       return [];
     }
   }
@@ -172,7 +175,9 @@ class DeviceRegistry {
       for (final d in devices) {
         _deviceCache[d.id] = d.copyWith(status: 'online');
       }
-    } catch (_) {}
+    } catch (e) {
+      _log.debug('refreshDeviceList failed: $e');
+    }
   }
 
   /// 发送设备注册消息
@@ -184,7 +189,9 @@ class DeviceRegistry {
       final config = await _configManager.getDeviceConfig();
       final info = config.deviceInfo;
       if (info.name != null) effectiveName = info.name;
-        } catch (_) {}
+        } catch (e) {
+          _log.debug('getDeviceConfig failed, using default name: $e');
+        }
     final (os, platform) = _detectPlatform();
     lc.sendLanMessage(
       LanMessage(

@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 import 'package:sqlite3/sqlite3.dart';
 
+import '../utils/logger.dart';
 import 'migrations/migration.dart';
 import 'migrations/v1_migration.dart';
 import 'migrations/v2_migration.dart';
@@ -48,6 +49,8 @@ import 'migrations/v8_migration.dart';
 /// }
 /// ```
 class DatabaseManager {
+  static final _log = Logger('DatabaseManager');
+
   static final Map<String, DatabaseManager> _instances = {};
 
   /// 获取单例实例
@@ -136,17 +139,17 @@ class DatabaseManager {
 
     for (final migration in pending) {
       final version = migration.version;
-      print('[DatabaseManager] 迁移到版本 $version ...');
+      _log.info('迁移到版本 $version ...');
 
       _db!.execute('BEGIN');
       try {
         migration.onUpgrade(_db!);
         _db!.execute('PRAGMA user_version = $version');
         _db!.execute('COMMIT');
-        print('[DatabaseManager] 迁移到版本 $version 完成');
+        _log.info('迁移到版本 $version 完成');
       } catch (e) {
         _db!.execute('ROLLBACK');
-        print('[DatabaseManager] 迁移到版本 $version 失败: $e');
+        _log.error('迁移到版本 $version 失败', e);
         rethrow;
       }
     }

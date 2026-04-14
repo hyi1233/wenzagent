@@ -1,6 +1,7 @@
 import '../../host/host_rpc_methods.dart';
 import '../../persistence/persistence.dart';
 import '../../service/service.dart';
+import '../../utils/logger.dart';
 import 'device_agent_manager.dart';
 import 'device_connection_manager.dart';
 import 'device_registry.dart';
@@ -11,6 +12,8 @@ import 'device_state_holder.dart';
 /// 负责跨设备的员工、会话数据同步。
 /// 所有同步操作内置防抖机制，避免短时间内大量重复同步。
 class DataSyncManager {
+  static final _log = Logger('DataSyncManager');
+
   final String _deviceId;
   late final EmployeeManager _employeeManager = EmployeeManager.getInstance(
     _deviceId,
@@ -114,9 +117,13 @@ class DataSyncManager {
             _mergeAndSaveEmployee(existing, remote);
           }
           return remote;
-        } catch (_) {}
+        } catch (e) {
+          _log.debug('syncEmployeeFromDevice failed for device ${device.id}: $e');
+        }
       }
-    } catch (_) {}
+    } catch (e) {
+      _log.debug('syncEmployeeFromDevice failed: $e');
+    }
     return null;
   }
 
@@ -137,9 +144,13 @@ class DataSyncManager {
               'employees': [employee.toMap()],
             },
           );
-        } catch (_) {}
+        } catch (e) {
+          _log.debug('broadcastEmployee to device ${device.id} failed: $e');
+        }
       }
-    } catch (_) {}
+    } catch (e) {
+      _log.debug('broadcastEmployeeToAllDevices failed: $e');
+    }
   }
 
   /// 广播会话数据到所有在线设备（创建/更新后调用）
@@ -159,9 +170,13 @@ class DataSyncManager {
               'sessions': [session.toMap()],
             },
           );
-        } catch (_) {}
+        } catch (e) {
+          _log.debug('broadcastSession to device ${device.id} failed: $e');
+        }
       }
-    } catch (_) {}
+    } catch (e) {
+      _log.debug('broadcastSessionToAllDevices failed: $e');
+    }
   }
 
   /// 同步员工到指定远程设备
@@ -183,7 +198,7 @@ class DataSyncManager {
       );
       return (result['count'] as int? ?? 0) > 0;
     } catch (e) {
-      print('[DataSyncManager] 同步员工到设备 $targetDeviceId 失败: $e');
+      _log.error('同步员工到设备 $targetDeviceId 失败', e);
       return false;
     }
   }
@@ -248,7 +263,9 @@ class DataSyncManager {
             if (changed) changedIds.add(employee.uuid);
           }
         }
-      } catch (_) {}
+      } catch (e) {
+        _log.debug('syncEmployees from device ${device.id} failed: $e');
+      }
     }
     return changedIds;
   }
@@ -281,7 +298,9 @@ class DataSyncManager {
             if (changed) changedIds.add(session.employeeId);
           }
         }
-      } catch (_) {}
+      } catch (e) {
+        _log.debug('syncSessions from device ${device.id} failed: $e');
+      }
     }
     return changedIds;
   }
@@ -303,9 +322,13 @@ class DataSyncManager {
                 'employees': [employee.toMap()],
               },
             );
-          } catch (_) {}
+          } catch (e) {
+            _log.debug('syncEmployeeDelete to device ${device.id} failed: $e');
+          }
         }
-      } catch (_) {}
+      } catch (e) {
+        _log.debug('syncEmployeeDeleteToDevices failed: $e');
+      }
     });
   }
 
@@ -328,9 +351,13 @@ class DataSyncManager {
                 'sessions': [session.toMap()],
               },
             );
-          } catch (_) {}
+          } catch (e) {
+            _log.debug('syncSessionDelete to device ${device.id} failed: $e');
+          }
         }
-      } catch (_) {}
+      } catch (e) {
+        _log.debug('syncSessionDeleteToDevices failed: $e');
+      }
     });
   }
 

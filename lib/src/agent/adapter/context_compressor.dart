@@ -1,4 +1,5 @@
 import '../../shared/shared.dart';
+import '../../utils/logger.dart';
 import 'context_compression_config.dart';
 import 'session_memory_manager.dart';
 import 'token_estimator.dart';
@@ -58,6 +59,8 @@ class _CompressionCache {
 /// 1. 每轮用户消息后调用 [prepareCompression]（异步，可能触发 LLM 摘要）
 /// 2. Tool calling loop 中每次迭代调用 [buildCompressedMessages]（同步，使用缓存）
 class ContextCompressor {
+  static final _log = Logger('ContextCompressor');
+
   final ContextCompressionConfig config;
   final SummarizeCallback onSummarize;
 
@@ -432,8 +435,9 @@ class ContextCompressor {
       // 同步到 SessionHistory
       session.conversationSummary = summary;
       session.summarizedUpToIndex = summarizedEndIndex;
-    } catch (_) {
+    } catch (e) {
       // 摘要生成失败，回退到仅截断模式（不报错，降级处理）
+      _log.warn('summary generation failed, falling back to truncation-only mode: $e');
     }
   }
 

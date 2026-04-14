@@ -5,6 +5,7 @@ import 'package:uuid/uuid.dart';
 
 import '../entity/lan_message.dart';
 import '../lan/lan_client_service.dart';
+import '../utils/logger.dart';
 import 'rpc_protocol.dart';
 import 'rpc_config.dart';
 
@@ -15,6 +16,7 @@ import 'rpc_config.dart';
 /// - 自动管理 requestId、超时、错误传递
 /// - 支持同步调用和流式调用
 class RemoteCallManager {
+  static final _log = Logger('RemoteCallManager');
   final LanClientService _clientService;
   final String _localDeviceId;
 
@@ -151,7 +153,7 @@ class RemoteCallManager {
         _pendingRequests.remove(response.requestId);
       }
     } catch (e) {
-      // 处理失败
+      _log.warn('handle RPC response failed: $e');
     }
   }
 
@@ -167,7 +169,7 @@ class RemoteCallManager {
         controller.add(RpcStreamEvent.chunk(chunk.chunk));
       }
     } catch (e) {
-      // 处理失败
+      _log.warn('handle RPC stream chunk failed: $e');
     }
   }
 
@@ -188,7 +190,7 @@ class RemoteCallManager {
         _pendingStreams.remove(end.requestId);
       }
     } catch (e) {
-      // 处理失败
+      _log.warn('handle RPC stream end failed: $e');
     }
   }
 
@@ -236,7 +238,7 @@ class RemoteCallManager {
         _pendingStreams.remove(requestId);
       }
     } catch (e) {
-      // 处理失败
+      _log.warn('handle RPC error failed: $e');
     }
   }
 

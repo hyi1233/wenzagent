@@ -1,6 +1,7 @@
 import 'package:sqlite3/sqlite3.dart';
 
 import '../../shared/shared.dart';
+import '../../utils/logger.dart';
 import '../database_manager.dart';
 
 /// 消息数据存储
@@ -9,6 +10,8 @@ import '../database_manager.dart';
 /// 通过 [MessageMapper] 统一处理行数据转换。
 /// 消息按 employee_id + device_id 隔离，不同设备上同一员工有独立的消息历史。
 class MessageStore {
+  static final _log = Logger('MessageStore');
+
   final DatabaseManager _dbManager;
 
   MessageStore({String? deviceId, DatabaseManager? dbManager})
@@ -456,15 +459,15 @@ class MessageStore {
   List<String> getStaleLocalToolCallMessages(String employeeId, {String deviceId = ''}) {
     if (deviceId.isNotEmpty) {
       try {
-        print("[MessageStore] getStaleLocalToolCallMessages");
+        _log.debug('getStaleLocalToolCallMessages');
         final resultSet = _db.select(
                 "SELECT uuid FROM messages WHERE employee_id = ? AND device_id = ? AND uuid LIKE 'local_toolcall_%' AND processing_status = 'processing' AND deleted = 0",
                 [employeeId, deviceId],
               );
-        print("[MessageStore] success");
+        _log.debug('success');
         return resultSet.map((row) => row['uuid'] as String).toList();
       } catch (e) {
-        print(e);
+        _log.error('unknown error', e);
       }
     }
     final resultSet = _db.select(

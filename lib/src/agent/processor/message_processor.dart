@@ -6,6 +6,7 @@ import 'cancellation_token.dart';
 import 'interrupt_judge.dart';
 import 'message_queue.dart';
 import 'message_tracker.dart';
+import '../../utils/logger.dart';
 
 /// 流式响应
 ///
@@ -194,6 +195,8 @@ typedef StreamMessageFunc =
 ///
 /// 负责消息的排队、处理、中断等逻辑。
 class MessageProcessor {
+  static final _log = Logger('MessageProcessor');
+
   final StreamMessageFunc _streamMessage;
   final Future<void> Function() _stopStreaming;
 
@@ -258,7 +261,7 @@ class MessageProcessor {
     Map<String, dynamic> messageData, {
     List<Map<String, dynamic>>? recentContext,
   }) async {
-    print('[MessageProcessor] submitMessage: $messageId');
+    _log.debug('submitMessage: $messageId');
     if (_disposed) throw Exception('MessageProcessor 已销毁');
 
     // 创建 QueuedMessage
@@ -280,12 +283,12 @@ class MessageProcessor {
       messageId,
       MessageProcessingStatus.queued.toAgentMessageStatus(),
     );
-    print('[MessageProcessor] message queued, queue length: ${_queue.length}');
-    print('[MessageProcessor] current status: $_status');
+    _log.debug('message queued, queue length: ${_queue.length}');
+    _log.debug('current status: $_status');
 
     // 3. 如果空闲，直接处理（无需打断判断）
     if (_status == AgentStatus.idle) {
-      print('[MessageProcessor] status is idle, calling _processNext');
+      _log.debug('status is idle, calling _processNext');
       _processNext();
       return;
     }
@@ -297,25 +300,25 @@ class MessageProcessor {
         final processing = _tracker.getProcessingMessage();
         final queued = _tracker.getQueuedMessages();
         if (processing != null && queued.isNotEmpty) {
-          print('[MessageProcessor] running interrupt judgment...');
+          _log.debug('running interrupt judgment...');
           final result = await _interruptJudge.shouldInterrupt(
             currentProcessing: processing,
             queuedMessages: queued,
           );
-          print('[MessageProcessor] interrupt judgment result: $result');
+          _log.debug('interrupt judgment result: $result');
 
           if (result.decision == InterruptDecision.interrupt &&
               result.targetMessageId != null) {
             // 验证 targetMessageId 仍然是当前处理的消息
             // 防止判断期间消息已经完成或状态变化导致打断错误的消息
             if (_currentProcessingMessageId == result.targetMessageId) {
-              print(
-                '[MessageProcessor] interrupting message: $_currentProcessingMessageId',
+              _log.debug(
+                'interrupting message: $_currentProcessingMessageId',
               );
               await interruptCurrentTask();
             } else {
-              print(
-                '[MessageProcessor] targetMessageId mismatch, skipping interrupt',
+              _log.debug(
+                'targetMessageId mismatch, skipping interrupt',
               );
             }
           }
@@ -393,17 +396,17 @@ class MessageProcessor {
   // ===== 私有方法 =====
 
   void _processNext() {
-    print('[MessageProcessor] _processNext called, disposed: $_disposed');
+    _log.debug('_processNext called, disposed: $_disposed');
     if (_disposed) return;
 
     final item = _queue.dequeue();
     if (item == null) {
-      print('[MessageProcessor] queue is empty, setting status to idle');
+      _log.debug('queue is empty, setting status to idle');
       _setStatus(AgentStatus.idle);
       return;
     }
 
-    print('[MessageProcessor] processing message: ${item.messageId}');
+    _log.debug('processing message: ${item.messageId}');
     _currentProcessingMessageId = item.messageId;
     _currentCancellationToken = CancellationToken();
     _setStatus(AgentStatus.processing);
@@ -423,7 +426,7 @@ class MessageProcessor {
     String messageId,
     MessageInput messageInput,
   ) async {
-    print('[MessageProcessor] _processMessage: $messageId');
+    _log.debug('_processMessage: $messageId');
     try {
       final stream = _streamMessage(
         messageId,
@@ -435,12 +438,12 @@ class MessageProcessor {
 
       await for (final response in stream) {
         if (_currentCancellationToken?.isCancelled ?? false) {
-          print('[MessageProcessor] cancelled');
+          _log.debug('cancelled');
           break;
         }
 
         if (response.error != null) {
-          print('[MessageProcessor] error: ${response.error}');
+          _log.error('error: ${response.error}');
           onMessageStatusChanged?.call(
             messageId,
             MessageProcessingStatus.failed.toAgentMessageStatus(),
@@ -459,7 +462,7 @@ class MessageProcessor {
         }
 
         if (response.isDone) {
-          print('[MessageProcessor] message completed: $messageId');
+          _log.debug('message completed: $messageId');
           // 等待持久化完成后再广播 completed（修复 async* generator 取消问题）
           await onBeforeMessageCompleted?.call();
           onMessageStatusChanged?.call(
@@ -484,7 +487,7 @@ class MessageProcessor {
         _finishProcessing();
       }
     } catch (e) {
-      print('[MessageProcessor] exception: $e');
+      _log.error('exception: $e');
       if (!_disposed && _currentProcessingMessageId == messageId) {
         onMessageStatusChanged?.call(
           messageId,

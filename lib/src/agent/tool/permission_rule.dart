@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import '../../utils/logger.dart';
+
 /// 规则匹配模式
 enum PermissionMatchMode {
   /// 精确匹配参数值
@@ -33,6 +35,8 @@ enum PermissionVerdict {
 
 /// 单条权限规则
 class PermissionRule {
+  static final _log = Logger('PermissionRule');
+
   /// 权限类型（对应 [AgentTool.permissionType]，如 "file_write", "command_execute"）
   final String tool;
 
@@ -80,7 +84,8 @@ class PermissionRule {
       case PermissionMatchMode.regex:
         try {
           return RegExp(pattern, dotAll: true).hasMatch(rawValue);
-        } catch (_) {
+        } catch (e) {
+          _log.debug('regex match failed, using fallback: $e');
           return false;
         }
       case PermissionMatchMode.all:
@@ -171,6 +176,8 @@ class PermissionRule {
 /// }
 /// ```
 class PermissionConfig {
+  static final _log = Logger('PermissionConfig');
+
   /// 白名单规则（命中则允许）
   final List<PermissionRule> whitelist;
 
@@ -191,7 +198,8 @@ class PermissionConfig {
     try {
       final map = jsonDecode(jsonStr) as Map<String, dynamic>;
       return PermissionConfig.fromMap(map);
-    } catch (_) {
+    } catch (e) {
+      _log.debug('failed to parse permission config JSON, using empty config: $e');
       return PermissionConfig.empty();
     }
   }

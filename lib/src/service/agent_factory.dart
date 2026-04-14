@@ -10,6 +10,7 @@ import '../agent/impl/agent_impl.dart';
 import '../agent/tool/builtin/schedule_task_tool.dart';
 import '../agent/tool/permission_rule.dart';
 import '../persistence/persistence.dart';
+import '../utils/logger.dart';
 import 'employee_manager.dart';
 import 'message_store_service.dart';
 import 'skill_manager.dart';
@@ -59,6 +60,8 @@ abstract class AgentFactory {
 
 /// Agent工厂实现
 class AgentFactoryImpl implements AgentFactory {
+  static final _log = Logger('AgentFactory');
+
   final Map<String, IAgent> _agents = {};
   final EmployeeManager _employeeManager;
   final MessageStoreService _messageStore;
@@ -133,7 +136,9 @@ class AgentFactoryImpl implements AgentFactory {
       if (employee.modelConfig != null) {
         try {
           providerConfigMap['modelConfig'] = jsonDecode(employee.modelConfig!);
-        } catch (_) {}
+        } catch (e) {
+          _log.debug('parse modelConfig failed, skipping: $e');
+        }
       }
       final providerConfig = ProviderConfig.fromMap(providerConfigMap);
       await agent.setProvider(providerConfig);
@@ -218,12 +223,13 @@ class AgentFactoryImpl implements AgentFactory {
       try {
         await _scheduledTaskManager.deleteTask(taskId);
         return true;
-      } catch (_) {
+      } catch (e) {
+        _log.debug('cancel scheduled task failed, using fallback: $e');
         return false;
       }
     };
 
-    print('[AgentFactory] ScheduleTaskTool callbacks injected for $agentEmployeeId');
+    _log.debug('ScheduleTaskTool callbacks injected for $agentEmployeeId');
   }
 
   /// 注入权限配置到 Agent 的 PermissionManager
@@ -237,7 +243,7 @@ class AgentFactoryImpl implements AgentFactory {
       final config =
           PermissionConfig.fromJsonString(employee.permissionConfig!);
       manager.configure(config);
-      print('[AgentFactory] Permission config injected for ${employee.uuid}'
+      _log.debug('Permission config injected for ${employee.uuid}'
           ' (${config.whitelist.length} whitelist, ${config.blacklist.length} blacklist rules)');
     }
 
@@ -251,10 +257,10 @@ class AgentFactoryImpl implements AgentFactory {
             updateTime: DateTime.now(),
           );
           await _employeeManager.updateEmployee(saved);
-          print('[AgentFactory] Permission config saved for ${employee.uuid}');
+          _log.debug('Permission config saved for ${employee.uuid}');
         }
       } catch (e) {
-        print('[AgentFactory] Failed to save permission config: $e');
+        _log.error('Failed to save permission config', e);
       }
     };
   }

@@ -1,12 +1,15 @@
 import 'dart:io';
 
 import '../agent_tool.dart';
+import '../../../utils/logger.dart';
 
 /// 内容搜索工具
 ///
 /// 在文件内容中搜索匹配的文本或正则模式（类似 grep）。
 /// 输出字符总大小限制 30KB，超出时截断并返回提示。
 class ContentSearchTool extends AgentTool {
+  static final _log = Logger('ContentSearchTool');
+
   /// 默认最大匹配行数
   static const int _defaultMaxResults = 100;
 
@@ -123,8 +126,9 @@ class ContentSearchTool extends AgentTool {
               outputChars += line.length + 1; // +1 for newline
             }
           }
-        } catch (_) {
+        } catch (e) {
           // 跳过无法读取的文件（如二进制文件）
+          _log.debug('skipping unreadable file: ${entity.path}, error: $e');
         }
       }
 

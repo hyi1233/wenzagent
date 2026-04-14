@@ -2,6 +2,7 @@
 import 'dart:convert';
 
 import '../persistence/persistence.dart';
+import '../utils/logger.dart';
 import 'employee_manager.dart';
 import 'skill_manager.dart';
 
@@ -110,6 +111,8 @@ abstract class EmployeeConfigService {
 
 /// 员工配置服务实现
 class EmployeeConfigServiceImpl implements EmployeeConfigService {
+  static final _log = Logger('EmployeeConfigService');
+
   final EmployeeManager _employeeManager;
   final SkillManager _skillManager;
   final _changeController =
@@ -135,7 +138,9 @@ class EmployeeConfigServiceImpl implements EmployeeConfigService {
       try {
         permissionConfig =
             jsonDecode(employee.permissionConfig!) as Map<String, dynamic>;
-      } catch (_) {}
+      } catch (e) {
+        _log.debug('parse permissionConfig failed, skipping: $e');
+      }
     }
 
     // 使用新的MCP配置解析方法

@@ -6,12 +6,14 @@ import 'package:uuid/uuid.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../../entity/lan_message.dart';
+import '../../utils/logger.dart';
 import '../entity/client_info.dart';
 import '../lan_chunk_service.dart';
 import '../lan_client_service.dart';
 
 /// LAN 客户端实现
 class LanClientServiceImpl implements LanClientService {
+  static final _log = Logger('LanClientService');
   // 多实例管理：key = deviceId
   static final Map<String, LanClientServiceImpl> _instances = {};
 
@@ -145,7 +147,9 @@ class LanClientServiceImpl implements LanClientService {
           if (msg.type == LanMessageType.file && msg.fileId != null) {
             _autoDownloadFile(msg);
           }
-        } catch (_) {}
+        } catch (e) {
+          _log.warn('parse server message failed: $e');
+        }
       },
       onDone: () {
         _isConnected = false;
@@ -192,7 +196,9 @@ class LanClientServiceImpl implements LanClientService {
 
     try {
       await _channel?.sink.close();
-    } catch (_) {}
+    } catch (e) {
+      _log.debug('close channel on disconnect failed: $e');
+    }
     _channel = null;
     _isConnected = false;
     _isConnecting = false;
@@ -286,7 +292,8 @@ class LanClientServiceImpl implements LanClientService {
           await connect(_hostIp!, port: _hostPort);
           _addSystemMessage('重连成功');
         }
-      } catch (_) {
+      } catch (e) {
+        _log.debug('reconnect failed, will retry: $e');
         _scheduleReconnect();
       }
     });
@@ -307,7 +314,9 @@ class LanClientServiceImpl implements LanClientService {
           timestamp: DateTime.now(),
         );
         _channel?.sink.add(jsonEncode(ping.toJson()));
-      } catch (_) {}
+      } catch (e) {
+        _log.debug('send ping failed: $e');
+      }
     });
   }
 
@@ -367,14 +376,17 @@ class LanClientServiceImpl implements LanClientService {
           }
         }
       }
-    } catch (_) {}
+    } catch (e) {
+      _log.debug('get local IP failed: $e');
+    }
     return null;
   }
 
   String _getDeviceName() {
     try {
       return Platform.localHostname;
-    } catch (_) {
+    } catch (e) {
+      _log.debug('get device name failed, using fallback: $e');
       return 'Unknown';
     }
   }

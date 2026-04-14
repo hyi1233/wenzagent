@@ -11,12 +11,14 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 import '../../entity/lan_client.dart';
 import '../../entity/lan_device_info.dart';
 import '../../entity/lan_message.dart';
+import '../../utils/logger.dart';
 import '../entity/host_info.dart';
 import 'lan_file_cache_service.dart';
 import '../lan_host_service.dart';
 
 /// LAN 服务端实现
 class LanHostServiceImpl implements LanHostService {
+  static final _log = Logger('LanHostService');
   // 全局单例
   static LanHostServiceImpl? _instance;
 
@@ -98,7 +100,9 @@ class LanHostServiceImpl implements LanHostService {
     for (final channel in channels) {
       try {
         await channel.sink.close();
-      } catch (_) {}
+      } catch (e) {
+        _log.debug('close channel on stop failed: $e');
+      }
     }
     await _server?.close(force: true);
     _server = null;
@@ -132,7 +136,9 @@ class LanHostServiceImpl implements LanHostService {
     final channel = _clientChannels[idx];
     try {
       channel.sink.add(jsonEncode(message.toJson()));
-    } catch (_) {}
+    } catch (e) {
+      _log.warn('sendToClient failed: $e');
+    }
   }
 
   @override
@@ -143,7 +149,9 @@ class LanHostServiceImpl implements LanHostService {
     final channel = _clientChannels[idx];
     try {
       channel.sink.add(jsonEncode(message.toJson()));
-    } catch (_) {}
+    } catch (e) {
+      _log.warn('sendToDeviceId failed: $e');
+    }
   }
 
   @override
@@ -158,7 +166,9 @@ class LanHostServiceImpl implements LanHostService {
 
     try {
       channel.sink.close();
-    } catch (_) {}
+    } catch (e) {
+      _log.debug('close channel on disconnect failed: $e');
+    }
 
     // 关闭后重新查找（sink.close 可能同步触发 onDone 已移除 client）
     final newIdx = _clients.indexOf(client);
@@ -220,7 +230,9 @@ class LanHostServiceImpl implements LanHostService {
           try {
             final msg = LanMessage.fromJson(_parseJson(data));
             _handleClientMessage(clientId, msg);
-          } catch (_) {}
+          } catch (e) {
+            _log.warn('parse client message failed: $e');
+          }
         },
         onDone: () {
           final disconnectedClient = _clients.firstWhere(
@@ -389,7 +401,9 @@ class LanHostServiceImpl implements LanHostService {
         try {
           final contentData = jsonDecode(msg.content!) as Map<String, dynamic>;
           clientIp = contentData['ip'] as String?;
-        } catch (_) {}
+        } catch (e) {
+          _log.debug('parse client ip from content failed: $e');
+        }
 
         _clients[newIdx] = _clients[newIdx].copyWith(
           ip: clientIp,
@@ -424,7 +438,9 @@ class LanHostServiceImpl implements LanHostService {
         if (_clients[i].topic != topic) continue;
         try {
           _clientChannels[i].sink.add(data);
-        } catch (_) {}
+        } catch (e) {
+          _log.warn('broadcast to client failed: $e');
+        }
       }
     }
 
@@ -469,7 +485,9 @@ class LanHostServiceImpl implements LanHostService {
         final contentData = jsonDecode(msg.content!) as Map<String, dynamic>;
         final payload = contentData['payload'] as Map<String, dynamic>?;
         toDeviceId = payload?['toDeviceId'] as String?;
-      } catch (_) {}
+      } catch (e) {
+        _log.debug('parse toDeviceId from content failed: $e');
+      }
     }
 
     if (toDeviceId != null && toDeviceId.isNotEmpty) {
@@ -499,7 +517,9 @@ class LanHostServiceImpl implements LanHostService {
   void _sendToChannel(WebSocketChannel channel, LanMessage msg) {
     try {
       channel.sink.add(jsonEncode(msg.toJson()));
-    } catch (_) {}
+    } catch (e) {
+      _log.warn('send to channel failed: $e');
+    }
   }
 
   void _removeStaleClientsWithDeviceId(
@@ -529,7 +549,9 @@ class LanHostServiceImpl implements LanHostService {
             timestamp: DateTime.now(),
           ),
         );
-      } catch (_) {}
+      } catch (e) {
+        _log.debug('send kick message to stale client failed: $e');
+      }
 
       // 按引用移除（避免索引错位）
       _clients.remove(staleClient);
@@ -539,7 +561,9 @@ class LanHostServiceImpl implements LanHostService {
       Future.delayed(const Duration(milliseconds: 100), () {
         try {
           staleChannel.sink.close();
-        } catch (_) {}
+        } catch (e) {
+          _log.debug('close stale channel failed: $e');
+        }
       });
     }
   }
@@ -574,7 +598,9 @@ class LanHostServiceImpl implements LanHostService {
     for (int i = 0; i < _clientChannels.length; i++) {
       try {
         _clientChannels[i].sink.add(data);
-      } catch (_) {}
+      } catch (e) {
+        _log.warn('broadcast device offline failed: $e');
+      }
     }
     _messageController.add(msg);
   }
@@ -645,7 +671,9 @@ class LanHostServiceImpl implements LanHostService {
       if (entry.channel != null) {
         try {
           entry.channel!.sink.close();
-        } catch (_) {}
+        } catch (e) {
+          _log.debug('close channel on heartbeat timeout failed: $e');
+        }
       }
 
       // 关闭后重新查找索引（sink.close 的 onDone 可能已移除了该 client）
@@ -689,7 +717,9 @@ class LanHostServiceImpl implements LanHostService {
 
     try {
       channel.sink.close();
-    } catch (_) {}
+    } catch (e) {
+      _log.debug('close channel on mark offline failed: $e');
+    }
 
     // 关闭后重新查找（sink.close 的 onDone 可能已移除）
     final newIdx = _clients.indexOf(client);
@@ -725,7 +755,9 @@ class LanHostServiceImpl implements LanHostService {
           }
         }
       }
-    } catch (_) {}
+    } catch (e) {
+      _log.debug('get local IP failed: $e');
+    }
     return null;
   }
 

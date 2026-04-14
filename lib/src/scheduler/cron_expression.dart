@@ -1,3 +1,7 @@
+import '../utils/logger.dart';
+
+final _log = Logger('CronExpression');
+
 /// 轻量级 Cron 表达式解析器
 ///
 /// 支持标准 5 段格式:
@@ -52,7 +56,8 @@ class CronExpression {
     try {
       CronExpression.parse(expression);
       return true;
-    } catch (_) {
+    } catch (e) {
+      _log.debug('cron expression validation failed, using fallback: $e');
       return false;
     }
   }
@@ -237,7 +242,8 @@ class IsoDuration {
     try {
       IsoDuration.parse(duration);
       return true;
-    } catch (_) {
+    } catch (e) {
+      _log.debug('ISO duration validation failed, using fallback: $e');
       return false;
     }
   }

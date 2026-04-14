@@ -1,9 +1,12 @@
 import '../../persistence/persistence.dart';
+import '../../utils/logger.dart';
 
 /// 设备配置管理器
 ///
 /// 负责设备配置的 CRUD 操作。
 class DeviceConfigManager {
+  static final _log = Logger('DeviceConfigManager');
+
   final DeviceConfigStore _deviceConfigStore;
   final String _deviceId;
 
@@ -61,7 +64,8 @@ class DeviceConfigManager {
       } else {
         await _deviceConfigStore.updateDeviceInfo(_deviceId, deviceInfo);
       }
-    } catch (_) {
+    } catch (e) {
+      _log.debug('updateDeviceInfo with merge failed, using direct update: $e');
       await _deviceConfigStore.updateDeviceInfo(_deviceId, deviceInfo);
     }
   }
