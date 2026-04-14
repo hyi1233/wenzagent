@@ -705,12 +705,13 @@ class AgentImpl implements IAgent {
 
     final messages = chatMessages.map((cm) {
       final map = cm.toJson();
-      // 将 seq 和 deleted 注入 metadata，供客户端增量同步使用
+      // 将 seq、deleted、isRead 注入 metadata，供客户端增量同步使用
       final metadata = Map<String, dynamic>.from(
         (map['metadata'] as Map<String, dynamic>?) ?? {},
       );
       if (cm.seq > 0) metadata['seq'] = cm.seq;
       if (cm.deleted) metadata['deleted'] = 1;
+      if (cm.isRead) metadata['isRead'] = true;
       if (cm.updatedAt != null) {
         metadata['updateTime'] = cm.updatedAt!.toIso8601String();
       }

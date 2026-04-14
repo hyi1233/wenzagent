@@ -85,6 +85,7 @@ class DeviceMessageHandler {
       case LanMessageType.agentMessageReadStatusChanged:
       case LanMessageType.toolCallStart:
       case LanMessageType.toolCallResult:
+      case LanMessageType.agentPermissionChanged:
       case LanMessageType.agentSessionCleared:
         _handleAgentEvent(msg);
       case LanMessageType.agentMessageReadStatus:
@@ -231,10 +232,19 @@ class DeviceMessageHandler {
         if (eventType == AgentEventType.agentStatusChanged) {
           final status = data['status'] as String?;
           if (status != null) {
+            // 构建 extra，携带 requestId 等额外信息
+            final extra = <String, dynamic>{};
+            if (data.containsKey('requestId')) {
+              extra['requestId'] = data['requestId'];
+            }
+            if (data.containsKey('description')) {
+              extra['description'] = data['description'];
+            }
             _stateHolder.notificationHub.onAgentStatusChanged(
               employeeId: employeeId,
               fromDeviceId: fromDeviceId,
               status: status,
+              extra: extra.isNotEmpty ? extra : null,
             );
 
             if (status == 'waitingPermission') {

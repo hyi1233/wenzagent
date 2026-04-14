@@ -481,6 +481,9 @@ class DeviceAgentManager {
         msgType = LanMessageType.toolCallStart;
       case AgentEventType.toolCallResult:
         msgType = LanMessageType.toolCallResult;
+      case AgentEventType.toolPermissionRequest:
+      case AgentEventType.toolPermissionResponse:
+        msgType = LanMessageType.agentPermissionChanged;
       case AgentEventType.sessionCleared:
         msgType = LanMessageType.agentSessionCleared;
       default:
@@ -941,6 +944,26 @@ class DeviceAgentManager {
                 _deviceId,
                 msg,
               );
+
+              // 将助手完成消息广播到 LAN，让远端设备能收到完整内容
+              final lanClient = _connectionManager.lanClient;
+              if (lanClient != null && lanClient.isConnected) {
+                final completedData = Map<String, dynamic>.from(data);
+                completedData['role'] = msg.role;
+                completedData['content'] = msg.content;
+                completedData['type'] = msg.type;
+                final lanMsg = LanMessage(
+                  type: LanMessageType.agentMessageStatusChanged,
+                  fromId: _deviceId,
+                  content: jsonEncode({
+                    'employeeId': employeeId,
+                    'type': AgentEventType.messageStatusChanged.value,
+                    'data': completedData,
+                  }),
+                  topic: _topic,
+                );
+                lanClient.sendLanMessage(lanMsg);
+              }
             })
             .catchError((_) {});
       }

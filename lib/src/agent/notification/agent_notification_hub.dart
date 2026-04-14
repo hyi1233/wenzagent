@@ -257,6 +257,7 @@ class AgentNotificationHub {
     required String employeeId,
     required String fromDeviceId,
     required String status,
+    Map<String, dynamic>? extra,
   }) {
     if (_isDisposed) return;
 
@@ -264,6 +265,7 @@ class AgentNotificationHub {
       employeeId: employeeId,
       fromDeviceId: fromDeviceId,
       status: status,
+      extra: extra,
     ));
   }
 

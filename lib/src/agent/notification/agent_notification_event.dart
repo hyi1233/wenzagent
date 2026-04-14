@@ -119,10 +119,12 @@ class AgentStatusNotifyEvent extends AgentNotificationEvent {
   final String employeeId;
   final String fromDeviceId;
   final String status; // idle / processing / streaming / waitingPermission
+  final Map<String, dynamic>? extra;
 
   AgentStatusNotifyEvent({
     required this.employeeId,
     required this.fromDeviceId,
     required this.status,
+    this.extra,
   });
 }
