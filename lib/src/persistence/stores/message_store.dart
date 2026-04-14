@@ -139,7 +139,7 @@ class MessageStore {
     // 如果 seq 为 0，自动分配下一个序列号
     var msg = message;
     if (msg.seq == 0) {
-      msg = msg.copyWith(seq: getNextSeq());
+      msg = msg.copyWith(seq: getNextSeq(deviceId: effDeviceId));
     }
     _db.execute('''
       INSERT OR REPLACE INTO messages (
@@ -174,7 +174,7 @@ class MessageStore {
       if (existing != null) {
         msg = msg.copyWith(seq: existing.seq);
       } else {
-        msg = msg.copyWith(seq: getNextSeq());
+        msg = msg.copyWith(seq: getNextSeq(deviceId: effDeviceId));
       }
     }
     _db.execute('''
@@ -204,7 +204,7 @@ class MessageStore {
     final msg = await find(deviceId, uuid);
     if (msg != null) {
       // 分配新的 seq，使状态变更能被增量同步拉取
-      final newSeq = getNextSeq();
+      final newSeq = getNextSeq(deviceId: deviceId ?? '');
       final updated = msg.copyWith(
         status: status,
         processingError: error,
@@ -264,7 +264,7 @@ class MessageStore {
     try {
       for (var msg in messages) {
         if (msg.seq == 0) {
-          msg = msg.copyWith(seq: getNextSeq());
+          msg = msg.copyWith(seq: getNextSeq(deviceId: effDeviceId));
         }
         _db.execute('''
           INSERT OR REPLACE INTO messages (
@@ -291,42 +291,23 @@ class MessageStore {
   /// 同时从 messages 表、sync_watermark.last_seq 和 sync_watermark.clear_seq 取最大值，
   /// 确保清空消息后 seq 不会重复，也不会小于 clearSeq。
   /// 按 device_id 隔离，保证不同设备的 seq 独立递增。
-  int getNextSeq({String deviceId = ''}) {
+  int getNextSeq({required String deviceId}) {
     _validateDeviceId(deviceId, 'getNextSeq');
-    if (deviceId.isNotEmpty) {
-      final msgResult = _db.select(
-        'SELECT COALESCE(MAX(seq), 0) as max_seq FROM messages WHERE device_id = ?',
-        [deviceId],
-      );
-      final msgMaxSeq = msgResult.first['max_seq'] as int;
-
-      final wmResult = _db.select(
-        'SELECT COALESCE(MAX(last_seq), 0) as max_seq FROM sync_watermark WHERE device_id = ?',
-        [deviceId],
-      );
-      final wmMaxSeq = wmResult.first['max_seq'] as int;
-
-      final clearSeqResult = _db.select(
-        'SELECT COALESCE(MAX(clear_seq), 0) as max_clear FROM sync_watermark WHERE device_id = ?',
-        [deviceId],
-      );
-      final clearMaxSeq = clearSeqResult.first['max_clear'] as int;
-
-      final currentMax = [msgMaxSeq, wmMaxSeq, clearMaxSeq].reduce((a, b) => a > b ? a : b);
-      return currentMax + 1;
-    }
     final msgResult = _db.select(
-      'SELECT COALESCE(MAX(seq), 0) as max_seq FROM messages',
+      'SELECT COALESCE(MAX(seq), 0) as max_seq FROM messages WHERE device_id = ?',
+      [deviceId],
     );
     final msgMaxSeq = msgResult.first['max_seq'] as int;
 
     final wmResult = _db.select(
-      'SELECT COALESCE(MAX(last_seq), 0) as max_seq FROM sync_watermark',
+      'SELECT COALESCE(MAX(last_seq), 0) as max_seq FROM sync_watermark WHERE device_id = ?',
+      [deviceId],
     );
     final wmMaxSeq = wmResult.first['max_seq'] as int;
 
     final clearSeqResult = _db.select(
-      'SELECT COALESCE(MAX(clear_seq), 0) as max_clear FROM sync_watermark',
+      'SELECT COALESCE(MAX(clear_seq), 0) as max_clear FROM sync_watermark WHERE device_id = ?',
+      [deviceId],
     );
     final clearMaxSeq = clearSeqResult.first['max_clear'] as int;
 
@@ -506,7 +487,7 @@ class MessageStore {
     int maxSeq = 0;
     for (final row in unreadMessages) {
       final uuid = row['uuid'] as String;
-      final newSeq = getNextSeq();
+      final newSeq = getNextSeq(deviceId: deviceId);
       if (newSeq > maxSeq) maxSeq = newSeq;
       _db.execute(
         'UPDATE messages SET seq = ? WHERE uuid = ?',
@@ -527,8 +508,8 @@ class MessageStore {
   ///
   /// 将消息标记为 deleted=1，同时将 seq 更新为新的更大值，
   /// 使其能被 getMessagesAfterSeq 增量拉取，从而同步删除状态到 Client。
-  Future<void> softDeleteForSync(String uuid) async {
-    final newSeq = getNextSeq();
+  Future<void> softDeleteForSync(String uuid, {String deviceId = ''}) async {
+    final newSeq = getNextSeq(deviceId: deviceId);
     final now = DateTime.now().millisecondsSinceEpoch;
     _db.execute(
       'UPDATE messages SET deleted = 1, seq = ?, update_time = ? WHERE uuid = ?',
@@ -556,7 +537,7 @@ class MessageStore {
     final now = DateTime.now().millisecondsSinceEpoch;
     int maxSeq = 0;
     for (final row in messages) {
-      final newSeq = getNextSeq();
+      final newSeq = getNextSeq(deviceId: deviceId);
       if (newSeq > maxSeq) maxSeq = newSeq;
       _db.execute(
         'UPDATE messages SET deleted = 1, seq = ?, update_time = ? WHERE uuid = ?',

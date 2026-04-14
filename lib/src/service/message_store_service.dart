@@ -286,7 +286,7 @@ class MessageStoreServiceImpl implements MessageStoreService {
 
   @override
   Future<void> softDeleteMessage(String uuid) async {
-    _store.softDeleteForSync(uuid);
+    _store.softDeleteForSync(uuid, deviceId: _deviceId ?? '');
     // 查找实体用于通知
     final message = await _store.find(_deviceId, uuid);
     if (message != null) {

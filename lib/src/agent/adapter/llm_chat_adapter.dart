@@ -299,7 +299,7 @@ class LlmChatAdapter implements IChatAdapter {
             if (aiContent.isNotEmpty) {
               memoryManager.addMessage(
                 currentEmployeeUuid!,
-                deviceId ?? 'default',
+                deviceId!,
                 shared.ChatMessage.assistant(
                   id: const Uuid().v4(),
                   employeeId: currentEmployeeUuid!,
@@ -606,8 +606,6 @@ class LlmChatAdapter implements IChatAdapter {
   @protected
   Future<void> addUserMessage(MessageInput message) async {
     final id = message.id ?? const Uuid().v4();
-    final effDeviceId = deviceId ?? 'default';
-
     // 如果消息已存在于内存中（被 AgentImpl.sendMessage 提前持久化），
     // 先从内存中移除，避免 streamMessage 时上下文混乱
     final session = memoryManager.getSession(currentEmployeeUuid!);
@@ -625,7 +623,7 @@ class LlmChatAdapter implements IChatAdapter {
     );
     memoryManager.addMessage(
       currentEmployeeUuid!,
-      effDeviceId,
+      deviceId!,
       userMessage,
     );
   }
@@ -764,7 +762,7 @@ class LlmChatAdapter implements IChatAdapter {
         .toList();
     memoryManager.addMessage(
       currentEmployeeUuid!,
-      deviceId ?? 'default',
+      deviceId!,
       shared.ChatMessage.assistant(
         id: const Uuid().v4(),
         employeeId: currentEmployeeUuid!,
@@ -998,7 +996,7 @@ class LlmChatAdapter implements IChatAdapter {
     ).copyWith(metadata: {'toolNames': results.map((r) => r.name).toList()});
     memoryManager.addMessage(
       currentEmployeeUuid!,
-      deviceId ?? 'default',
+      deviceId!,
       msg,
     );
   }

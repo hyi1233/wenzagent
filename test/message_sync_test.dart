@@ -447,7 +447,7 @@ void main() {
     test('getNextSeq always returns increasing values after inserts', () async {
       final store = MessageStore(deviceId: deviceIdA);
 
-      final seq1 = store.getNextSeq();
+      final seq1 = store.getNextSeq(deviceId: deviceIdA);
 
       // Insert a message to advance the counter
       final msg = ChatMessage(
@@ -461,7 +461,7 @@ void main() {
       );
       await store.addWithDeviceId(deviceIdA, msg);
 
-      final seq2 = store.getNextSeq();
+      final seq2 = store.getNextSeq(deviceId: deviceIdA);
 
       expect(seq2, greaterThan(seq1));
 
@@ -477,7 +477,7 @@ void main() {
       );
       await store.addWithDeviceId(deviceIdA, msg2);
 
-      final seq3 = store.getNextSeq();
+      final seq3 = store.getNextSeq(deviceId: deviceIdA);
       expect(seq3, greaterThan(seq2));
     });
 
