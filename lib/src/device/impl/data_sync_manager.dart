@@ -74,14 +74,18 @@ class DataSyncManager {
     }
   }
 
-  /// 同步全部数据（员工+会话，并行执行）
+  /// 从其他设备同步会话摘要数据
+  Future<void> syncSessionSummariesFromDevices() async {
+    await _doSyncSessionSummariesFromDevices();
+  }
+
+  /// 同步全部数据（员工+会话+会话摘要，并行执行）
   Future<void> syncAllFromDevices() async {
-    final results = await Future.wait([
+    final (changedEmployeeIds, changedSessionIds, _) = await (
       _doSyncEmployeesFromDevices(),
       _doSyncSessionsFromDevices(),
-    ]);
-    final changedEmployeeIds = results[0];
-    final changedSessionIds = results[1];
+      _doSyncSessionSummariesFromDevices(),
+    ).wait;
     if (changedEmployeeIds.isNotEmpty || changedSessionIds.isNotEmpty) {
       _stateHolder.notifyDataSynced(DataSyncEvent(
         changedEmployeeIds: changedEmployeeIds,
@@ -307,6 +311,42 @@ class DataSyncManager {
       }
     }
     return changedIds;
+  }
+
+  Future<void> _doSyncSessionSummariesFromDevices() async {
+    if (!_connectionManager.isConnected) return;
+    final devices = await _deviceRegistry.getOnlineDevices();
+    final summaryStore = SessionSummaryStore(deviceId: _deviceId);
+    for (final device in devices) {
+      if (device.id == _deviceId) continue;
+      try {
+        final result = await _connectionManager.invokeRemote(
+          device.id,
+          HostRpcConfig.methodGetSessionSummaries,
+          {},
+        );
+        final summaries = (result['summaries'] as List? ?? [])
+            .map((s) => SessionSummaryEntity.fromMap(s as Map<String, dynamic>))
+            .toList();
+        for (final summary in summaries) {
+          // 以 (employeeId, 本机deviceId) 为 key 写入本地
+          final localSummary = SessionSummaryEntity(
+            employeeId: summary.employeeId,
+            deviceId: _deviceId,
+            unreadCount: summary.unreadCount,
+            lastMsgId: summary.lastMsgId,
+            lastMsgRole: summary.lastMsgRole,
+            lastMsgContent: summary.lastMsgContent,
+            lastMsgTime: summary.lastMsgTime,
+            lastMsgSeq: summary.lastMsgSeq,
+            updateTime: summary.updateTime,
+          );
+          summaryStore.upsertFromRemote(localSummary);
+        }
+      } catch (e) {
+        _log.debug('syncSessionSummaries from device ${device.id} failed: $e');
+      }
+    }
   }
 
   /// 将员工删除同步到所有在线设备

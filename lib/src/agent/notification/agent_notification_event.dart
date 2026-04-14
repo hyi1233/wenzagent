@@ -25,16 +25,12 @@ class AgentMessageArrivedEvent extends AgentNotificationEvent {
   /// 是否为远程消息（vs 本地 Agent 回复）
   final bool isRemote;
 
-  /// 是否自动已读（当前会话窗口打开时的消息）
-  final bool autoRead;
-
   AgentMessageArrivedEvent({
     required this.message,
     required this.fromDeviceId,
     required this.toDeviceId,
     required this.employeeId,
     required this.isRemote,
-    this.autoRead = false,
   });
 }
 

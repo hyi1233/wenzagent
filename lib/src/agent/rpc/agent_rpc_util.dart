@@ -109,6 +109,13 @@ class AgentRpcUtil {
     return _rpcCall(AgentRpcConfig.methodMarkMessagesAsRead, request.toMap());
   }
 
+  /// 基于 seq 批量标记消息为已读
+  Future<Map<String, dynamic>> markMessagesAsReadBySeq(
+    MarkMessagesAsReadBySeqRequest request,
+  ) async {
+    return _rpcCall(AgentRpcConfig.methodMarkMessagesAsReadBySeq, request.toMap());
+  }
+
   /// 查询消息已读状态
   Future<Map<String, dynamic>> getMessagesReadStatus(
     GetMessagesReadStatusRequest request,

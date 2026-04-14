@@ -177,6 +177,24 @@ class DeviceRpcHandler {
       return {'success': true};
     });
 
+    // 基于 seq 批量标记消息为已读
+    rpcServer.register(AgentRpcConfig.methodMarkMessagesAsReadBySeq, (params) async {
+      final request = MarkMessagesAsReadBySeqRequest.fromMap(params);
+      final agent = await _agentManager.ensureLocalAgentForRpc(request.employeeId);
+
+      // 1. Agent 内存记录已读状态 + 广播事件
+      await agent.markMessagesAsReadBySeq(
+        readerDeviceId: request.readerDeviceId,
+        employeeId: request.employeeId,
+        readSeq: request.readSeq,
+      );
+
+      // 2. 更新本地 DB（messages + session_summary）
+      _messageStoreService.markAsReadBySeqInDb(_deviceId, request.employeeId, request.readSeq);
+
+      return {'success': true};
+    });
+
     // 查询消息已读状态
     rpcServer.register(AgentRpcConfig.methodGetMessagesReadStatus, (params) async {
       final request = GetMessagesReadStatusRequest.fromMap(params);
@@ -691,6 +709,13 @@ class DeviceRpcHandler {
         await _messageStoreService.addMessages(entry.key, entry.value);
       }
       return {'count': messages.length};
+    });
+
+    // 获取所有会话摘要
+    rpcServer.register(HostRpcConfig.methodGetSessionSummaries, (params) async {
+      final summaryStore = SessionSummaryStore(deviceId: _deviceId);
+      final summaries = summaryStore.getAllSummaries();
+      return {'summaries': summaries.map((s) => s.toMap()).toList()};
     });
 
     // 设备管理方法

@@ -316,6 +316,45 @@ mixin _AgentImplMessaging on _AgentImplBase {
   }
 
   @override
+  Future<void> markMessagesAsReadBySeq({
+    required String readerDeviceId,
+    required String employeeId,
+    required int readSeq,
+  }) async {
+    _touch();
+
+    // 获取所有消息，筛选 seq <= readSeq 的 assistant 未读消息
+    final allMessages = await _chatAdapter.getSessionMessages(employeeId);
+    int markedCount = 0;
+    for (final message in allMessages) {
+      if (message.role != 'assistant') continue;
+      final seq = message.metadata?['seq'] as int? ?? 0;
+      if (seq <= 0 || seq > readSeq) continue;
+
+      _messageReadStatus[message.id] ??= {};
+      _messageReadStatus[message.id]![readerDeviceId] = DateTime.now();
+      markedCount++;
+    }
+
+    _AgentImplBase._log.info(
+      '已按 seq=$readSeq 标记设备 $readerDeviceId 对 $markedCount 条消息的已读状态',
+    );
+
+    // 广播已读状态变更事件
+    _eventController.add(
+      AgentEvent(
+        type: AgentEventType.messageReadStatusChanged,
+        data: {
+          'employeeId': employeeId,
+          'readerDeviceId': readerDeviceId,
+          'readSeq': readSeq,
+        },
+        employeeId: employeeId,
+      ),
+    );
+  }
+
+  @override
   Future<MessagesReadStatusResult> getMessagesReadStatus({
     required String deviceId,
     required String employeeId,

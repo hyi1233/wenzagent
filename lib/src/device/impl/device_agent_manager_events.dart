@@ -73,15 +73,9 @@ extension DeviceAgentManagerEvents on DeviceAgentManager {
                 metadata: Map<String, dynamic>.from(data)
                   ..['deviceId'] = _deviceId,
               );
-              final autoRead =
-                  _stateHolder.notificationHub.shouldAutoMarkAsReadCallback
-                      ?.call(employeeId: employeeId, fromDeviceId: _deviceId) ??
-                  false;
               _stateHolder.notificationHub.onLocalMessage(
                 message: msg,
                 employeeId: employeeId,
-                markUnread: !autoRead,
-                autoRead: autoRead,
               );
               _notificationManager.updateLatestMessageCache(
                 employeeId,

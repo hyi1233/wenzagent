@@ -100,6 +100,7 @@ abstract class _CachedAgentProxyBase {
   Future<void> _queryPendingPermission();
   void _debouncedSyncMessages();
   Future<void> _syncMessagesFromRemote();
+  Future<void> _syncSessionSummaryFromRemote();
   Future<void> _cleanupSupersededLocalToolCalls(List<AgentMessage> syncedMessages);
   void _cleanupStaleToolCallMessages();
   Future<void> _flushMarkAsReadQueue();
@@ -906,7 +907,8 @@ class CachedAgentProxy extends _CachedAgentProxyBase
     ).then((_) {
       // 远程调用成功，清空该员工的队列
       _markReadQueueStore.clear(employeeId: _employeeId);
-      _syncSessionSummaryFromRemote();
+      // 不再远程同步 summary，仅通知 UI 刷新（已读状态由 onMarkAsRead 回调处理）
+      _notifyMessagesChanged();
     }).catchError((_) {
       // 远程调用失败，队列保留，断线重连后会重发
       _CachedAgentProxyBase._log.error('标记已读远程调用失败，已保留到队列等待重发');
@@ -925,6 +927,29 @@ class CachedAgentProxy extends _CachedAgentProxyBase
 
     // 2. 通知远程 Agent
     markMessagesAsRead();
+
+    // 3. 通知 UI 刷新
+    _notifyMessagesChanged();
+  }
+
+  /// 基于 seq 批量标记已读
+  ///
+  /// 将 seq <= readSeq 的所有未读消息标记为已读。
+  /// 适用于"用户已浏览到某条消息位置"的场景。
+  void markMessagesAsReadBySeq({required String readerDeviceId, required int readSeq}) {
+    // 1. 本地 DB 批量标记已读
+    _messageStore.markAsReadBySeqInDb(_deviceId, _employeeId, readSeq);
+
+    // 2. 通知远程 Agent
+    _proxy.markMessagesAsReadBySeq(
+      readerDeviceId: readerDeviceId,
+      readSeq: readSeq,
+    ).then((_) {
+      // 成功，仅通知 UI 刷新
+      _notifyMessagesChanged();
+    }).catchError((_) {
+      _CachedAgentProxyBase._log.error('按 seq 标记已读远程调用失败');
+    });
 
     // 3. 通知 UI 刷新
     _notifyMessagesChanged();

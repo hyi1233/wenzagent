@@ -296,19 +296,35 @@ class DeviceMessageHandler {
         if (eventType == AgentEventType.messageReadStatusChanged) {
           final readerDeviceId = data['readerDeviceId'] as String?;
           if (readerDeviceId != null && readerDeviceId != _deviceId) {
-            _stateHolder.notificationHub.markAllAsRead(
-              employeeId: employeeId,
-              fromDeviceId: fromDeviceId,
-            );
-            // DB 更新后用 SQL 统计修正内存缓存
-            _notificationManager.markMessagesAsReadInDb(employeeId, fromDeviceId).then((dbUnreadCount) {
-              if (dbUnreadCount >= 0) {
-                _stateHolder.notificationHub.restoreUnreadCount(
-                  employeeId: employeeId,
-                  count: dbUnreadCount,
-                );
-              }
-            });
+            final readSeq = data['readSeq'] as int?;
+            if (readSeq != null) {
+              // 基于 seq 的批量已读
+              final messageStore = MessageStoreService.getInstance(_deviceId);
+              messageStore.markAsReadBySeqInDb(_deviceId, employeeId, readSeq);
+              // 刷新 summary
+              final summaryStore = SessionSummaryStore(deviceId: _deviceId);
+              summaryStore.markAsReadBySeq(employeeId, readSeq, deviceId: _deviceId);
+              // 用 DB 统计修正内存缓存
+              final dbUnreadCount = messageStore.getUnreadCount(_deviceId, employeeId);
+              _stateHolder.notificationHub.restoreUnreadCount(
+                employeeId: employeeId,
+                count: dbUnreadCount,
+              );
+            } else {
+              // 全部已读（原有逻辑）
+              _stateHolder.notificationHub.markAllAsRead(
+                employeeId: employeeId,
+                fromDeviceId: fromDeviceId,
+              );
+              _notificationManager.markMessagesAsReadInDb(employeeId, fromDeviceId).then((dbUnreadCount) {
+                if (dbUnreadCount >= 0) {
+                  _stateHolder.notificationHub.restoreUnreadCount(
+                    employeeId: employeeId,
+                    count: dbUnreadCount,
+                  );
+                }
+              });
+            }
           }
         }
 

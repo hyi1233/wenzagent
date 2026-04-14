@@ -30,6 +30,10 @@ class HostRpcConfig {
   static const String methodSyncSessions = 'hostSyncSessions';
   static const String methodSyncMessages = 'hostSyncMessages';
 
+  // ===== 会话摘要同步 =====
+  static const String methodGetSessionSummaries = 'hostGetSessionSummaries';
+  static const String methodSyncSessionSummaries = 'hostSyncSessionSummaries';
+
   // ===== 设备管理 =====
   static const String methodGetOnlineDevices = 'getOnlineDevices';
   static const String methodGetDeviceInfo = 'getDeviceInfo';
@@ -319,6 +323,29 @@ void registerHostRpcMethods({
   });
 
   // ===== 设备管理方法 =====
+
+  // ===== 会话摘要同步方法 =====
+
+  // 获取所有会话摘要
+  rpcServer.register(HostRpcConfig.methodGetSessionSummaries, (params) async {
+    final summaryStore = SessionSummaryStore(deviceId: '');
+    final summaries = summaryStore.getAllSummaries();
+    return {'summaries': summaries.map((s) => s.toMap()).toList()};
+  });
+
+  // 同步远端会话摘要（接收远端摘要列表，逐条写入本地）
+  rpcServer.register(HostRpcConfig.methodSyncSessionSummaries, (params) async {
+    final summaryStore = SessionSummaryStore(deviceId: '');
+    final summaries = (params['summaries'] as List? ?? [])
+        .map((s) => SessionSummaryEntity.fromMap(s as Map<String, dynamic>))
+        .toList();
+    int count = 0;
+    for (final summary in summaries) {
+      summaryStore.upsertFromRemote(summary);
+      count++;
+    }
+    return {'count': count};
+  });
 
   // 获取在线设备列表
   rpcServer.register(HostRpcConfig.methodGetOnlineDevices, (params) async {

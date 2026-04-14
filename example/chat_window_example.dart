@@ -100,12 +100,7 @@ void main() async {
   });
 
   // 3e. 打开会话时标记已读 + 后台同步远程
-  client.notificationHub.shouldAutoMarkAsReadCallback = ({
-    required String employeeId,
-    String? fromDeviceId,
-  }) {
-    return true; // 当前会话窗口已打开
-  };
+  // 新消息始终计入未读，由 ChatControllerBase 监听消息到达后调用 markAllMessagesAsRead
   await client.setCurrentOpenSession(employeeId: employeeId);
   await proxy.clearAllUnread();
 

@@ -182,6 +182,26 @@ class SessionSummaryStore {
     ''', [employeeId, deviceId, now]);
   }
 
+  /// 基于 seq 批量标记已读（按实际标记数量减少 unread_count）
+  void markAsReadBySeq(String employeeId, int readSeq, {String deviceId = ''}) {
+    // 先统计符合条件的未读消息数量
+    final countResult = _db.select(
+      'SELECT COUNT(*) as cnt FROM messages '
+      'WHERE employee_id = ? AND device_id = ? AND role = ? AND is_read = 0 AND deleted = 0 AND seq <= ?',
+      [employeeId, deviceId, 'assistant', readSeq],
+    );
+    final delta = countResult.first['cnt'] as int;
+    if (delta == 0) return;
+
+    final now = DateTime.now().millisecondsSinceEpoch;
+    _db.execute('''
+      UPDATE session_summary SET
+        unread_count = MAX(unread_count - ?, 0),
+        update_time = ?
+      WHERE employee_id = ? AND device_id = ?
+    ''', [delta, now, employeeId, deviceId]);
+  }
+
   /// 全局标记已读
   void markAllAsRead({String deviceId = ''}) {
     final now = DateTime.now().millisecondsSinceEpoch;

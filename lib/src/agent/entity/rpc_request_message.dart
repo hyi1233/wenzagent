@@ -320,6 +320,35 @@ class MarkMessagesAsReadRequest {
   }
 }
 
+/// 基于 seq 批量标记消息为已读请求
+///
+/// 将 seq <= readSeq 的所有 assistant 未读消息批量标记为已读
+class MarkMessagesAsReadBySeqRequest {
+  final String employeeId;
+  final String readerDeviceId;
+  final int readSeq;
+
+  const MarkMessagesAsReadBySeqRequest({
+    required this.employeeId,
+    required this.readerDeviceId,
+    required this.readSeq,
+  });
+
+  Map<String, dynamic> toMap() => {
+    'employeeId': employeeId,
+    'readerDeviceId': readerDeviceId,
+    'readSeq': readSeq,
+  };
+
+  factory MarkMessagesAsReadBySeqRequest.fromMap(Map<String, dynamic> map) {
+    return MarkMessagesAsReadBySeqRequest(
+      employeeId: map['employeeId'] as String,
+      readerDeviceId: map['readerDeviceId'] as String,
+      readSeq: map['readSeq'] as int,
+    );
+  }
+}
+
 /// 查询消息已读状态请求
 ///
 /// 设备重新打开时可通过此方法从 Agent 查询哪些消息已读

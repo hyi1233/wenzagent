@@ -433,6 +433,24 @@ class AgentProxy {
     );
   }
 
+  /// 基于 seq 批量标记消息为已读
+  Future<void> markMessagesAsReadBySeq({
+    required String readerDeviceId,
+    required int readSeq,
+  }) async {
+    if (isLocalMode && _localAgent != null) {
+      return _localAgent.markMessagesAsReadBySeq(
+        readerDeviceId: readerDeviceId,
+        employeeId: employeeId,
+        readSeq: readSeq,
+      );
+    }
+    return _remoteOps!.markMessagesAsReadBySeq(
+      readerDeviceId: readerDeviceId,
+      readSeq: readSeq,
+    );
+  }
+
   /// 查询消息已读状态
   ///
   /// 设备重新打开时从 Agent 查询哪些消息已读

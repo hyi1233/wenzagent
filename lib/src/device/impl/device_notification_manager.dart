@@ -64,17 +64,6 @@ class DeviceNotificationManager {
     if (topic != null) _topic = topic;
   }
 
-  /// 设置 AgentNotificationHub 的 shouldAutoMarkAsRead 回调
-  /// 必须在 getInstance 后调用一次
-  void initNotificationHubCallback() {
-    _stateHolder.notificationHub.shouldAutoMarkAsReadCallback =
-        ({required String employeeId, String? fromDeviceId}) =>
-            shouldAutoMarkAsRead(
-              employeeId: employeeId,
-              fromDeviceId: fromDeviceId,
-            );
-  }
-
   // ===== 公开访问 =====
 
   OpenSessionState? get currentOpenSession => _currentOpenSession;
@@ -96,10 +85,6 @@ class DeviceNotificationManager {
     if (session.employeeId != employeeId) return false;
     if (fromDeviceId != null && session.fromDeviceId != fromDeviceId) return false;
     return true;
-  }
-
-  bool shouldAutoMarkAsRead({required String employeeId, String? fromDeviceId}) {
-    return isSessionOpen(employeeId: employeeId, fromDeviceId: fromDeviceId);
   }
 
   AgentMessage? getCachedLatestMessage({

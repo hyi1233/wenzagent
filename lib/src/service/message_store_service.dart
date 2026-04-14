@@ -148,6 +148,9 @@ abstract class MessageStoreService {
   /// 同时将 session_summary.unread_count 置为 0。
   int markAsReadInDb(String deviceId, String employeeId);
 
+  /// 基于 seq 批量标记已读
+  int markAsReadBySeqInDb(String deviceId, String employeeId, int readSeq);
+
   /// 获取指定员工的未读消息 ID 列表
   List<String> getUnreadMessageIds(String deviceId, String employeeId);
 
@@ -441,6 +444,13 @@ class MessageStoreServiceImpl implements MessageStoreService {
     final affected = _store.markAsReadByEmployee(employeeId, deviceId: deviceId);
     // 同步将摘要表未读计数置为 0（O(1)）
     _summaryStore.markAsRead(employeeId, deviceId: deviceId);
+    return affected;
+  }
+
+  @override
+  int markAsReadBySeqInDb(String deviceId, String employeeId, int readSeq) {
+    final affected = _store.markAsReadBySeq(employeeId, readSeq, deviceId: deviceId);
+    _summaryStore.markAsReadBySeq(employeeId, readSeq, deviceId: deviceId);
     return affected;
   }
 

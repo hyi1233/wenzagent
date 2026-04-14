@@ -244,9 +244,7 @@ class DeviceClient {
         topic: _topic,
       );
 
-      // 5. 初始化 notificationHub 回调
-      _notificationManager.initNotificationHubCallback();
-
+      // 5. 初始化完成
       _initialized = true;
     });
   }
@@ -566,6 +564,10 @@ class DeviceClient {
   /// 同步全部数据：员工+会话（防抖）
   Future<void> syncAllFromDevices() => _dataSyncManager.syncAllFromDevices();
 
+  /// 同步会话摘要数据（从远端拉取最新摘要到本地）
+  Future<void> syncSessionSummariesFromDevices() =>
+      _dataSyncManager.syncSessionSummariesFromDevices();
+
   /// 从其他设备同步单个员工数据
   Future<AiEmployeeEntity?> syncEmployeeFromDevice({
     required String employeeId,
@@ -656,15 +658,6 @@ class DeviceClient {
 
   bool isSessionOpen({required String employeeId, String? fromDeviceId}) =>
       _notificationManager.isSessionOpen(
-        employeeId: employeeId,
-        fromDeviceId: fromDeviceId,
-      );
-
-  bool shouldAutoMarkAsRead({
-    required String employeeId,
-    String? fromDeviceId,
-  }) =>
-      _notificationManager.shouldAutoMarkAsRead(
         employeeId: employeeId,
         fromDeviceId: fromDeviceId,
       );

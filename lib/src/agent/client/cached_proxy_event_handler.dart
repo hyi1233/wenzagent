@@ -47,8 +47,10 @@ mixin _CachedProxyEventHandler on _CachedAgentProxyBase {
         _handlePermissionResponse(data);
         break;
       case AgentEventType.unknown:
-      case AgentEventType.messageReadStatusChanged:
       case AgentEventType.sessionSummaryChanged:
+        break;
+      case AgentEventType.messageReadStatusChanged:
+        _handleMessageReadStatusChanged(data);
         break;
     }
   }
@@ -396,6 +398,23 @@ mixin _CachedProxyEventHandler on _CachedAgentProxyBase {
     _notifyMessagesChanged();
 
     _CachedAgentProxyBase._log.info('本地会话已清空，水位线: clearSeq=lastSeq=$maxSeq');
+  }
+
+  /// 处理消息已读状态变更事件（来自远程 Agent 广播或其他设备）
+  void _handleMessageReadStatusChanged(Map<String, dynamic> data) {
+    final readSeq = data['readSeq'] as int?;
+
+    if (readSeq != null) {
+      // 基于 seq 的批量已读：更新本地 DB
+      _messageStore.markAsReadBySeqInDb(_deviceId, _employeeId, readSeq);
+    } else {
+      // 全部已读：更新本地 DB
+      _messageStore.markAsReadInDb(_deviceId, _employeeId);
+    }
+
+    // 刷新 summary 并通知 UI
+    _syncSessionSummaryFromRemote();
+    _notifyMessagesChanged();
   }
 
   /// 处理状态变更

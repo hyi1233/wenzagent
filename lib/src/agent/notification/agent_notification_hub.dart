@@ -44,13 +44,6 @@ class AgentNotificationHub {
   /// 最大缓存已处理消息 ID 数量（防止内存泄漏）
   static const int _maxProcessedIds = 10000;
 
-  /// 是否应自动标记为已读的回调
-  ///
-  /// 由 DeviceClientImpl 设置，用于判断新到达的消息是否属于当前打开的会话。
-  /// 如果属于当前打开的会话，则不标记为未读（自动视为已读）。
-  bool Function({required String employeeId, String? fromDeviceId})?
-      shouldAutoMarkAsReadCallback;
-
   bool _isDisposed = false;
 
   // ============================================================
@@ -147,7 +140,7 @@ class AgentNotificationHub {
 
   /// 接收远程 Agent 返回消息
   ///
-  /// 收到后检查是否应自动标记为已读（当前会话窗口打开时），否则标记未读
+  /// 始终标记为未读，由 ChatControllerBase 监听消息到达后对当前打开的会话标记已读。
   ///
   /// 由 DeviceClientImpl 在以下时机调用：
   /// 1. 收到 LAN 广播的 agentMessageStatusChanged（status=completed）
@@ -164,17 +157,8 @@ class AgentNotificationHub {
     if (_processedMessageIds.contains(message.id)) return;
     _addProcessedId(message.id);
 
-    // 判断是否应自动标记为已读（当前打开的会话）
-    final autoRead = shouldAutoMarkAsReadCallback?.call(
-          employeeId: employeeId,
-          fromDeviceId: fromDeviceId,
-        ) ??
-        false;
-
-    if (!autoRead) {
-      // 未打开的会话：标记为未读
-      _markUnread(employeeId, message.id, fromDeviceId, message);
-    }
+    // 始终标记为未读
+    _markUnread(employeeId, message.id, fromDeviceId, message);
 
     // 广播消息到达事件
     _controller.add(AgentMessageArrivedEvent(
@@ -183,19 +167,16 @@ class AgentNotificationHub {
       toDeviceId: toDeviceId,
       employeeId: employeeId,
       isRemote: true,
-      autoRead: autoRead,
     ));
   }
 
-  /// 接收本地 Agent 返回消息（可选，本地消息通常不需要未读标记）
+  /// 接收本地 Agent 返回消息
   ///
-  /// [markUnread] 是否标记未读，默认 false（本地 Agent 回复用户已在线查看）
-  /// [autoRead] 是否自动已读（当前会话窗口打开时），默认 false
+  /// [markUnread] 是否标记未读，默认 true
   void onLocalMessage({
     required AgentMessage message,
     required String employeeId,
-    bool markUnread = false,
-    bool autoRead = false,
+    bool markUnread = true,
   }) {
     if (_isDisposed) return;
 
@@ -212,7 +193,6 @@ class AgentNotificationHub {
       toDeviceId: message.metadata?['deviceId'] ?? '',
       employeeId: employeeId,
       isRemote: false,
-      autoRead: autoRead,
     ));
   }
 

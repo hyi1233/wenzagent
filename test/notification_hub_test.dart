@@ -78,14 +78,8 @@ void main() {
       expect(hub.getUnreadCount(employeeId: 'emp-1'), equals(1));
     });
 
-    test('autoRead prevents unread count', () async {
-      hub.shouldAutoMarkAsReadCallback = ({
-        required String employeeId,
-        String? fromDeviceId,
-      }) {
-        return true; // 当前会话打开，自动已读
-      };
-
+    test('remote message always marks unread', () async {
+      // 新消息始终计入未读，由 ChatControllerBase 负责标记已读
       hub.onRemoteMessage(
         message: _createMessage(id: 'msg-4'),
         fromDeviceId: 'device-A',
@@ -93,7 +87,7 @@ void main() {
         employeeId: 'emp-1',
       );
 
-      expect(hub.getUnreadCount(employeeId: 'emp-1'), equals(0));
+      expect(hub.getUnreadCount(employeeId: 'emp-1'), equals(1));
     });
 
     test('unread count tracks by device', () async {

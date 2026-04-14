@@ -505,6 +505,28 @@ class MessageStore {
     return result.first['affected'] as int;
   }
 
+  /// 基于 seq 批量标记已读
+  ///
+  /// 将 seq <= readSeq 的所有 assistant 未读消息标记为已读，返回受影响行数
+  int markAsReadBySeq(String employeeId, int readSeq, {String deviceId = ''}) {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (deviceId.isNotEmpty) {
+      _db.execute(
+        'UPDATE messages SET is_read = 1, update_time = ? '
+        'WHERE employee_id = ? AND device_id = ? AND role = ? AND is_read = 0 AND deleted = 0 AND seq <= ?',
+        [now, employeeId, deviceId, 'assistant', readSeq],
+      );
+    } else {
+      _db.execute(
+        'UPDATE messages SET is_read = 1, update_time = ? '
+        'WHERE employee_id = ? AND role = ? AND is_read = 0 AND deleted = 0 AND seq <= ?',
+        [now, employeeId, 'assistant', readSeq],
+      );
+    }
+    final result = _db.select('SELECT changes() as affected');
+    return result.first['affected'] as int;
+  }
+
   /// 软删除消息并更新 seq（用于同步场景）
   ///
   /// 将消息标记为 deleted=1，同时将 seq 更新为新的更大值，

@@ -180,6 +180,15 @@ abstract class IAgent {
     List<String>? messageIds,
   });
 
+  /// 基于 seq 批量标记消息为已读
+  ///
+  /// 将 seq <= readSeq 的所有 assistant 未读消息批量标记为已读
+  Future<void> markMessagesAsReadBySeq({
+    required String readerDeviceId,
+    required String employeeId,
+    required int readSeq,
+  });
+
   /// 查询消息已读状态
   ///
   /// 设备重新打开时可通过此方法从 Agent 查询哪些消息已读
