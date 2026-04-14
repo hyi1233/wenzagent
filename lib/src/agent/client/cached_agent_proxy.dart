@@ -10,6 +10,7 @@ import '../../shared/chat_message.dart' show ToolCall;
 import '../../shared/shared.dart' as shared;
 import '../../service/message_store_service.dart';
 import '../../persistence/stores/mark_read_queue_store.dart';
+import '../../persistence/persistence.dart';
 import '../../utils/logger.dart';
 
 part 'cached_proxy_event_handler.dart';
@@ -46,6 +47,7 @@ abstract class _CachedAgentProxyBase {
   // ===== 回调 =====
   void Function(String employeeId, String? fromDeviceId)? get onMarkAsRead;
   bool Function()? get shouldSaveAsReadCallback;
+  void Function(String employeeId, Map<String, dynamic> summaryData)? get onSessionSummaryUpdated;
 
   // ===== 缓存状态 =====
   CacheState get _cacheState;
@@ -138,6 +140,12 @@ class CachedAgentProxy extends _CachedAgentProxyBase
   @override
   final void Function(String employeeId, String? fromDeviceId)? onMarkAsRead;
 
+  /// 会话摘要更新回调（由 DeviceAgentManager 注入）
+  ///
+  /// 当从远程同步到会话摘要时，回调通知 DeviceAgentManager 更新本地持久化和内存缓存。
+  @override
+  final void Function(String employeeId, Map<String, dynamic> summaryData)? onSessionSummaryUpdated;
+
   /// 判断消息是否应直接保存为已读（由 DeviceClient 注入）
   ///
   /// 当当前会话窗口打开时，新消息应直接保存为 isRead=1，
@@ -213,6 +221,7 @@ class CachedAgentProxy extends _CachedAgentProxyBase
     required String employeeId,
     required MarkReadQueueStore markReadQueueStore,
     this.onMarkAsRead,
+    this.onSessionSummaryUpdated,
     this.shouldSaveAsReadCallback,
   })
       : _proxy = proxy,
@@ -897,6 +906,7 @@ class CachedAgentProxy extends _CachedAgentProxyBase
     ).then((_) {
       // 远程调用成功，清空该员工的队列
       _markReadQueueStore.clear(employeeId: _employeeId);
+      _syncSessionSummaryFromRemote();
     }).catchError((_) {
       // 远程调用失败，队列保留，断线重连后会重发
       _CachedAgentProxyBase._log.error('标记已读远程调用失败，已保留到队列等待重发');

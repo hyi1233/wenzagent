@@ -128,6 +128,9 @@ mixin _CachedProxyMessageSync on _CachedAgentProxyBase {
 
     // 清理残留的本地工具调用临时消息
     _cleanupStaleToolCallMessages();
+
+    // 同步远程会话摘要
+    await _syncSessionSummaryFromRemote();
   }
 
   /// 清理已被远程消息取代的本地工具调用临时消息
@@ -280,6 +283,37 @@ mixin _CachedProxyMessageSync on _CachedAgentProxyBase {
       _CachedAgentProxyBase._log.info('远程状态同步完成');
     } catch (e) {
       _CachedAgentProxyBase._log.error('同步远程会话状态失败', e);
+    }
+  }
+
+  /// 从服务端同步会话摘要（未读计数 + 最新消息）
+  Future<void> _syncSessionSummaryFromRemote() async {
+    if (_isDisposed || _proxy.isLocalMode) return;
+    try {
+      final result = await _proxy.getSessionSummary();
+      if (result != null) {
+        // 1. 更新本地 session_summary 表
+        final summary = SessionSummaryEntity.fromMap(result);
+        final summaryStore = SessionSummaryStore(deviceId: _deviceId);
+        summaryStore.upsertFromRemote(SessionSummaryEntity(
+          employeeId: _employeeId,
+          deviceId: _deviceId,
+          unreadCount: summary.unreadCount,
+          lastMsgId: summary.lastMsgId,
+          lastMsgRole: summary.lastMsgRole,
+          lastMsgContent: summary.lastMsgContent,
+          lastMsgTime: summary.lastMsgTime,
+          lastMsgSeq: summary.lastMsgSeq,
+          updateTime: summary.updateTime,
+        ));
+
+        // 2. 通过回调通知 device layer 更新内存缓存 + UI
+        onSessionSummaryUpdated?.call(_employeeId, result);
+
+        _CachedAgentProxyBase._log.debug('会话摘要已同步: unreadCount=${summary.unreadCount}');
+      }
+    } catch (e) {
+      _CachedAgentProxyBase._log.debug('同步会话摘要失败: $e');
     }
   }
 }

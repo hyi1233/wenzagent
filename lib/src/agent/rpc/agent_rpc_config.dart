@@ -29,6 +29,7 @@ class AgentRpcConfig {
   static const String methodGetClearSeq = 'agentGetClearSeq';
   static const String methodMarkMessagesAsRead = 'agentMarkMessagesAsRead';
   static const String methodGetMessagesReadStatus = 'agentGetMessagesReadStatus';
+  static const String methodGetSessionSummary = 'agentGetSessionSummary';
   static const String methodCreateSession = 'agentCreateSession';
   static const String methodSwitchSession = 'agentSwitchSession';
   static const String methodClearSession = 'agentClearSession';

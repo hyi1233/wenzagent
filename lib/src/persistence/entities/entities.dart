@@ -5,3 +5,4 @@ export 'mcp_server_config.dart';
 export 'device_config_entity.dart';
 export 'scheduled_task_entity.dart';
 export 'sync_watermark_entity.dart';
+export 'session_summary_entity.dart';

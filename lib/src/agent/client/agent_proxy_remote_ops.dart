@@ -200,6 +200,14 @@ class _RemoteOps {
     return MessagesReadStatusResult.fromMap(result);
   }
 
+  /// 获取会话摘要（未读计数 + 最新消息）
+  Future<Map<String, dynamic>?> getSessionSummary() async {
+    final request = GetSessionSummaryRequest(employeeId: _employeeId);
+    final result = await _rpcUtil.getSessionSummary(request);
+    if (result.isEmpty) return null;
+    return result;
+  }
+
   /// 清空当前会话
   Future<void> clearCurrentSession() async {
     final request = ClearSessionRequest(employeeId: _employeeId);

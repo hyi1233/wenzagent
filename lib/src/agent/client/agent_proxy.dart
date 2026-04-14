@@ -8,6 +8,7 @@ import '../entity/entity.dart';
 import '../i_agent.dart';
 import '../rpc/agent_rpc_util.dart';
 import '../tool/agent_tool.dart';
+import '../../persistence/persistence.dart';
 import '../../utils/logger.dart';
 
 part 'agent_proxy_remote_ops.dart';
@@ -445,6 +446,16 @@ class AgentProxy {
       );
     }
     return _remoteOps!.getMessagesReadStatus(deviceId: deviceId);
+  }
+
+  /// 获取会话摘要（未读计数 + 最新消息）
+  Future<Map<String, dynamic>?> getSessionSummary() async {
+    if (isLocalMode && _localAgent != null) {
+      final summaryStore = SessionSummaryStore(deviceId: deviceId);
+      final summary = summaryStore.getSummary(employeeId, deviceId: deviceId);
+      return summary?.toMap();
+    }
+    return _remoteOps!.getSessionSummary();
   }
 
   /// 清空当前会话

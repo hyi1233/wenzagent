@@ -116,6 +116,13 @@ class AgentRpcUtil {
     return _rpcCall(AgentRpcConfig.methodGetMessagesReadStatus, request.toMap());
   }
 
+  /// 获取会话摘要（未读计数 + 最新消息）
+  Future<Map<String, dynamic>> getSessionSummary(
+    GetSessionSummaryRequest request,
+  ) async {
+    return _rpcCall(AgentRpcConfig.methodGetSessionSummary, request.toMap());
+  }
+
   /// 清空当前会话
   Future<Map<String, dynamic>> clearSession(ClearSessionRequest request) async {
     return _rpcCall(AgentRpcConfig.methodClearSession, request.toMap());

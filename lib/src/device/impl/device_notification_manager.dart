@@ -1,7 +1,7 @@
 import '../../agent/entity/agent_message.dart';
 import '../../agent/notification/agent_notification_hub.dart';
 import '../../entity/lan_message.dart';
-import '../../shared/shared.dart';
+import '../../persistence/persistence.dart';
 import '../../service/service.dart';
 import '../../utils/logger.dart';
 import '../app_context.dart';
@@ -125,15 +125,8 @@ class DeviceNotificationManager {
   void markAllMessagesAsRead({required String employeeId, String? fromDeviceId}) {
     _stateHolder.notificationHub.markAllAsRead(employeeId: employeeId, fromDeviceId: fromDeviceId);
     _broadcastReadStatus(employeeId: employeeId, fromDeviceId: fromDeviceId);
-    // DB 更新后用 SQL 统计修正内存缓存
-    markMessagesAsReadInDb(employeeId, fromDeviceId).then((dbUnreadCount) {
-      if (dbUnreadCount >= 0) {
-        _stateHolder.notificationHub.restoreUnreadCount(
-          employeeId: employeeId,
-          count: dbUnreadCount,
-        );
-      }
-    });
+    // DB 标记已读（O(1) messages UPDATE + O(1) summary UPDATE）
+    _messageStoreService.markAsReadInDb(_deviceId, employeeId);
     _notifyAgentReadStatus(employeeId: employeeId, fromDeviceId: fromDeviceId);
   }
 
@@ -178,78 +171,53 @@ class DeviceNotificationManager {
 
   Future<void> restoreUnreadStatus() async {
     try {
-      final sessions = await _sessionManager.getAllSessions();
-      final allEmployees = await _employeeManager.getEmployees();
+      final summaryStore = SessionSummaryStore(deviceId: _deviceId);
+      // 一次查询获取所有摘要（O(S)，S = 会话数）
+      final summaries = summaryStore.getAllSummaries(deviceId: _deviceId);
 
-      final employeeMap = <String, dynamic>{};
-      for (final emp in allEmployees) {
-        employeeMap[emp.uuid] = emp;
-      }
-
-      for (final session in sessions) {
-        final employeeId = session.employeeId;
-        final messages = await _messageStoreService.getMessages(_deviceId, employeeId);
-        final unreadMessages = messages
-            .where((m) => m.role == MessageRole.assistant && !m.isRead)
-            .toList();
-        final unreadCount = unreadMessages.length;
-
-        if (unreadCount > 0) {
-          // 恢复未读计数（兼容旧逻辑）
+      for (final summary in summaries) {
+        // 恢复未读计数（O(1) per session，直接从摘要表读取）
+        if (summary.unreadCount > 0) {
           _stateHolder.notificationHub.restoreUnreadCount(
-            employeeId: employeeId,
-            count: unreadCount,
-          );
-
-          // 建立 messageId → isRead 内存映射
-          final employee = employeeMap[employeeId];
-          final String messageDeviceId = (employee?.currentDeviceId != null &&
-                  employee!.currentDeviceId!.isNotEmpty)
-              ? employee.currentDeviceId! as String
-              : _deviceId;
-
-          final unreadItems = unreadMessages.map((entity) {
-            final msgMap = entity.toJson();
-            final msg = AgentMessage.fromMap(msgMap);
-            return (
-              messageId: entity.id,
-              fromDeviceId: messageDeviceId,
-              message: msg,
-            );
-          }).toList();
-
-          _stateHolder.notificationHub.restoreUnreadMessages(
-            employeeId: employeeId,
-            unreadMessages: unreadItems,
+            employeeId: summary.employeeId,
+            count: summary.unreadCount,
+            fromDeviceId: summary.deviceId.isNotEmpty ? summary.deviceId : null,
           );
         }
 
-        if (messages.isNotEmpty) {
-          final employee = employeeMap[employeeId];
-          final rawDeviceId = (employee?.currentDeviceId != null &&
-                  employee!.currentDeviceId!.isNotEmpty)
-              ? employee.currentDeviceId!
-              : _deviceId;
-          final messageDeviceId = rawDeviceId;
-
-          final latestEntity = messages.last;
-          final latestMap = latestEntity.toJson();
-          final latestMsg = AgentMessage.fromMap(latestMap);
-
-          final key = '$employeeId:$messageDeviceId';
-          _latestMessageCache[key] = latestMsg;
+        // 恢复最新消息预览（O(1)，无需查 messages 表）
+        if (summary.hasLatestMessage) {
+          final agentMsg = summaryToAgentMessage(summary);
+          final key = '${summary.employeeId}:${summary.deviceId}';
+          _latestMessageCache[key] = agentMsg;
 
           _stateHolder.notificationHub.onLatestMessageUpdated(
-            message: latestMsg,
-            employeeId: employeeId,
-            fromDeviceId: messageDeviceId,
-            unreadCount: _stateHolder.notificationHub.getUnreadCount(employeeId: employeeId),
+            message: agentMsg,
+            employeeId: summary.employeeId,
+            fromDeviceId: summary.deviceId,
+            unreadCount: summary.unreadCount,
           );
         }
       }
     } catch (e) {
       _log.debug('restoreUnreadStatus failed: $e');
     }
+  }
+
+  /// 将 SessionSummaryEntity 转换为 AgentMessage（用于最新消息预览）
+  AgentMessage summaryToAgentMessage(SessionSummaryEntity summary) {
+    return AgentMessage(
+      id: summary.lastMsgId ?? '',
+      role: summary.lastMsgRole ?? 'assistant',
+      content: summary.lastMsgContent,
+      createdAt: summary.lastMsgTime != null
+          ? DateTime.fromMillisecondsSinceEpoch(summary.lastMsgTime!)
+          : DateTime.now(),
+      metadata: {
+        'seq': summary.lastMsgSeq ?? 0,
+        'deviceId': summary.deviceId,
+      },
+    );
   }
 
   Future<List<ChatMessage>> getLatestMessages({
@@ -311,13 +279,13 @@ class DeviceNotificationManager {
 
   // ===== 已读状态数据库操作 =====
 
-  /// 在数据库中标记已读，并返回 DB SQL 统计的未读数量
+  /// 在数据库中标记已读，并返回摘要表中剩余的未读数量
   ///
-  /// 返回值为 DB 中该员工剩余的未读消息数量，调用方可用其修正内存缓存。
+  /// 返回值为摘要表中该员工剩余的未读消息数量，调用方可用其修正内存缓存。
   Future<int> markMessagesAsReadInDb(String employeeId, String? fromDeviceId) async {
     try {
       _messageStoreService.markAsReadInDb(_deviceId, employeeId);
-      // 从 DB SQL 统计未读数量
+      // 从摘要表读取未读数量（O(1)）
       return _messageStoreService.getUnreadCount(_deviceId, employeeId);
     } catch (e) {
       _log.debug('markMessagesAsReadInDb failed: $e');
@@ -328,14 +296,7 @@ class DeviceNotificationManager {
   void _markAllMessagesAsReadInDbGlobal() {
     final employeeIds = _stateHolder.notificationHub.unreadEmployeeIds;
     for (final employeeId in employeeIds) {
-      markMessagesAsReadInDb(employeeId, null).then((dbUnreadCount) {
-        if (dbUnreadCount >= 0) {
-          _stateHolder.notificationHub.restoreUnreadCount(
-            employeeId: employeeId,
-            count: dbUnreadCount,
-          );
-        }
-      });
+      _messageStoreService.markAsReadInDb(_deviceId, employeeId);
     }
   }
 

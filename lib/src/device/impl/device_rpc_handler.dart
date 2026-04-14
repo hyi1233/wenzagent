@@ -188,6 +188,14 @@ class DeviceRpcHandler {
       return result.toMap();
     });
 
+    // 获取会话摘要（未读计数 + 最新消息）
+    rpcServer.register(AgentRpcConfig.methodGetSessionSummary, (params) async {
+      final request = GetSessionSummaryRequest.fromMap(params);
+      final summaryStore = SessionSummaryStore(deviceId: _deviceId);
+      final summary = summaryStore.getSummary(request.employeeId, deviceId: _deviceId);
+      return summary?.toMap() ?? {};
+    });
+
     rpcServer.register(AgentRpcConfig.methodGetState, (params) async {
       final request = GetStateRequest.fromMap(params);
       final agent = await _agentManager.ensureLocalAgentForRpc(request.employeeId);

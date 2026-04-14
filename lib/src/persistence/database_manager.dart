@@ -13,6 +13,7 @@ import 'migrations/v5_migration.dart';
 import 'migrations/v6_migration.dart';
 import 'migrations/v7_migration.dart';
 import 'migrations/v8_migration.dart';
+import 'migrations/v9_migration.dart';
 
 /// 数据库管理器
 ///
@@ -70,7 +71,7 @@ class DatabaseManager {
   bool _initialized = false;
 
   /// 当前 schema 版本号
-  static const int currentVersion = 8;
+  static const int currentVersion = 9;
 
   /// 版本迁移注册表
   ///
@@ -84,6 +85,7 @@ class DatabaseManager {
     V6Migration(),
     V7Migration(),
     V8Migration(),
+    V9Migration(),
   ];
 
   /// 获取数据库连接
@@ -175,6 +177,10 @@ class DatabaseManager {
       );
       _db!.execute(
         'DELETE FROM sync_watermark WHERE device_id = ?',
+        [deviceId],
+      );
+      _db!.execute(
+        'DELETE FROM session_summary WHERE device_id = ?',
         [deviceId],
       );
     }

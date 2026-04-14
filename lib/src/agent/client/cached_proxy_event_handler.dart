@@ -48,6 +48,7 @@ mixin _CachedProxyEventHandler on _CachedAgentProxyBase {
         break;
       case AgentEventType.unknown:
       case AgentEventType.messageReadStatusChanged:
+      case AgentEventType.sessionSummaryChanged:
         break;
     }
   }

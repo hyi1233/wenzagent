@@ -5,6 +5,7 @@ import '../../agent/entity/agent_event.dart';
 import '../../agent/entity/agent_message.dart';
 import '../../entity/lan_device_info.dart';
 import '../../entity/lan_message.dart';
+import '../../persistence/persistence.dart';
 import '../../service/service.dart';
 import '../../utils/logger.dart';
 import '../app_context.dart';
@@ -96,7 +97,8 @@ class DeviceMessageHandler {
       case LanMessageType.agentSessionCleared:
         _handleAgentEvent(msg);
       case LanMessageType.agentMessageReadStatus:
-        _handleRemoteReadStatus(msg);
+      case LanMessageType.agentSessionSummaryChanged:
+        _handleSessionSummaryChanged(msg);
       case LanMessageType.agentUnreceivedMessagesBatch:
         _handleUnreceivedMessagesBatch(msg);
       case LanMessageType.system:
@@ -310,6 +312,30 @@ class DeviceMessageHandler {
           }
         }
 
+        if (eventType == AgentEventType.sessionSummaryChanged) {
+          final summaryData = data['summary'] as Map<String, dynamic>?;
+          if (summaryData != null) {
+            final summary = SessionSummaryEntity.fromMap(summaryData);
+            final localSummary = SessionSummaryEntity(
+              employeeId: employeeId,
+              deviceId: _deviceId,
+              unreadCount: summary.unreadCount,
+              lastMsgId: summary.lastMsgId,
+              lastMsgRole: summary.lastMsgRole,
+              lastMsgContent: summary.lastMsgContent,
+              lastMsgTime: summary.lastMsgTime,
+              lastMsgSeq: summary.lastMsgSeq,
+              updateTime: summary.updateTime,
+            );
+            final summaryStore = SessionSummaryStore(deviceId: _deviceId);
+            summaryStore.upsertFromRemote(localSummary);
+            _stateHolder.notificationHub.restoreUnreadCount(
+              employeeId: employeeId,
+              count: summary.unreadCount,
+            );
+          }
+        }
+
         // 会话清空事件：清除未读计数、最新消息缓存，并同步消息（清除本地消息）
         if (eventType == AgentEventType.sessionCleared) {
           _stateHolder.notificationHub.markAllAsRead(
@@ -435,37 +461,58 @@ class DeviceMessageHandler {
     lanClient.sendLanMessage(response);
   }
 
-  void _handleRemoteReadStatus(LanMessage msg) {
+  void _handleSessionSummaryChanged(LanMessage msg) {
     try {
       final content = jsonDecode(msg.content ?? '{}') as Map<String, dynamic>;
       final employeeId = content['employeeId'] as String?;
-      final fromDeviceId = content['fromDeviceId'] as String?;
+      final fromDeviceId = msg.fromId;
+
+      if (employeeId == null || fromDeviceId == null) return;
+      if (fromDeviceId == _deviceId) return;
+
       final readerDeviceId = content['readerDeviceId'] as String?;
-      final global = content['global'] as bool? ?? false;
+      if (readerDeviceId != null && readerDeviceId == _deviceId) return;
 
-      if (readerDeviceId == _deviceId) return;
+      final summaryData = content['summary'] as Map<String, dynamic>?;
+      if (summaryData == null) return;
 
-      if (global) {
-        _stateHolder.notificationHub.markAllAsReadGlobal();
-        _notificationManager.markAllMessagesAsReadGlobal();
-      } else {
-        if (employeeId == null) return;
-        _stateHolder.notificationHub.markAllAsRead(
+      final summary = SessionSummaryEntity.fromMap(summaryData);
+
+      // 持久化到本地 session_summary（覆盖为远程权威值）
+      final localSummary = SessionSummaryEntity(
+        employeeId: employeeId,
+        deviceId: _deviceId,
+        unreadCount: summary.unreadCount,
+        lastMsgId: summary.lastMsgId,
+        lastMsgRole: summary.lastMsgRole,
+        lastMsgContent: summary.lastMsgContent,
+        lastMsgTime: summary.lastMsgTime,
+        lastMsgSeq: summary.lastMsgSeq,
+        updateTime: summary.updateTime,
+      );
+      final summaryStore = SessionSummaryStore(deviceId: _deviceId);
+      summaryStore.upsertFromRemote(localSummary);
+
+      // 通知内存层更新未读计数
+      _stateHolder.notificationHub.restoreUnreadCount(
+        employeeId: employeeId,
+        count: summary.unreadCount,
+      );
+
+      // 通知 UI 最新消息更新
+      if (summary.hasLatestMessage) {
+        final agentMsg = _notificationManager.summaryToAgentMessage(summary);
+        _stateHolder.notificationHub.onLatestMessageUpdated(
+          message: agentMsg,
           employeeId: employeeId,
           fromDeviceId: fromDeviceId,
+          unreadCount: summary.unreadCount,
         );
-        // DB 更新后用 SQL 统计修正内存缓存
-        _notificationManager.markMessagesAsReadInDb(employeeId, fromDeviceId).then((dbUnreadCount) {
-          if (dbUnreadCount >= 0) {
-            _stateHolder.notificationHub.restoreUnreadCount(
-              employeeId: employeeId,
-              count: dbUnreadCount,
-            );
-          }
-        });
       }
+
+      _log.debug('收到会话摘要广播: employeeId=$employeeId, unread=${summary.unreadCount}');
     } catch (e) {
-      _log.debug('handleRemoteReadStatus failed: $e');
+      _log.debug('handleSessionSummaryChanged failed: $e');
     }
   }
 

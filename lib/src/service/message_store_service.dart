@@ -131,12 +131,21 @@ abstract class MessageStoreService {
   /// 获取最后一条消息
   Future<ChatMessage?> getLastMessage(String deviceId, String employeeId);
 
-  /// 统计指定员工的未读消息数量（assistant 且 is_read=0 且 deleted=0）
-  ///
-  /// [deviceId] 可选，传入时仅统计指定设备的消息，不传则统计所有设备。
+  /// 统计指定员工的未读消息数量（从 session_summary 表读取，O(1)）
   int getUnreadCount(String deviceId, String employeeId);
 
+  /// 全局未读总数（从 session_summary 表 SUM 聚合，O(S)）
+  int getTotalUnreadCount({String deviceId});
+
+  /// 获取最新消息摘要（从 session_summary 表读取，O(1)）
+  SessionSummaryEntity? getLatestMessageSummary(String deviceId, String employeeId);
+
+  /// 批量获取所有会话摘要（从 session_summary 表读取）
+  List<SessionSummaryEntity> getAllSummaries({String deviceId = ''});
+
   /// 批量标记指定员工的消息为已读（SQL 直接更新，返回受影响行数）
+  ///
+  /// 同时将 session_summary.unread_count 置为 0。
   int markAsReadInDb(String deviceId, String employeeId);
 
   /// 获取指定员工的未读消息 ID 列表
@@ -164,10 +173,12 @@ abstract class MessageStoreService {
 /// 消息存储服务实现
 class MessageStoreServiceImpl implements MessageStoreService {
   final MessageStore _store;
+  final SessionSummaryStore _summaryStore;
   final _changeController = StreamController<MessageChangeEvent>.broadcast();
 
   MessageStoreServiceImpl({MessageStore? store, String? deviceId})
-    : _store = store ?? MessageStore(deviceId: deviceId);
+      : _store = store ?? MessageStore(deviceId: deviceId),
+        _summaryStore = SessionSummaryStore(deviceId: deviceId);
 
   @override
   Future<List<ChatMessage>> getMessages(
@@ -215,12 +226,40 @@ class MessageStoreServiceImpl implements MessageStoreService {
       message,
       updateWatermark: updateWatermark,
     );
+
+    // 同步更新摘要（O(1)）
+    _summaryStore.onMessageAdded(
+      employeeId: message.employeeId,
+      deviceId: deviceId,
+      role: message.role.name,
+      isRead: message.isRead,
+      messageId: message.id,
+      createTime: message.createdAt.millisecondsSinceEpoch,
+      seq: message.seq,
+      content: message.content,
+    );
+
     _notifyChange(MessageChangeType.added, message);
     return message;
   }
 
   @override
   Future<void> addMessages(String deviceId, List<ChatMessage> messages) async {
+    // 批量更新摘要（减少 DB 调用）
+    final summaryMessages = messages.map((m) {
+      return <String, dynamic>{
+        'employeeId': m.employeeId,
+        'deviceId': deviceId,
+        'role': m.role.name,
+        'isRead': m.isRead,
+        'messageId': m.id,
+        'createTime': m.createdAt.millisecondsSinceEpoch,
+        'seq': m.seq,
+        'content': m.content,
+      };
+    }).toList();
+    _summaryStore.onMessagesAdded(summaryMessages);
+
     for (final message in messages) {
       await _store.addWithDeviceId(deviceId, message);
       _notifyChange(MessageChangeType.added, message);
@@ -284,13 +323,50 @@ class MessageStoreServiceImpl implements MessageStoreService {
   @override
   Future<void> deleteMessages(String deviceId, String employeeId) async {
     await _store.deleteBySession(deviceId, employeeId);
+    // 同步删除摘要
+    _summaryStore.deleteSummary(employeeId, deviceId: deviceId);
   }
 
   @override
   Future<void> softDeleteMessage(String deviceId, String uuid) async {
-    _store.softDeleteForSync(uuid, deviceId: deviceId);
-    // 查找实体用于通知
+    // 先查询消息信息，用于更新摘要
     final message = await _store.find(deviceId, uuid);
+
+    _store.softDeleteForSync(uuid, deviceId: deviceId);
+
+    // 更新摘要
+    if (message != null) {
+      final summary = _summaryStore.getSummary(message.employeeId, deviceId: deviceId);
+      final wasLatest = summary?.lastMsgId == uuid;
+      final wasUnread = !message.isRead && message.role == MessageRole.assistant;
+
+      // 如果被删除的是最新消息，查询前一条消息
+      String? prevMsgId, prevMsgRole, prevMsgContent;
+      int? prevMsgTime, prevMsgSeq;
+      if (wasLatest) {
+        final prevMsg = await _store.getLastMessage(deviceId, message.employeeId);
+        if (prevMsg != null) {
+          prevMsgId = prevMsg.id;
+          prevMsgRole = prevMsg.role.name;
+          prevMsgContent = prevMsg.content;
+          prevMsgTime = prevMsg.createdAt.millisecondsSinceEpoch;
+          prevMsgSeq = prevMsg.seq;
+        }
+      }
+
+      _summaryStore.onMessageSoftDeleted(
+        employeeId: message.employeeId,
+        deviceId: deviceId,
+        wasUnread: wasUnread,
+        wasLatest: wasLatest,
+        previousMsgId: prevMsgId,
+        previousMsgRole: prevMsgRole,
+        previousMsgContent: prevMsgContent,
+        previousMsgTime: prevMsgTime,
+        previousMsgSeq: prevMsgSeq,
+      );
+    }
+
     if (message != null) {
       _notifyChange(MessageChangeType.deleted, message);
     }
@@ -302,15 +378,23 @@ class MessageStoreServiceImpl implements MessageStoreService {
       employeeId,
       deviceId: deviceId,
     );
+    // 会话全部软删除，清零未读计数，重建摘要
+    _summaryStore.markAsRead(employeeId, deviceId: deviceId);
+    _summaryStore.rebuildSummary(employeeId, deviceId: deviceId);
   }
 
   @override
   int deleteMessagesBeforeSeq(String deviceId, String employeeId, int beforeSeq) {
-    return _store.deleteBeforeSeq(
+    final deleted = _store.deleteBeforeSeq(
       employeeId,
       beforeSeq,
       deviceId: deviceId,
     );
+    // 有消息被删除，重建摘要以保持一致
+    if (deleted > 0) {
+      _summaryStore.rebuildSummary(employeeId, deviceId: deviceId);
+    }
+    return deleted;
   }
 
   @override
@@ -333,12 +417,31 @@ class MessageStoreServiceImpl implements MessageStoreService {
 
   @override
   int getUnreadCount(String deviceId, String employeeId) {
-    return _store.getUnreadCount(employeeId, deviceId: deviceId);
+    // 委托给摘要表（O(1) PK 查找）
+    return _summaryStore.getUnreadCount(employeeId, deviceId: deviceId);
+  }
+
+  @override
+  int getTotalUnreadCount({String deviceId = ''}) {
+    return _summaryStore.getTotalUnreadCount(deviceId: deviceId);
+  }
+
+  @override
+  SessionSummaryEntity? getLatestMessageSummary(String deviceId, String employeeId) {
+    return _summaryStore.getSummary(employeeId, deviceId: deviceId);
+  }
+
+  @override
+  List<SessionSummaryEntity> getAllSummaries({String deviceId = ''}) {
+    return _summaryStore.getAllSummaries(deviceId: deviceId);
   }
 
   @override
   int markAsReadInDb(String deviceId, String employeeId) {
-    return _store.markAsReadByEmployee(employeeId, deviceId: deviceId);
+    final affected = _store.markAsReadByEmployee(employeeId, deviceId: deviceId);
+    // 同步将摘要表未读计数置为 0（O(1)）
+    _summaryStore.markAsRead(employeeId, deviceId: deviceId);
+    return affected;
   }
 
   @override

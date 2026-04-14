@@ -223,6 +223,19 @@ class GetProjectUuidRequest {
   }
 }
 
+/// 获取会话摘要请求
+class GetSessionSummaryRequest {
+  final String employeeId;
+
+  const GetSessionSummaryRequest({required this.employeeId});
+
+  Map<String, dynamic> toMap() => {'employeeId': employeeId};
+
+  factory GetSessionSummaryRequest.fromMap(Map<String, dynamic> map) {
+    return GetSessionSummaryRequest(employeeId: map['employeeId'] as String);
+  }
+}
+
 /// 获取已注册工具请求
 class GetRegisteredToolsRequest {
   final String employeeId;

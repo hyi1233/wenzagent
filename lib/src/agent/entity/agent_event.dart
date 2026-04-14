@@ -33,6 +33,9 @@ enum AgentEventType {
   /// 会话被清空
   sessionCleared,
 
+  /// 会话摘要变更（未读计数 + 最新消息）
+  sessionSummaryChanged,
+
   /// 未知类型（兼容旧数据或外部扩展）
   unknown;
 

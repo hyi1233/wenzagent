@@ -479,7 +479,8 @@ class MessageStore {
 
   /// 批量标记指定员工的消息为已读（SQL 直接更新，返回受影响行数）
   ///
-  /// 同时更新每条消息的 seq，使已读状态变更可通过 LSN 增量拉取同步到其他设备。
+  /// 使用单次 UPDATE 批量标记 is_read=1，不再逐条分配 seq。
+  /// 已读状态的跨设备同步通过 MarkReadQueueStore + RPC 广播实现。
   int markAsReadByEmployee(String employeeId, {String deviceId = ''}) {
     final now = DateTime.now().millisecondsSinceEpoch;
 
@@ -494,36 +495,11 @@ class MessageStore {
       queryParams = [employeeId, 'assistant'];
     }
 
-    // 查询需要标记已读的消息（用于后续更新 seq）
-    final unreadMessages = _db.select(
-      'SELECT uuid FROM messages WHERE $whereClause',
-      queryParams,
-    );
-
-    if (unreadMessages.isEmpty) return 0;
-
-    // 批量更新 is_read
+    // 单次 UPDATE（O(1)），不再逐条分配 seq
     _db.execute(
       'UPDATE messages SET is_read = 1, update_time = ? WHERE $whereClause',
       [now, ...queryParams],
     );
-
-    // 为每条消息分配新 seq，使已读变更能被增量同步
-    int maxSeq = 0;
-    for (final row in unreadMessages) {
-      final uuid = row['uuid'] as String;
-      final newSeq = getNextSeq(deviceId: deviceId);
-      if (newSeq > maxSeq) maxSeq = newSeq;
-      _db.execute(
-        'UPDATE messages SET seq = ? WHERE uuid = ?',
-        [newSeq, uuid],
-      );
-    }
-
-    // 更新水位线
-    if (maxSeq > 0) {
-      _updateWatermarkLastSeq(employeeId, maxSeq, deviceId: deviceId);
-    }
 
     final result = _db.select('SELECT changes() as affected');
     return result.first['affected'] as int;

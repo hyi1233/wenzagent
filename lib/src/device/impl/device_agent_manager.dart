@@ -225,6 +225,34 @@ class DeviceAgentManager {
             }
           });
         },
+        onSessionSummaryUpdated: (empId, summaryData) {
+          final summary = SessionSummaryEntity.fromMap(summaryData);
+          final summaryStore = SessionSummaryStore(deviceId: _deviceId);
+          summaryStore.upsertFromRemote(SessionSummaryEntity(
+            employeeId: empId,
+            deviceId: _deviceId,
+            unreadCount: summary.unreadCount,
+            lastMsgId: summary.lastMsgId,
+            lastMsgRole: summary.lastMsgRole,
+            lastMsgContent: summary.lastMsgContent,
+            lastMsgTime: summary.lastMsgTime,
+            lastMsgSeq: summary.lastMsgSeq,
+            updateTime: summary.updateTime,
+          ));
+          _stateHolder.notificationHub.restoreUnreadCount(
+            employeeId: empId,
+            count: summary.unreadCount,
+          );
+          if (summary.hasLatestMessage) {
+            final agentMsg = _notificationManager.summaryToAgentMessage(summary);
+            _stateHolder.notificationHub.onLatestMessageUpdated(
+              message: agentMsg,
+              employeeId: empId,
+              fromDeviceId: _deviceId,
+              unreadCount: summary.unreadCount,
+            );
+          }
+        },
         shouldSaveAsReadCallback: () =>
             _notificationManager.isSessionOpen(employeeId: employeeId),
       );
@@ -284,6 +312,34 @@ class DeviceAgentManager {
             );
           }
         });
+      },
+      onSessionSummaryUpdated: (empId, summaryData) {
+        final summary = SessionSummaryEntity.fromMap(summaryData);
+        final summaryStore = SessionSummaryStore(deviceId: _deviceId);
+        summaryStore.upsertFromRemote(SessionSummaryEntity(
+          employeeId: empId,
+          deviceId: _deviceId,
+          unreadCount: summary.unreadCount,
+          lastMsgId: summary.lastMsgId,
+          lastMsgRole: summary.lastMsgRole,
+          lastMsgContent: summary.lastMsgContent,
+          lastMsgTime: summary.lastMsgTime,
+          lastMsgSeq: summary.lastMsgSeq,
+          updateTime: summary.updateTime,
+        ));
+        _stateHolder.notificationHub.restoreUnreadCount(
+          employeeId: empId,
+          count: summary.unreadCount,
+        );
+        if (summary.hasLatestMessage) {
+          final agentMsg = _notificationManager.summaryToAgentMessage(summary);
+          _stateHolder.notificationHub.onLatestMessageUpdated(
+            message: agentMsg,
+            employeeId: empId,
+            fromDeviceId: _deviceId,
+            unreadCount: summary.unreadCount,
+          );
+        }
       },
       shouldSaveAsReadCallback: () =>
           _notificationManager.isSessionOpen(employeeId: employeeId),
