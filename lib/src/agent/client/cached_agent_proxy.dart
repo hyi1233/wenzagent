@@ -1203,24 +1203,9 @@ class CachedAgentProxy {
 
     if (allMessages.isEmpty) return [];
 
-    // 按时间倒序排列（最新的在前）
-    allMessages.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-
-    // 统计用户消息，达到20条时停止
-    int userMessageCount = 0;
-    final selectedMessages = <AgentMessage>[];
-
-    for (final message in allMessages) {
-      selectedMessages.add(message);
-      if (message.role == 'user') {
-        userMessageCount++;
-        if (userMessageCount >= 20) break;
-      }
-    }
-
     // 按时间正序排列
-    selectedMessages.sort((a, b) => a.createdAt.compareTo(b.createdAt));
-    return selectedMessages;
+    allMessages.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+    return allMessages;
   }
 
   /// 获取消息（别名方法）
