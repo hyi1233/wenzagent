@@ -2,6 +2,15 @@ name: wenzagent
 description: Pure Dart library for LAN communication, RPC, and Agent management.
 version: 1.0.0
 repository: https://github.com/lyming99/wenzagent
+homepage: https://github.com/lyming99/wenzagent
+issue_tracker: https://github.com/lyming99/wenzagent/issues
+topics:
+  - agent
+  - llm
+  - lan
+  - rpc
+  - ai
+  - mcp
 
 environment:
   sdk: ^3.11.0

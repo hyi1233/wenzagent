@@ -81,9 +81,9 @@ dart run_test.dart
 
 ## 五、详细文档
 
-- [完整测试指南](docs/agent_test_guide.md)
-- [测试清单](docs/test_checklist.md)
-- [API文档](docs/)
+- [Skill System Design](doc/skill_system_design.md)
+- [Cached Agent Proxy Guide](doc/cached-agent-proxy-guide.md)
+- [Tool Call Status Frontend Guide](doc/tool-call-status-frontend-guide.md)
 
 ## 六、常见问题
 
@@ -109,9 +109,10 @@ wenzagent/
 │   ├── agent_basic_test.dart          # 基础功能测试
 │   ├── agent_functional_test.dart     # 完整功能测试
 │   └── ...
-├── docs/
-│   ├── agent_test_guide.md            # 测试指南
-│   └── test_checklist.md              # 测试清单
+├── doc/
+│   ├── skill_system_design.md         # 技能系统设计
+│   ├── cached-agent-proxy-guide.md    # 缓存代理指南
+│   └── tool-call-status-frontend-guide.md
 ├── run_test.dart                       # 测试脚本
 └── README.md                           # 项目说明
 ```
