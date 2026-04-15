@@ -934,6 +934,82 @@ class AgentProxy {
     return _remoteOps!.moveTodoToGroup(todoId, groupId);
   }
 
+  // ===== Spec 管理 =====
+
+  /// 获取活跃 spec 项（draft + pending + in_progress）
+  Future<List<Map<String, dynamic>>> getActiveSpecs() async {
+    if (isLocalMode && _localAgent != null) {
+      return _localAgent.getActiveSpecs();
+    }
+    return _remoteOps!.getActiveSpecs();
+  }
+
+  /// 获取已完成 spec 项
+  Future<List<Map<String, dynamic>>> getCompletedSpecs({int limit = 50}) async {
+    if (isLocalMode && _localAgent != null) {
+      return _localAgent.getCompletedSpecs(limit: limit);
+    }
+    return _remoteOps!.getCompletedSpecs(limit: limit);
+  }
+
+  /// 获取 spec 分组
+  Future<List<Map<String, dynamic>>> getSpecGroups() async {
+    if (isLocalMode && _localAgent != null) {
+      return _localAgent.getSpecGroups();
+    }
+    return _remoteOps!.getSpecGroups();
+  }
+
+  /// 获取 spec 统计信息
+  Future<Map<String, dynamic>> getSpecStats() async {
+    if (isLocalMode && _localAgent != null) {
+      return _localAgent.getSpecStats();
+    }
+    return _remoteOps!.getSpecStats();
+  }
+
+  // ===== Spec 写操作 =====
+
+  /// 更新 spec 状态
+  Future<void> updateSpecStatus(String specId, String status) async {
+    if (isLocalMode && _localAgent != null) {
+      return _localAgent.updateSpecStatus(specId, status);
+    }
+    return _remoteOps!.updateSpecStatus(specId, status);
+  }
+
+  /// 更新 spec 内容
+  Future<void> updateSpecContent(String specId, String content) async {
+    if (isLocalMode && _localAgent != null) {
+      return _localAgent.updateSpecContent(specId, content);
+    }
+    return _remoteOps!.updateSpecContent(specId, content);
+  }
+
+  /// 删除 spec 项
+  Future<void> deleteSpec(String specId) async {
+    if (isLocalMode && _localAgent != null) {
+      return _localAgent.deleteSpec(specId);
+    }
+    return _remoteOps!.deleteSpec(specId);
+  }
+
+  /// 清除所有已完成 spec
+  Future<void> clearCompletedSpecs() async {
+    if (isLocalMode && _localAgent != null) {
+      return _localAgent.clearCompletedSpecs();
+    }
+    return _remoteOps!.clearCompletedSpecs();
+  }
+
+  /// 移动 spec 到分组
+  Future<void> moveSpecToGroup(String specId, String? groupId) async {
+    if (isLocalMode && _localAgent != null) {
+      return _localAgent.moveSpecToGroup(specId, groupId);
+    }
+    return _remoteOps!.moveSpecToGroup(specId, groupId);
+  }
+
   // ===== 文件操作追踪 =====
 
   /// 获取文件操作记录

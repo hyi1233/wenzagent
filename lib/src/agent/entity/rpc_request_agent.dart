@@ -551,6 +551,189 @@ class MoveTodoToGroupRequest {
 
 // ===== 文件操作追踪请求 =====
 
+// ===== Spec 管理请求 =====
+
+/// 获取活跃 spec 项请求
+class GetActiveSpecsRequest {
+  final String employeeId;
+
+  const GetActiveSpecsRequest({required this.employeeId});
+
+  Map<String, dynamic> toMap() => {'employeeId': employeeId};
+
+  factory GetActiveSpecsRequest.fromMap(Map<String, dynamic> map) {
+    return GetActiveSpecsRequest(employeeId: map['employeeId'] as String);
+  }
+}
+
+/// 获取已完成 spec 项请求
+class GetCompletedSpecsRequest {
+  final String employeeId;
+  final int limit;
+
+  const GetCompletedSpecsRequest({
+    required this.employeeId,
+    this.limit = 50,
+  });
+
+  Map<String, dynamic> toMap() =>
+      {'employeeId': employeeId, 'limit': limit};
+
+  factory GetCompletedSpecsRequest.fromMap(Map<String, dynamic> map) {
+    return GetCompletedSpecsRequest(
+      employeeId: map['employeeId'] as String,
+      limit: map['limit'] as int? ?? 50,
+    );
+  }
+}
+
+/// 获取 spec 分组请求
+class GetSpecGroupsRequest {
+  final String employeeId;
+
+  const GetSpecGroupsRequest({required this.employeeId});
+
+  Map<String, dynamic> toMap() => {'employeeId': employeeId};
+
+  factory GetSpecGroupsRequest.fromMap(Map<String, dynamic> map) {
+    return GetSpecGroupsRequest(employeeId: map['employeeId'] as String);
+  }
+}
+
+/// 获取 spec 统计请求
+class GetSpecStatsRequest {
+  final String employeeId;
+
+  const GetSpecStatsRequest({required this.employeeId});
+
+  Map<String, dynamic> toMap() => {'employeeId': employeeId};
+
+  factory GetSpecStatsRequest.fromMap(Map<String, dynamic> map) {
+    return GetSpecStatsRequest(employeeId: map['employeeId'] as String);
+  }
+}
+
+// ===== Spec 写操作请求 =====
+
+/// 更新 spec 状态请求
+class UpdateSpecStatusRequest {
+  final String employeeId;
+  final String specId;
+  final String status;
+
+  const UpdateSpecStatusRequest({
+    required this.employeeId,
+    required this.specId,
+    required this.status,
+  });
+
+  Map<String, dynamic> toMap() => {
+        'employeeId': employeeId,
+        'specId': specId,
+        'status': status,
+      };
+
+  factory UpdateSpecStatusRequest.fromMap(Map<String, dynamic> map) {
+    return UpdateSpecStatusRequest(
+      employeeId: map['employeeId'] as String,
+      specId: map['specId'] as String,
+      status: map['status'] as String,
+    );
+  }
+}
+
+/// 更新 spec 内容请求
+class UpdateSpecContentRequest {
+  final String employeeId;
+  final String specId;
+  final String content;
+
+  const UpdateSpecContentRequest({
+    required this.employeeId,
+    required this.specId,
+    required this.content,
+  });
+
+  Map<String, dynamic> toMap() => {
+        'employeeId': employeeId,
+        'specId': specId,
+        'content': content,
+      };
+
+  factory UpdateSpecContentRequest.fromMap(Map<String, dynamic> map) {
+    return UpdateSpecContentRequest(
+      employeeId: map['employeeId'] as String,
+      specId: map['specId'] as String,
+      content: map['content'] as String,
+    );
+  }
+}
+
+/// 删除 spec 请求
+class DeleteSpecRequest {
+  final String employeeId;
+  final String specId;
+
+  const DeleteSpecRequest({
+    required this.employeeId,
+    required this.specId,
+  });
+
+  Map<String, dynamic> toMap() => {
+        'employeeId': employeeId,
+        'specId': specId,
+      };
+
+  factory DeleteSpecRequest.fromMap(Map<String, dynamic> map) {
+    return DeleteSpecRequest(
+      employeeId: map['employeeId'] as String,
+      specId: map['specId'] as String,
+    );
+  }
+}
+
+/// 清除已完成 spec 请求
+class ClearCompletedSpecsRequest {
+  final String employeeId;
+
+  const ClearCompletedSpecsRequest({required this.employeeId});
+
+  Map<String, dynamic> toMap() => {'employeeId': employeeId};
+
+  factory ClearCompletedSpecsRequest.fromMap(Map<String, dynamic> map) {
+    return ClearCompletedSpecsRequest(
+      employeeId: map['employeeId'] as String,
+    );
+  }
+}
+
+/// 移动 spec 到分组请求
+class MoveSpecToGroupRequest {
+  final String employeeId;
+  final String specId;
+  final String? groupId;
+
+  const MoveSpecToGroupRequest({
+    required this.employeeId,
+    required this.specId,
+    this.groupId,
+  });
+
+  Map<String, dynamic> toMap() => {
+        'employeeId': employeeId,
+        'specId': specId,
+        'groupId': groupId,
+      };
+
+  factory MoveSpecToGroupRequest.fromMap(Map<String, dynamic> map) {
+    return MoveSpecToGroupRequest(
+      employeeId: map['employeeId'] as String,
+      specId: map['specId'] as String,
+      groupId: map['groupId'] as String?,
+    );
+  }
+}
+
 /// 获取文件操作记录请求
 class GetFileOperationsRequest {
   final String employeeId;

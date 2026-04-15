@@ -300,6 +300,85 @@ class _RemoteOps {
     await _rpcUtil.moveTodoToGroup(request);
   }
 
+  // ===== Spec 管理 =====
+
+  /// 获取活跃 spec 项
+  Future<List<Map<String, dynamic>>> getActiveSpecs() async {
+    final request = GetActiveSpecsRequest(employeeId: _employeeId);
+    final result = await _rpcUtil.getActiveSpecs(request);
+    return (result['specs'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+  }
+
+  /// 获取已完成 spec 项
+  Future<List<Map<String, dynamic>>> getCompletedSpecs({int limit = 50}) async {
+    final request = GetCompletedSpecsRequest(
+      employeeId: _employeeId,
+      limit: limit,
+    );
+    final result = await _rpcUtil.getCompletedSpecs(request);
+    return (result['specs'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+  }
+
+  /// 获取 spec 分组
+  Future<List<Map<String, dynamic>>> getSpecGroups() async {
+    final request = GetSpecGroupsRequest(employeeId: _employeeId);
+    final result = await _rpcUtil.getSpecGroups(request);
+    return (result['groups'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+  }
+
+  /// 获取 spec 统计
+  Future<Map<String, dynamic>> getSpecStats() async {
+    final request = GetSpecStatsRequest(employeeId: _employeeId);
+    return await _rpcUtil.getSpecStats(request);
+  }
+
+  // ===== Spec 写操作 =====
+
+  /// 更新 spec 状态
+  Future<void> updateSpecStatus(String specId, String status) async {
+    final request = UpdateSpecStatusRequest(
+      employeeId: _employeeId,
+      specId: specId,
+      status: status,
+    );
+    await _rpcUtil.updateSpecStatus(request);
+  }
+
+  /// 更新 spec 内容
+  Future<void> updateSpecContent(String specId, String content) async {
+    final request = UpdateSpecContentRequest(
+      employeeId: _employeeId,
+      specId: specId,
+      content: content,
+    );
+    await _rpcUtil.updateSpecContent(request);
+  }
+
+  /// 删除 spec
+  Future<void> deleteSpec(String specId) async {
+    final request = DeleteSpecRequest(
+      employeeId: _employeeId,
+      specId: specId,
+    );
+    await _rpcUtil.deleteSpec(request);
+  }
+
+  /// 清除已完成 spec
+  Future<void> clearCompletedSpecs() async {
+    final request = ClearCompletedSpecsRequest(employeeId: _employeeId);
+    await _rpcUtil.clearCompletedSpecs(request);
+  }
+
+  /// 移动 spec 到分组
+  Future<void> moveSpecToGroup(String specId, String? groupId) async {
+    final request = MoveSpecToGroupRequest(
+      employeeId: _employeeId,
+      specId: specId,
+      groupId: groupId,
+    );
+    await _rpcUtil.moveSpecToGroup(request);
+  }
+
   /// 清空当前会话
   Future<void> clearCurrentSession() async {
     final request = ClearSessionRequest(employeeId: _employeeId);

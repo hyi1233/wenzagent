@@ -317,6 +317,73 @@ class AgentRpcUtil {
     return _rpcCall(AgentRpcConfig.methodMoveTodoToGroup, request.toMap());
   }
 
+  // ===== Agent Spec 管理 =====
+
+  /// 获取活跃 spec 项
+  Future<Map<String, dynamic>> getActiveSpecs(
+    GetActiveSpecsRequest request,
+  ) async {
+    return _rpcCall(AgentRpcConfig.methodGetActiveSpecs, request.toMap());
+  }
+
+  /// 获取已完成 spec 项
+  Future<Map<String, dynamic>> getCompletedSpecs(
+    GetCompletedSpecsRequest request,
+  ) async {
+    return _rpcCall(AgentRpcConfig.methodGetCompletedSpecs, request.toMap());
+  }
+
+  /// 获取 spec 分组
+  Future<Map<String, dynamic>> getSpecGroups(
+    GetSpecGroupsRequest request,
+  ) async {
+    return _rpcCall(AgentRpcConfig.methodGetSpecGroups, request.toMap());
+  }
+
+  /// 获取 spec 统计
+  Future<Map<String, dynamic>> getSpecStats(
+    GetSpecStatsRequest request,
+  ) async {
+    return _rpcCall(AgentRpcConfig.methodGetSpecStats, request.toMap());
+  }
+
+  // ===== Agent Spec 写操作 =====
+
+  /// 更新 spec 状态
+  Future<Map<String, dynamic>> updateSpecStatus(
+    UpdateSpecStatusRequest request,
+  ) async {
+    return _rpcCall(AgentRpcConfig.methodUpdateSpecStatus, request.toMap());
+  }
+
+  /// 更新 spec 内容
+  Future<Map<String, dynamic>> updateSpecContent(
+    UpdateSpecContentRequest request,
+  ) async {
+    return _rpcCall(AgentRpcConfig.methodUpdateSpecContent, request.toMap());
+  }
+
+  /// 删除 spec
+  Future<Map<String, dynamic>> deleteSpec(
+    DeleteSpecRequest request,
+  ) async {
+    return _rpcCall(AgentRpcConfig.methodDeleteSpec, request.toMap());
+  }
+
+  /// 清除已完成 spec
+  Future<Map<String, dynamic>> clearCompletedSpecs(
+    ClearCompletedSpecsRequest request,
+  ) async {
+    return _rpcCall(AgentRpcConfig.methodClearCompletedSpecs, request.toMap());
+  }
+
+  /// 移动 spec 到分组
+  Future<Map<String, dynamic>> moveSpecToGroup(
+    MoveSpecToGroupRequest request,
+  ) async {
+    return _rpcCall(AgentRpcConfig.methodMoveSpecToGroup, request.toMap());
+  }
+
   // ===== Agent 文件操作追踪 =====
 
   /// 获取文件操作记录

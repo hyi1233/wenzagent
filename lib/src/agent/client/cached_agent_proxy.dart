@@ -877,6 +877,44 @@ class CachedAgentProxy extends _CachedAgentProxyBase
   Future<void> moveTodoToGroup(String todoId, String? groupId) =>
       _proxy.moveTodoToGroup(todoId, groupId);
 
+  // ===== Spec 管理 =====
+
+  /// 获取活跃 spec 项
+  Future<List<Map<String, dynamic>>> getActiveSpecs() =>
+      _proxy.getActiveSpecs();
+
+  /// 获取已完成 spec 项
+  Future<List<Map<String, dynamic>>> getCompletedSpecs({int limit = 50}) =>
+      _proxy.getCompletedSpecs(limit: limit);
+
+  /// 获取 spec 分组
+  Future<List<Map<String, dynamic>>> getSpecGroups() =>
+      _proxy.getSpecGroups();
+
+  /// 获取 spec 统计信息
+  Future<Map<String, dynamic>> getSpecStats() =>
+      _proxy.getSpecStats();
+
+  // ===== Spec 写操作 =====
+
+  /// 更新 spec 状态
+  Future<void> updateSpecStatus(String specId, String status) =>
+      _proxy.updateSpecStatus(specId, status);
+
+  /// 更新 spec 内容
+  Future<void> updateSpecContent(String specId, String content) =>
+      _proxy.updateSpecContent(specId, content);
+
+  /// 删除 spec 项
+  Future<void> deleteSpec(String specId) => _proxy.deleteSpec(specId);
+
+  /// 清除所有已完成 spec
+  Future<void> clearCompletedSpecs() => _proxy.clearCompletedSpecs();
+
+  /// 移动 spec 到分组
+  Future<void> moveSpecToGroup(String specId, String? groupId) =>
+      _proxy.moveSpecToGroup(specId, groupId);
+
   // ===== 文件操作追踪 =====
 
   /// 获取文件操作记录

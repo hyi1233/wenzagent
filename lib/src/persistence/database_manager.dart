@@ -16,6 +16,7 @@ import 'migrations/v8_migration.dart';
 import 'migrations/v9_migration.dart';
 import 'migrations/v10_migration.dart';
 import 'migrations/v11_migration.dart';
+import 'migrations/v12_migration.dart';
 
 /// 数据库管理器
 ///
@@ -73,7 +74,7 @@ class DatabaseManager {
   bool _initialized = false;
 
   /// 当前 schema 版本号
-  static const int currentVersion = 11;
+  static const int currentVersion = 12;
 
   /// 版本迁移注册表
   ///
@@ -90,6 +91,7 @@ class DatabaseManager {
     V9Migration(),
     V10Migration(),
     V11Migration(),
+    V12Migration(),
   ];
 
   /// 获取数据库连接

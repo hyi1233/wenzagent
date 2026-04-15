@@ -628,6 +628,70 @@ class DeviceRpcHandler {
       return {'success': true};
     });
 
+    // Spec 管理
+    rpcServer.register(AgentRpcConfig.methodGetActiveSpecs, (params) async {
+      final request = GetActiveSpecsRequest.fromMap(params);
+      final agent = await _agentManager.ensureLocalAgentForRpc(request.employeeId);
+      final specs = await agent.getActiveSpecs();
+      return {'specs': specs};
+    });
+
+    rpcServer.register(AgentRpcConfig.methodGetCompletedSpecs, (params) async {
+      final request = GetCompletedSpecsRequest.fromMap(params);
+      final agent = await _agentManager.ensureLocalAgentForRpc(request.employeeId);
+      final specs = await agent.getCompletedSpecs(limit: request.limit);
+      return {'specs': specs};
+    });
+
+    rpcServer.register(AgentRpcConfig.methodGetSpecGroups, (params) async {
+      final request = GetSpecGroupsRequest.fromMap(params);
+      final agent = await _agentManager.ensureLocalAgentForRpc(request.employeeId);
+      final groups = await agent.getSpecGroups();
+      return {'groups': groups};
+    });
+
+    rpcServer.register(AgentRpcConfig.methodGetSpecStats, (params) async {
+      final request = GetSpecStatsRequest.fromMap(params);
+      final agent = await _agentManager.ensureLocalAgentForRpc(request.employeeId);
+      return await agent.getSpecStats();
+    });
+
+    // Spec 写操作
+    rpcServer.register(AgentRpcConfig.methodUpdateSpecStatus, (params) async {
+      final request = UpdateSpecStatusRequest.fromMap(params);
+      final agent = await _agentManager.ensureLocalAgentForRpc(request.employeeId);
+      await agent.updateSpecStatus(request.specId, request.status);
+      return {'success': true};
+    });
+
+    rpcServer.register(AgentRpcConfig.methodUpdateSpecContent, (params) async {
+      final request = UpdateSpecContentRequest.fromMap(params);
+      final agent = await _agentManager.ensureLocalAgentForRpc(request.employeeId);
+      await agent.updateSpecContent(request.specId, request.content);
+      return {'success': true};
+    });
+
+    rpcServer.register(AgentRpcConfig.methodDeleteSpec, (params) async {
+      final request = DeleteSpecRequest.fromMap(params);
+      final agent = await _agentManager.ensureLocalAgentForRpc(request.employeeId);
+      await agent.deleteSpec(request.specId);
+      return {'success': true};
+    });
+
+    rpcServer.register(AgentRpcConfig.methodClearCompletedSpecs, (params) async {
+      final request = ClearCompletedSpecsRequest.fromMap(params);
+      final agent = await _agentManager.ensureLocalAgentForRpc(request.employeeId);
+      await agent.clearCompletedSpecs();
+      return {'success': true};
+    });
+
+    rpcServer.register(AgentRpcConfig.methodMoveSpecToGroup, (params) async {
+      final request = MoveSpecToGroupRequest.fromMap(params);
+      final agent = await _agentManager.ensureLocalAgentForRpc(request.employeeId);
+      await agent.moveSpecToGroup(request.specId, request.groupId);
+      return {'success': true};
+    });
+
     // 文件操作追踪
     rpcServer.register(AgentRpcConfig.methodGetFileOperations, (params) async {
       final request = GetFileOperationsRequest.fromMap(params);

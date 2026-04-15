@@ -388,6 +388,54 @@ abstract class IAgent {
   /// [groupId] 目标分组 ID（null 表示移至未分组）
   Future<void> moveTodoToGroup(String todoId, String? groupId);
 
+  // ===== Spec 管理 =====
+
+  /// 获取活跃 spec 项（draft + pending + in_progress）
+  ///
+  /// 返回序列化后的 Map 列表
+  Future<List<Map<String, dynamic>>> getActiveSpecs();
+
+  /// 获取已完成的 spec 项
+  ///
+  /// [limit] 最大返回数量，默认 50
+  Future<List<Map<String, dynamic>>> getCompletedSpecs({int limit = 50});
+
+  /// 获取所有 spec 分组
+  Future<List<Map<String, dynamic>>> getSpecGroups();
+
+  /// 获取 spec 统计信息
+  ///
+  /// 返回各状态的数量统计
+  Future<Map<String, dynamic>> getSpecStats();
+
+  // ===== Spec 写操作 =====
+
+  /// 更新 spec 状态
+  ///
+  /// [specId] spec 项 ID
+  /// [status] 新状态（draft / pending / in_progress / completed）
+  Future<void> updateSpecStatus(String specId, String status);
+
+  /// 更新 spec 内容
+  ///
+  /// [specId] spec 项 ID
+  /// [content] 新内容
+  Future<void> updateSpecContent(String specId, String content);
+
+  /// 删除 spec 项（软删除）
+  ///
+  /// [specId] spec 项 ID
+  Future<void> deleteSpec(String specId);
+
+  /// 清除所有已完成的 spec 项
+  Future<void> clearCompletedSpecs();
+
+  /// 移动 spec 到分组
+  ///
+  /// [specId] spec 项 ID
+  /// [groupId] 目标分组 ID（null 表示移至未分组）
+  Future<void> moveSpecToGroup(String specId, String? groupId);
+
   // ===== 文件操作追踪 =====
 
   /// 获取文件操作记录

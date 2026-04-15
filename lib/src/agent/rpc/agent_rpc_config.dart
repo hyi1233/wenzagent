@@ -100,6 +100,21 @@ class AgentRpcConfig {
   static const String methodClearCompletedTodos = 'agentClearCompletedTodos';
   static const String methodMoveTodoToGroup = 'agentMoveTodoToGroup';
 
+  // ===== Agent Spec 管理 =====
+
+  static const String methodGetActiveSpecs = 'agentGetActiveSpecs';
+  static const String methodGetCompletedSpecs = 'agentGetCompletedSpecs';
+  static const String methodGetSpecGroups = 'agentGetSpecGroups';
+  static const String methodGetSpecStats = 'agentGetSpecStats';
+
+  // ===== Agent Spec 写操作 =====
+
+  static const String methodUpdateSpecStatus = 'agentUpdateSpecStatus';
+  static const String methodUpdateSpecContent = 'agentUpdateSpecContent';
+  static const String methodDeleteSpec = 'agentDeleteSpec';
+  static const String methodClearCompletedSpecs = 'agentClearCompletedSpecs';
+  static const String methodMoveSpecToGroup = 'agentMoveSpecToGroup';
+
   // ===== Agent 文件操作追踪 =====
 
   static const String methodGetFileOperations = 'agentGetFileOperations';

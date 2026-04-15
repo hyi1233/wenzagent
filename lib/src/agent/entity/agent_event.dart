@@ -42,6 +42,12 @@ enum AgentEventType {
   /// Todo 分组变更
   todoGroupChanged,
 
+  /// Spec 项变更
+  specChanged,
+
+  /// Spec 分组变更
+  specGroupChanged,
+
   /// 未知类型（兼容旧数据或外部扩展）
   unknown;
 

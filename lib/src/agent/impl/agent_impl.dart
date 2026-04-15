@@ -8,6 +8,7 @@ import 'package:wenzagent/wenzagent.dart';
 import '../../utils/logger.dart';
 import '../tool/builtin/bg_command_tool.dart';
 import '../tool/builtin/command_session_pool.dart';
+import '../tool/builtin/spec_manage_tool.dart';
 
 part 'agent_impl_messaging.dart';
 part 'agent_impl_skill.dart';
@@ -225,6 +226,9 @@ class AgentImpl extends _AgentImplBase
 
     // 注入 TodoManageTool 回调
     _injectTodoManageCallbacks();
+
+    // 注入 SpecManageTool 回调
+    _injectSpecManageCallbacks();
 
     // 注入 SpawnSubAgentTool 回调（工具注册器引用）
     _injectSpawnSubAgentCallbacks();
@@ -701,6 +705,180 @@ class AgentImpl extends _AgentImplBase
     _eventController.add(AgentEvent(
       type: AgentEventType.todoChanged,
       data: {'action': 'moved', 'todoId': todoId, 'groupId': groupId},
+      employeeId: employeeId,
+    ));
+  }
+
+  /// 注入 SpecManageTool 回调
+  void _injectSpecManageCallbacks() {
+    final specTool = _toolRegistry.getTool('spec_manage');
+    if (specTool is! SpecManageTool) return;
+
+    final specStore = SpecStore(deviceId: deviceId);
+
+    // 注入 employeeId
+    specTool.employeeId = employeeId;
+
+    // 活跃 spec 查询
+    specTool.getActiveSpecs = (eid) async {
+      return specStore.findActiveByEmployee(eid);
+    };
+
+    // 已完成 spec 查询
+    specTool.getCompletedSpecs = (eid, {limit = 50}) async {
+      return specStore.findCompletedByEmployee(eid, limit: limit);
+    };
+
+    // 保存 spec 项
+    specTool.saveSpec = (item) async {
+      specStore.save(item);
+    };
+
+    // 更新 spec 状态
+    specTool.updateSpecStatus = (id, status) async {
+      specStore.updateStatus(id, status);
+    };
+
+    // 更新 spec 内容
+    specTool.updateSpecContent = (id, {title, content}) async {
+      specStore.updateContent(id, title: title, content: content);
+    };
+
+    // 软删除 spec 项
+    specTool.removeSpec = (id) async {
+      specStore.softDelete(id);
+    };
+
+    // 批量删除已完成项
+    specTool.clearCompletedSpecs = (eid) async {
+      specStore.deleteCompletedByEmployee(eid);
+    };
+
+    // 移动到分组
+    specTool.moveSpecToGroup = (id, groupId) async {
+      specStore.moveToGroup(id, groupId);
+    };
+
+    // 获取所有分组
+    specTool.getGroups = (eid) async {
+      return specStore.findGroupsByEmployee(eid);
+    };
+
+    // 按名称查找分组
+    specTool.findGroupByName = (eid, name) async {
+      return specStore.findGroupByName(eid, name);
+    };
+
+    // 保存分组
+    specTool.saveGroup = (group) async {
+      specStore.saveGroup(group);
+    };
+
+    // 软删除分组
+    specTool.removeGroup = (id) async {
+      specStore.softDeleteGroup(id);
+    };
+
+    // 重命名分组
+    specTool.renameGroupFn = (id, newName) async {
+      specStore.renameGroup(id, newName);
+    };
+
+    // 广播事件
+    specTool.broadcastEvent = (type, data) {
+      final eventType = type == 'specChanged'
+          ? AgentEventType.specChanged
+          : AgentEventType.specGroupChanged;
+      _eventController.add(
+        AgentEvent(
+          type: eventType,
+          data: data,
+          employeeId: employeeId,
+        ),
+      );
+    };
+  }
+
+  // ===== IAgent: Spec 管理 =====
+
+  @override
+  Future<List<Map<String, dynamic>>> getActiveSpecs() async {
+    final store = SpecStore(deviceId: deviceId);
+    final items = store.findActiveByEmployee(employeeId);
+    return items.map((e) => e.toMap()).toList();
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> getCompletedSpecs({int limit = 50}) async {
+    final store = SpecStore(deviceId: deviceId);
+    final items = store.findCompletedByEmployee(employeeId, limit: limit);
+    return items.map((e) => e.toMap()).toList();
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> getSpecGroups() async {
+    final store = SpecStore(deviceId: deviceId);
+    final groups = store.findGroupsByEmployee(employeeId);
+    return groups.map((e) => e.toMap()).toList();
+  }
+
+  @override
+  Future<Map<String, dynamic>> getSpecStats() async {
+    final store = SpecStore(deviceId: deviceId);
+    return store.countByStatus(employeeId);
+  }
+
+  @override
+  Future<void> updateSpecStatus(String specId, String status) async {
+    final store = SpecStore(deviceId: deviceId);
+    store.updateStatus(specId, status);
+    _eventController.add(AgentEvent(
+      type: AgentEventType.specChanged,
+      data: {'action': 'updated', 'specId': specId, 'status': status},
+      employeeId: employeeId,
+    ));
+  }
+
+  @override
+  Future<void> updateSpecContent(String specId, String content) async {
+    final store = SpecStore(deviceId: deviceId);
+    store.updateContent(specId, content: content);
+    _eventController.add(AgentEvent(
+      type: AgentEventType.specChanged,
+      data: {'action': 'updated', 'specId': specId},
+      employeeId: employeeId,
+    ));
+  }
+
+  @override
+  Future<void> deleteSpec(String specId) async {
+    final store = SpecStore(deviceId: deviceId);
+    store.softDelete(specId);
+    _eventController.add(AgentEvent(
+      type: AgentEventType.specChanged,
+      data: {'action': 'removed', 'specId': specId},
+      employeeId: employeeId,
+    ));
+  }
+
+  @override
+  Future<void> clearCompletedSpecs() async {
+    final store = SpecStore(deviceId: deviceId);
+    store.deleteCompletedByEmployee(employeeId);
+    _eventController.add(AgentEvent(
+      type: AgentEventType.specChanged,
+      data: {'action': 'cleared'},
+      employeeId: employeeId,
+    ));
+  }
+
+  @override
+  Future<void> moveSpecToGroup(String specId, String? groupId) async {
+    final store = SpecStore(deviceId: deviceId);
+    store.moveToGroup(specId, groupId);
+    _eventController.add(AgentEvent(
+      type: AgentEventType.specChanged,
+      data: {'action': 'moved', 'specId': specId, 'groupId': groupId},
       employeeId: employeeId,
     ));
   }
