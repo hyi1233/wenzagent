@@ -736,7 +736,7 @@ class AgentImpl extends _AgentImplBase
     );
   }
 
-  /// 注入 BgCommandTool 的 CommandSessionPool 引用
+  /// 注入 BgCommandTool 的 CommandSessionPool 引用和监控 LLM 回调
   void _injectBgCommandCallbacks() {
     final bgTool = _toolRegistry.getTool('bg_command');
     if (bgTool is! BgCommandTool) {
@@ -749,6 +749,16 @@ class AgentImpl extends _AgentImplBase
 
     bgTool.pool = _commandSessionPool;
 
+    // 注入监控 LLM 回调：使用 invokeOnce 做单次轻量 LLM 调用
+    bgTool.invokeMonitorLlm = (prompt) async {
+      try {
+        return await _chatAdapter.invokeOnce(prompt);
+      } catch (e) {
+        _AgentImplBase._log.warn('BgCommand monitor LLM call failed: $e');
+        return null;
+      }
+    };
+
     // 将 pool 引用也注入到 SubAgentExecutor，使子 Agent 可查询主 Agent 的后台会话
     final spawnTool = _toolRegistry.getTool('spawn_sub_agent');
     if (spawnTool is SpawnSubAgentTool && spawnTool.executor != null) {
@@ -756,7 +766,7 @@ class AgentImpl extends _AgentImplBase
     }
 
     _AgentImplBase._log.info(
-      'BgCommandTool injected with pool for $employeeId',
+      'BgCommandTool injected (pool + monitor LLM) for $employeeId',
     );
   }
 

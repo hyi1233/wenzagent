@@ -267,7 +267,7 @@ class CommandSession {
 
     if (timeout != null) {
       try {
-        await _doneCompleter!.future.timeout(timeout, onTimeout: () {});
+        await _doneCompleter!.future.timeout(timeout);
         return true;
       } on TimeoutException {
         return false;

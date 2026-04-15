@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:test/test.dart';
+import 'package:wenzagent/src/agent/tool/agent_tool.dart';
 import 'package:wenzagent/src/agent/tool/builtin/bg_command_tool.dart';
 import 'package:wenzagent/src/agent/tool/builtin/command_session_pool.dart';
 
@@ -79,8 +80,6 @@ void main() {
       final done =
           await session!.waitUntilDone(timeout: Duration(seconds: 10));
       expect(done, isTrue);
-      // On Windows cmd /c will exit with non-zero for unknown commands
-      // On Unix sh -c will exit with non-zero
       expect(session!.status, isNot(CommandSessionStatus.running));
       expect(session.exitCode, isNot(0));
     });
@@ -89,7 +88,6 @@ void main() {
       final pool = CommandSessionPool();
       addTearDown(() => pool.dispose());
 
-      // Use a loop to generate output (works on both platforms)
       final cmd = _isWindows
           ? r'for /L %i in (1,1,500) do @echo AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'
           : 'for i in `seq 1 500`; do echo AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA; done';
@@ -102,7 +100,6 @@ void main() {
       expect(done, isTrue);
 
       final fullOutput = session!.getStdout();
-      // Should have substantial output
       expect(fullOutput.length, greaterThan(1000));
 
       final tailOutput = session.getStdout(tailChars: 100);
@@ -118,13 +115,11 @@ void main() {
       expect(session, isNotNull);
       expect(session!.isRunning, isTrue);
 
-      // Give it a moment to start
       await Future.delayed(Duration(milliseconds: 500));
 
       session.kill();
       expect(session.status, CommandSessionStatus.cancelled);
 
-      // Kill is idempotent
       session.kill();
       expect(session.status, CommandSessionStatus.cancelled);
     });
@@ -151,11 +146,9 @@ void main() {
     });
 
     test('output buffer truncation (tail retention)', () async {
-      // Use a small buffer to force truncation
       final pool = CommandSessionPool(sessionMaxBufferChars: 200);
       addTearDown(() => pool.dispose());
 
-      // Generate output larger than buffer
       final cmd = _isWindows
           ? r'for /L %i in (1,1,100) do @echo Line_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'
           : 'for i in `seq 1 100`; do echo Line_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA; done';
@@ -168,7 +161,6 @@ void main() {
       expect(done, isTrue);
 
       final output = session!.getStdout();
-      // Buffer should be limited
       expect(output.length, lessThanOrEqualTo(400));
 
       final summary = session.getSummary();
@@ -188,8 +180,7 @@ void main() {
           await session!.waitUntilDone(timeout: Duration(seconds: 10));
       expect(done, isTrue);
 
-      // Calling again should return immediately
-      final done2 = await session.waitUntilDone();
+      final done2 = await session!.waitUntilDone();
       expect(done2, isTrue);
     });
   });
@@ -199,13 +190,11 @@ void main() {
       final pool = CommandSessionPool(maxSessions: 2);
       addTearDown(() => pool.dispose());
 
-      // Start 2 sessions (max)
       final s1 = await pool.startSession(command: _longCmd);
       final s2 = await pool.startSession(command: _longCmd);
       expect(s1, isNotNull);
       expect(s2, isNotNull);
 
-      // 3rd should fail
       final s3 = await pool.startSession(command: _longCmd);
       expect(s3, isNull);
 
@@ -216,13 +205,11 @@ void main() {
       final pool = CommandSessionPool(maxSessions: 1);
       addTearDown(() => pool.dispose());
 
-      // Start and complete a session
       final s1 = await pool.startSession(command: 'echo test');
       expect(s1, isNotNull);
       await s1!.waitUntilDone(timeout: Duration(seconds: 10));
       expect(s1.isRunning, isFalse);
 
-      // Should be able to start a new session
       final s2 = await pool.startSession(command: 'echo test2');
       expect(s2, isNotNull);
       await s2!.waitUntilDone(timeout: Duration(seconds: 10));
@@ -235,7 +222,6 @@ void main() {
       await pool.startSession(command: 'echo one');
       await pool.startSession(command: 'echo two');
 
-      // Wait for completion to avoid teardown issues
       await Future.delayed(Duration(seconds: 2));
 
       final list = pool.listSessions();
@@ -320,7 +306,6 @@ void main() {
       expect(pool.activeCount, 2);
 
       pool.terminateAll();
-      // After terminate, sessions are cancelled but still in map
       expect(pool.activeCount, 0);
     });
   });
@@ -355,21 +340,22 @@ void main() {
       expect(tool.permissionArgKey, 'command');
     });
 
-    test('start action launches command', () async {
+    test('start action blocks and returns final result (no monitor LLM)',
+        () async {
+      // Without invokeMonitorLlm, falls back to simple wait
       final result = await tool.execute({
         'action': 'start',
-        'command': 'echo hello',
+        'command': 'echo hello_world',
+        'task': 'Echo test',
       });
 
       expect(result.isError, isFalse);
-      expect(result.content, contains('Background command started'));
-      expect(result.content, contains('Session ID:'));
-
-      // Wait for completion to avoid teardown issues
-      await Future.delayed(Duration(seconds: 2));
+      expect(result.content, contains('hello_world'));
+      expect(result.content, contains('Exit code: 0'));
+      expect(result.content, contains('Status: completed'));
     });
 
-    test('start without command returns error', () async {
+    test('start returns error for empty command', () async {
       final result = await tool.execute({
         'action': 'start',
       });
@@ -378,25 +364,130 @@ void main() {
       expect(result.content, contains('command is required'));
     });
 
-    test('status action reports completed session', () async {
-      final startResult = await tool.execute({
+    test('start returns error when concurrent limit reached', () async {
+      final smallPool = CommandSessionPool(maxSessions: 1);
+      final smallTool = BgCommandTool();
+      smallTool.pool = smallPool;
+      addTearDown(() => smallPool.dispose());
+
+      // Start a blocking task (we need to start it in background so we can call again)
+      final firstCall = smallTool.execute({
+        'action': 'start',
+        'command': _longCmd,
+        'task': 'Long task',
+      });
+
+      // Give it time to start
+      await Future.delayed(Duration(milliseconds: 500));
+
+      // Second call should get concurrent limit error
+      final r2 = await smallTool.execute({
         'action': 'start',
         'command': 'echo test',
+        'task': 'Quick task',
       });
-      expect(startResult.isError, isFalse);
+      expect(r2.isError, isTrue);
+      expect(r2.content, contains('concurrent session limit'));
 
-      // Extract sessionId
-      final match =
-          RegExp(r'Session ID: (bg_\d+_\d+)').firstMatch(startResult.content);
-      expect(match, isNotNull);
-      final sessionId = match!.group(1)!;
+      // Clean up first call
+      smallPool.terminateAll();
+      try {
+        await firstCall.timeout(Duration(seconds: 2));
+      } catch (_) {}
+    });
 
-      // Wait for completion
-      await Future.delayed(Duration(seconds: 2));
+    test('start returns error for failed command', () async {
+      final result = await tool.execute({
+        'action': 'start',
+        'command': _isWindows ? 'exit /b 1' : 'exit 1',
+        'task': 'Should fail',
+      });
+
+      expect(result.isError, isTrue);
+      expect(result.content, contains('failed'));
+    });
+
+    test('start with monitor LLM that says CONTINUE', () async {
+      var monitorCallCount = 0;
+      tool.invokeMonitorLlm = (prompt) async {
+        monitorCallCount++;
+        return 'CONTINUE';
+      };
+
+      // Use a short command that should complete within first monitoring interval
+      final result = await tool.execute({
+        'action': 'start',
+        'command': 'echo quick_test',
+        'task': 'Quick echo test',
+      });
+
+      expect(result.isError, isFalse);
+      expect(result.content, contains('quick_test'));
+      // Monitor may or may not have been called depending on timing
+    });
+
+    test('start with monitor LLM that says INTERRUPT', () async {
+      tool.invokeMonitorLlm = (prompt) async {
+        return 'INTERRUPT: Task appears to be hanging';
+      };
+
+      final result = await tool.execute({
+        'action': 'start',
+        'command': _longCmd,
+        'task': 'Should be interrupted',
+      });
+
+      // Should be cancelled by monitor
+      expect(result.content, contains('cancelled'));
+      expect(result.content, contains('Session:'));
+    });
+
+    test('start with monitor LLM that throws (fallback to waiting)',
+        () async {
+      var callCount = 0;
+      tool.invokeMonitorLlm = (prompt) async {
+        callCount++;
+        throw Exception('LLM unavailable');
+      };
+
+      // Start a quick command
+      final result = await tool.execute({
+        'action': 'start',
+        'command': 'echo fallback_test',
+        'task': 'Test fallback when LLM fails',
+      });
+
+      // Should still complete even though monitor fails
+      expect(result.isError, isFalse);
+      expect(result.content, contains('fallback_test'));
+    });
+
+    test('buildFinalResult contains expected fields', () async {
+      final result = await tool.execute({
+        'action': 'start',
+        'command': 'echo result_test',
+        'task': 'Check result format',
+      });
+
+      expect(result.content, contains('Command:'));
+      expect(result.content, contains('Status:'));
+      expect(result.content, contains('Exit code:'));
+      expect(result.content, contains('Elapsed:'));
+      expect(result.content, contains('Session:'));
+      expect(result.metadata, isNotNull);
+      expect(result.metadata!['exitCode'], 0);
+      expect(result.metadata!['status'], 'completed');
+    });
+
+    test('status action reports completed session', () async {
+      // Start via pool directly (not through tool) for manual status check
+      final session = await pool.startSession(command: 'echo status_test');
+      expect(session, isNotNull);
+      await session!.waitUntilDone(timeout: Duration(seconds: 10));
 
       final statusResult = await tool.execute({
         'action': 'status',
-        'sessionId': sessionId,
+        'sessionId': session.sessionId,
       });
 
       expect(statusResult.isError, isFalse);
@@ -405,19 +496,14 @@ void main() {
     });
 
     test('status action reports running session', () async {
-      final startResult = await tool.execute({
-        'action': 'start',
-        'command': _longCmd,
-      });
-      expect(startResult.isError, isFalse);
+      final session = await pool.startSession(command: _longCmd);
+      expect(session, isNotNull);
 
-      final match =
-          RegExp(r'Session ID: (bg_\d+_\d+)').firstMatch(startResult.content);
-      final sessionId = match!.group(1)!;
+      await Future.delayed(Duration(milliseconds: 300));
 
       final statusResult = await tool.execute({
         'action': 'status',
-        'sessionId': sessionId,
+        'sessionId': session!.sessionId,
       });
 
       expect(statusResult.isError, isFalse);
@@ -427,63 +513,28 @@ void main() {
     });
 
     test('output action returns stdout', () async {
-      final startResult = await tool.execute({
-        'action': 'start',
-        'command': 'echo test_output_123',
-      });
-
-      final match =
-          RegExp(r'Session ID: (bg_\d+_\d+)').firstMatch(startResult.content);
-      final sessionId = match!.group(1)!;
-
-      await Future.delayed(Duration(seconds: 2));
+      final session = await pool.startSession(command: 'echo output_test_123');
+      expect(session, isNotNull);
+      await session!.waitUntilDone(timeout: Duration(seconds: 10));
 
       final outputResult = await tool.execute({
         'action': 'output',
-        'sessionId': sessionId,
+        'sessionId': session.sessionId,
       });
 
       expect(outputResult.isError, isFalse);
-      expect(outputResult.content, contains('test_output_123'));
-    });
-
-    test('output shows no output yet for running session with no output',
-        () async {
-      final startResult = await tool.execute({
-        'action': 'start',
-        'command': _shortSleepCmd,
-      });
-
-      final match =
-          RegExp(r'Session ID: (bg_\d+_\d+)').firstMatch(startResult.content);
-      final sessionId = match!.group(1)!;
-
-      // Don't wait, check output immediately
-      // Note: may or may not have output depending on timing
-      final outputResult = await tool.execute({
-        'action': 'output',
-        'sessionId': sessionId,
-      });
-
-      expect(outputResult.isError, isFalse);
-      // Just verify it doesn't crash
+      expect(outputResult.content, contains('output_test_123'));
     });
 
     test('terminate action kills running session', () async {
-      final startResult = await tool.execute({
-        'action': 'start',
-        'command': _longCmd,
-      });
-
-      final match =
-          RegExp(r'Session ID: (bg_\d+_\d+)').firstMatch(startResult.content);
-      final sessionId = match!.group(1)!;
+      final session = await pool.startSession(command: _longCmd);
+      expect(session, isNotNull);
 
       await Future.delayed(Duration(milliseconds: 500));
 
       final terminateResult = await tool.execute({
         'action': 'terminate',
-        'sessionId': sessionId,
+        'sessionId': session!.sessionId,
       });
 
       expect(terminateResult.isError, isFalse);
@@ -491,20 +542,13 @@ void main() {
     });
 
     test('terminate on already completed session returns info', () async {
-      final startResult = await tool.execute({
-        'action': 'start',
-        'command': 'echo done',
-      });
-
-      final match =
-          RegExp(r'Session ID: (bg_\d+_\d+)').firstMatch(startResult.content);
-      final sessionId = match!.group(1)!;
-
-      await Future.delayed(Duration(seconds: 2));
+      final session = await pool.startSession(command: 'echo done');
+      expect(session, isNotNull);
+      await session!.waitUntilDone(timeout: Duration(seconds: 10));
 
       final terminateResult = await tool.execute({
         'action': 'terminate',
-        'sessionId': sessionId,
+        'sessionId': session!.sessionId,
       });
 
       expect(terminateResult.isError, isFalse);
@@ -512,11 +556,8 @@ void main() {
     });
 
     test('list action shows sessions', () async {
-      await tool.execute({
-        'action': 'start',
-        'command': 'echo one',
-      });
-
+      final session = await pool.startSession(command: 'echo list_test');
+      expect(session, isNotNull);
       await Future.delayed(Duration(milliseconds: 500));
 
       final listResult = await tool.execute({
@@ -525,7 +566,7 @@ void main() {
 
       expect(listResult.isError, isFalse);
       expect(listResult.content, contains('Background command sessions'));
-      expect(listResult.content, contains('echo one'));
+      expect(listResult.content, contains('list_test'));
     });
 
     test('list with no sessions shows empty message', () async {
@@ -585,76 +626,38 @@ void main() {
       expect(result.content, contains('pool not injected'));
     });
 
-    test('start returns error when concurrent limit reached', () async {
-      final smallPool = CommandSessionPool(maxSessions: 1);
-      final smallTool = BgCommandTool();
-      smallTool.pool = smallPool;
-      addTearDown(() => smallPool.dispose());
+    test('_buildMonitorPrompt includes all sections', () async {
+      // We can test the prompt building indirectly through the monitor LLM callback
+      String? capturedPrompt;
+      tool.invokeMonitorLlm = (prompt) async {
+        capturedPrompt = prompt;
+        return 'CONTINUE';
+      };
 
-      // Start first session
-      final r1 = await smallTool.execute({
+      // Use a long command so monitor fires
+      final resultFuture = tool.execute({
         'action': 'start',
         'command': _longCmd,
+        'task': 'Build the project. Expected: success.',
       });
-      expect(r1.isError, isFalse);
 
-      await Future.delayed(Duration(milliseconds: 300));
+      // Wait for at least one monitor cycle
+      await Future.delayed(Duration(seconds: 12));
 
-      // Second should fail
-      final r2 = await smallTool.execute({
-        'action': 'start',
-        'command': _longCmd,
+      // Kill it to complete the test quickly
+      pool.terminateAll();
+      await resultFuture.timeout(Duration(seconds: 5), onTimeout: () {
+        pool.terminateAll();
+        return ToolResult(content: 'timeout', isError: false);
       });
-      expect(r2.isError, isTrue);
-      expect(r2.content, contains('concurrent session limit'));
 
-      smallPool.terminateAll();
-    });
-
-    test('full workflow: start → status → output → terminate', () async {
-      // Start
-      final startResult = await tool.execute({
-        'action': 'start',
-        'command': _longCmd,
-      });
-      expect(startResult.isError, isFalse);
-
-      final match = RegExp(r'Session ID: (bg_\d+_\d+)')
-          .firstMatch(startResult.content);
-      final sessionId = match!.group(1)!;
-
-      await Future.delayed(Duration(milliseconds: 500));
-
-      // Status (running)
-      final status1 = await tool.execute({
-        'action': 'status',
-        'sessionId': sessionId,
-      });
-      expect(status1.isError, isFalse);
-      expect(status1.content, contains('running'));
-
-      // Output
-      final output1 = await tool.execute({
-        'action': 'output',
-        'sessionId': sessionId,
-      });
-      expect(output1.isError, isFalse);
-
-      // Terminate
-      final terminate = await tool.execute({
-        'action': 'terminate',
-        'sessionId': sessionId,
-      });
-      expect(terminate.isError, isFalse);
-      expect(terminate.content, contains('terminated'));
-
-      // Status (cancelled)
-      final status2 = await tool.execute({
-        'action': 'status',
-        'sessionId': sessionId,
-      });
-      expect(status2.isError, isFalse);
-      expect(status2.content, contains('cancelled'));
+      if (capturedPrompt != null) {
+        expect(capturedPrompt!, contains('Build the project'));
+        expect(capturedPrompt!, contains('Recent stdout'));
+        expect(capturedPrompt!, contains('stderr'));
+        expect(capturedPrompt!, contains('CONTINUE'));
+        expect(capturedPrompt!, contains('INTERRUPT'));
+      }
     });
   });
 }
