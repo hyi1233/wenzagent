@@ -253,8 +253,6 @@ class DeviceAgentManager {
             );
           }
         },
-        shouldSaveAsReadCallback: () =>
-            _notificationManager.isSessionOpen(employeeId: employeeId),
       );
 
       _localProxies[employeeId] = cachedProxy;
@@ -342,8 +340,6 @@ class DeviceAgentManager {
           );
         }
       },
-      shouldSaveAsReadCallback: () =>
-          _notificationManager.isSessionOpen(employeeId: employeeId),
     );
 
     _remoteProxies[key] = cachedProxy;

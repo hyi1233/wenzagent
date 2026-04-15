@@ -104,10 +104,9 @@ mixin _CachedProxyMessageSync on _CachedAgentProxyBase {
               continue;
             }
 
-            final forceRead = message.role == 'assistant' &&
-                (shouldSaveAsReadCallback?.call() ?? false);
+            // 消息始终以未读写入，由打开聊天窗口时 markMessagesAsRead 统一标记已读
             final chatMsg = _agentMessageToChatMessage(
-                message, forceRead: forceRead);
+                message, forceRead: false);
             await _messageStore.addMessage(_deviceId, chatMsg);
           }
 

@@ -156,9 +156,6 @@ class SessionMemoryManager {
   /// 判断是否已配置持久化
   bool get isPersisted => _messageStore != null;
 
-  /// isRead 判断回调（由外部注入，用于 assistant 消息立即标记已读）
-  bool Function(String employeeId)? shouldMarkAsRead;
-
   /// 配置持久化（由 DeviceAgentManager/AgentFactoryImpl 调用）
   void configurePersistence({
     required MessageStoreService messageStore,
@@ -225,14 +222,9 @@ class SessionMemoryManager {
     if (session != null) {
       session.addMessage(deviceId, message);
     }
-    // 同步写入 DB
+    // 同步写入 DB（消息始终以未读写入，由打开聊天窗口时 markMessagesAsRead 统一标记已读）
     if (_messageStore != null && _deviceId != null) {
-      var msgToSave = message;
-      if (message.role == MessageRole.assistant &&
-          shouldMarkAsRead?.call(employeeId) == true) {
-        msgToSave = message.copyWith(isRead: true);
-      }
-      _messageStore!.addMessage(_deviceId!, msgToSave);
+      _messageStore!.addMessage(_deviceId!, message);
     }
   }
 

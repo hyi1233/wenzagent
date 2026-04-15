@@ -44,6 +44,7 @@ extension DeviceAgentManagerEvents on DeviceAgentManager {
             _stateHolder.notificationHub.onLocalMessage(
               message: msg,
               employeeId: employeeId,
+              fromDeviceId: _deviceId,
             );
             _notificationManager.updateLatestMessageCache(
               employeeId,
@@ -76,6 +77,7 @@ extension DeviceAgentManagerEvents on DeviceAgentManager {
               _stateHolder.notificationHub.onLocalMessage(
                 message: msg,
                 employeeId: employeeId,
+                fromDeviceId: _deviceId,
               );
               _notificationManager.updateLatestMessageCache(
                 employeeId,

@@ -171,11 +171,6 @@ class LlmChatAdapter implements IChatAdapter {
     memoryManager.configurePersistence(messageStore: messageStore, deviceId: deviceId);
   }
 
-  /// 设置 shouldMarkAsRead 回调（由外部注入）
-  set shouldMarkAsRead(bool Function(String employeeId)? callback) {
-    memoryManager.shouldMarkAsRead = callback;
-  }
-
   /// 会话清空回调（由 DeviceAgentManager 注入，用于设置 clearSeq/lastSeq 和清理通知）
   ///
   /// [maxSeq] 清空前消息的最大 seq，用于设置 clearSeq = lastSeq = maxSeq

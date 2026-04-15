@@ -176,6 +176,7 @@ class AgentNotificationHub {
   void onLocalMessage({
     required AgentMessage message,
     required String employeeId,
+    String? fromDeviceId,
     bool markUnread = true,
   }) {
     if (_isDisposed) return;
@@ -184,7 +185,7 @@ class AgentNotificationHub {
     _addProcessedId(message.id);
 
     if (markUnread) {
-      _markUnread(employeeId, message.id, null, message);
+      _markUnread(employeeId, message.id, fromDeviceId, message);
     }
 
     _controller.add(AgentMessageArrivedEvent(

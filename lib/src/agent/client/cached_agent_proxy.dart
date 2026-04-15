@@ -46,7 +46,6 @@ abstract class _CachedAgentProxyBase {
 
   // ===== 回调 =====
   void Function(String employeeId, String? fromDeviceId)? get onMarkAsRead;
-  bool Function()? get shouldSaveAsReadCallback;
   void Function(String employeeId, Map<String, dynamic> summaryData)? get onSessionSummaryUpdated;
 
   // ===== 缓存状态 =====
@@ -147,13 +146,6 @@ class CachedAgentProxy extends _CachedAgentProxyBase
   @override
   final void Function(String employeeId, Map<String, dynamic> summaryData)? onSessionSummaryUpdated;
 
-  /// 判断消息是否应直接保存为已读（由 DeviceClient 注入）
-  ///
-  /// 当当前会话窗口打开时，新消息应直接保存为 isRead=1，
-  /// 避免重启 app 后从 DB 恢复未读数量。
-  @override
-  final bool Function()? shouldSaveAsReadCallback;
-
   /// 缓存状态（仅远程模式使用）
   @override
   CacheState _cacheState = CacheState.idle;
@@ -223,7 +215,6 @@ class CachedAgentProxy extends _CachedAgentProxyBase
     required MarkReadQueueStore markReadQueueStore,
     this.onMarkAsRead,
     this.onSessionSummaryUpdated,
-    this.shouldSaveAsReadCallback,
   })
       : _proxy = proxy,
         _messageStore = messageStore,
@@ -371,9 +362,8 @@ class CachedAgentProxy extends _CachedAgentProxyBase
   Future<void> _saveMessageToDatabase(AgentMessage message,
       {bool updateWatermark = true}) async {
     try {
-      final forceRead = message.role == 'assistant' &&
-          (shouldSaveAsReadCallback?.call() ?? false);
-      final chatMsg = _agentMessageToChatMessage(message, forceRead: forceRead);
+      // 消息始终以未读写入，由打开聊天窗口时 markMessagesAsRead 统一标记已读
+      final chatMsg = _agentMessageToChatMessage(message, forceRead: false);
       await _messageStore.addMessage(
           _deviceId, chatMsg, updateWatermark: updateWatermark);
     } catch (e) {

@@ -145,9 +145,6 @@ extension DeviceAgentManagerLifecycle on DeviceAgentManager {
     );
     adapter.deviceId = _deviceId;
 
-    adapter.shouldMarkAsRead = (empId) =>
-        _notificationManager.currentOpenSession?.employeeId == empId;
-
     // 会话清空回调：设置 clearSeq = lastSeq + 清理通知
     adapter.onSessionCleared = (empId, maxSeq) async {
       if (maxSeq > 0) {
