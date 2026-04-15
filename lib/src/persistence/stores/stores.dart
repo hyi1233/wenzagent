@@ -8,3 +8,4 @@ export 'sync_watermark_store.dart';
 export 'mark_read_queue_store.dart';
 export 'session_summary_store.dart';
 export 'todo_store.dart';
+export 'file_operation_store.dart';

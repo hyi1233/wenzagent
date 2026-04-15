@@ -627,6 +627,28 @@ class DeviceRpcHandler {
       await agent.moveTodoToGroup(request.todoId, request.groupId);
       return {'success': true};
     });
+
+    // 文件操作追踪
+    rpcServer.register(AgentRpcConfig.methodGetFileOperations, (params) async {
+      final request = GetFileOperationsRequest.fromMap(params);
+      final agent = await _agentManager.ensureLocalAgentForRpc(request.employeeId);
+      final operations = await agent.getFileOperations(limit: request.limit, offset: request.offset);
+      return {'operations': operations};
+    });
+
+    rpcServer.register(AgentRpcConfig.methodGetFileOperationsByMessage, (params) async {
+      final request = GetFileOperationsByMessageRequest.fromMap(params);
+      final agent = await _agentManager.ensureLocalAgentForRpc(request.employeeId);
+      final operations = await agent.getFileOperationsByMessage(request.messageId);
+      return {'operations': operations};
+    });
+
+    rpcServer.register(AgentRpcConfig.methodClearFileOperations, (params) async {
+      final request = ClearFileOperationsRequest.fromMap(params);
+      final agent = await _agentManager.ensureLocalAgentForRpc(request.employeeId);
+      await agent.clearFileOperations();
+      return {'success': true};
+    });
   }
 
   void _registerHostMethods(RemoteCallServer rpcServer) {

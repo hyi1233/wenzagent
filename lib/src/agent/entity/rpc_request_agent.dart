@@ -548,3 +548,70 @@ class MoveTodoToGroupRequest {
     );
   }
 }
+
+// ===== 文件操作追踪请求 =====
+
+/// 获取文件操作记录请求
+class GetFileOperationsRequest {
+  final String employeeId;
+  final int limit;
+  final int offset;
+
+  const GetFileOperationsRequest({
+    required this.employeeId,
+    this.limit = 100,
+    this.offset = 0,
+  });
+
+  Map<String, dynamic> toMap() => {
+        'employeeId': employeeId,
+        'limit': limit,
+        'offset': offset,
+      };
+
+  factory GetFileOperationsRequest.fromMap(Map<String, dynamic> map) {
+    return GetFileOperationsRequest(
+      employeeId: map['employeeId'] as String,
+      limit: map['limit'] as int? ?? 100,
+      offset: map['offset'] as int? ?? 0,
+    );
+  }
+}
+
+/// 获取指定消息的文件操作记录请求
+class GetFileOperationsByMessageRequest {
+  final String employeeId;
+  final String messageId;
+
+  const GetFileOperationsByMessageRequest({
+    required this.employeeId,
+    required this.messageId,
+  });
+
+  Map<String, dynamic> toMap() => {
+        'employeeId': employeeId,
+        'messageId': messageId,
+      };
+
+  factory GetFileOperationsByMessageRequest.fromMap(Map<String, dynamic> map) {
+    return GetFileOperationsByMessageRequest(
+      employeeId: map['employeeId'] as String,
+      messageId: map['messageId'] as String,
+    );
+  }
+}
+
+/// 清除文件操作记录请求
+class ClearFileOperationsRequest {
+  final String employeeId;
+
+  const ClearFileOperationsRequest({required this.employeeId});
+
+  Map<String, dynamic> toMap() => {'employeeId': employeeId};
+
+  factory ClearFileOperationsRequest.fromMap(Map<String, dynamic> map) {
+    return ClearFileOperationsRequest(
+      employeeId: map['employeeId'] as String,
+    );
+  }
+}

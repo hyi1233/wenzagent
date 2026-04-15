@@ -306,6 +306,39 @@ class _RemoteOps {
     await _rpcUtil.clearSession(request);
   }
 
+  // ===== 文件操作追踪 =====
+
+  /// 获取文件操作记录
+  Future<List<Map<String, dynamic>>> getFileOperations({
+    int limit = 100,
+    int offset = 0,
+  }) async {
+    final request = GetFileOperationsRequest(
+      employeeId: _employeeId,
+      limit: limit,
+      offset: offset,
+    );
+    final result = await _rpcUtil.getFileOperations(request);
+    return (result['operations'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+  }
+
+  /// 获取指定消息的文件操作记录
+  Future<List<Map<String, dynamic>>> getFileOperationsByMessage(
+      String messageId) async {
+    final request = GetFileOperationsByMessageRequest(
+      employeeId: _employeeId,
+      messageId: messageId,
+    );
+    final result = await _rpcUtil.getFileOperationsByMessage(request);
+    return (result['operations'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+  }
+
+  /// 清除文件操作记录
+  Future<void> clearFileOperations() async {
+    final request = ClearFileOperationsRequest(employeeId: _employeeId);
+    await _rpcUtil.clearFileOperations(request);
+  }
+
   // ===== 异步状态/配置查询 =====
 
   /// 获取当前状态快照（异步版本，支持远程 RPC）

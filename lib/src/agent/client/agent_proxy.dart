@@ -934,6 +934,36 @@ class AgentProxy {
     return _remoteOps!.moveTodoToGroup(todoId, groupId);
   }
 
+  // ===== 文件操作追踪 =====
+
+  /// 获取文件操作记录
+  Future<List<Map<String, dynamic>>> getFileOperations({
+    int limit = 100,
+    int offset = 0,
+  }) async {
+    if (isLocalMode && _localAgent != null) {
+      return _localAgent.getFileOperations(limit: limit, offset: offset);
+    }
+    return _remoteOps!.getFileOperations(limit: limit, offset: offset);
+  }
+
+  /// 获取指定消息关联的文件操作记录
+  Future<List<Map<String, dynamic>>> getFileOperationsByMessage(
+      String messageId) async {
+    if (isLocalMode && _localAgent != null) {
+      return _localAgent.getFileOperationsByMessage(messageId);
+    }
+    return _remoteOps!.getFileOperationsByMessage(messageId);
+  }
+
+  /// 清除文件操作记录
+  Future<void> clearFileOperations() async {
+    if (isLocalMode && _localAgent != null) {
+      return _localAgent.clearFileOperations();
+    }
+    return _remoteOps!.clearFileOperations();
+  }
+
   bool get isSending {
     if (isLocalMode && _localAgent != null) {
       return _localAgent.isSending;

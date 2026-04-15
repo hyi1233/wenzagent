@@ -42,6 +42,9 @@ abstract class _AgentImplBase implements IAgent {
   set _warmupCompleter(Completer<void>? value);
   StreamController<AgentStateSnapshot> get _stateController;
   StreamController<AgentEvent> get _eventController;
+  FileOperationTracker? get _fileOperationTracker;
+  set _fileOperationTracker(FileOperationTracker? value);
+  Map<String, Map<String, dynamic>> get _toolCallArguments;
   static Logger get _log => Logger('AgentImpl');
 
   void _touch();
@@ -136,6 +139,14 @@ class AgentImpl extends _AgentImplBase
   @override
   final Set<String> _callingToolIds = {};
 
+  /// 文件操作追踪器
+  @override
+  FileOperationTracker? _fileOperationTracker;
+
+  /// 工具调用参数缓存（toolCallStart 时缓存，toolCallResult 时消费）
+  @override
+  final Map<String, Map<String, dynamic>> _toolCallArguments = {};
+
   // ===== 内部状态 =====
 
   /// 当前 Agent 状态
@@ -218,6 +229,12 @@ class AgentImpl extends _AgentImplBase
     // 注入 SpawnSubAgentTool 回调（工具注册器引用）
     _injectSpawnSubAgentCallbacks();
 
+    // 创建文件操作追踪器
+    _fileOperationTracker = FileOperationTracker(
+      employeeId: this.employeeId,
+      store: FileOperationStore(deviceId: deviceId),
+    );
+
     // 创建后台命令会话池并注入到 BgCommandTool
     _commandSessionPool = CommandSessionPool();
     _injectBgCommandCallbacks();
@@ -256,13 +273,24 @@ class AgentImpl extends _AgentImplBase
       }
     };
 
-    // 设置工具事件回调：通过事件流广播 + 维护工具调用状态
+    // 设置工具事件回调：通过事件流广播 + 维护工具调用状态 + 文件操作追踪
     _chatAdapter.setToolEventCallback((toolEvent) {
       switch (toolEvent) {
         case ToolCallStartEvent():
           _callingToolIds.add(toolEvent.toolCallId);
+          // 缓存工具调用参数，供 toolCallResult 时使用
+          _toolCallArguments[toolEvent.toolCallId] = toolEvent.arguments;
         case ToolCallResultEvent():
           _callingToolIds.remove(toolEvent.toolCallId);
+          // 消费缓存的参数，通知文件操作追踪器
+          final args = _toolCallArguments.remove(toolEvent.toolCallId) ?? {};
+          _fileOperationTracker?.onToolResult(
+            toolCallId: toolEvent.toolCallId,
+            toolName: toolEvent.toolName,
+            arguments: args,
+            result: toolEvent.result,
+            isError: toolEvent.isError,
+          );
       }
       final map = ToolEventMapper.toMap(toolEvent);
       _eventController.add(
@@ -675,6 +703,29 @@ class AgentImpl extends _AgentImplBase
       data: {'action': 'moved', 'todoId': todoId, 'groupId': groupId},
       employeeId: employeeId,
     ));
+  }
+
+  // ===== IAgent: 文件操作追踪 =====
+
+  @override
+  Future<List<Map<String, dynamic>>> getFileOperations({
+    int limit = 100,
+    int offset = 0,
+  }) async {
+    final ops = _fileOperationTracker?.getOperations(limit: limit, offset: offset) ?? [];
+    return ops.map((e) => e.toMap()).toList();
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> getFileOperationsByMessage(
+      String messageId) async {
+    final ops = _fileOperationTracker?.getOperationsByMessage(messageId) ?? [];
+    return ops.map((e) => e.toMap()).toList();
+  }
+
+  @override
+  Future<void> clearFileOperations() async {
+    _fileOperationTracker?.clear();
   }
 
   /// 注入 SpawnSubAgentTool 回调

@@ -877,6 +877,23 @@ class CachedAgentProxy extends _CachedAgentProxyBase
   Future<void> moveTodoToGroup(String todoId, String? groupId) =>
       _proxy.moveTodoToGroup(todoId, groupId);
 
+  // ===== 文件操作追踪 =====
+
+  /// 获取文件操作记录
+  Future<List<Map<String, dynamic>>> getFileOperations({
+    int limit = 100,
+    int offset = 0,
+  }) =>
+      _proxy.getFileOperations(limit: limit, offset: offset);
+
+  /// 获取指定消息关联的文件操作记录
+  Future<List<Map<String, dynamic>>> getFileOperationsByMessage(
+          String messageId) =>
+      _proxy.getFileOperationsByMessage(messageId);
+
+  /// 清除文件操作记录
+  Future<void> clearFileOperations() => _proxy.clearFileOperations();
+
   // ===== 基础属性 =====
 
   String get employeeId => _employeeId;

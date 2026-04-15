@@ -316,4 +316,27 @@ class AgentRpcUtil {
   ) async {
     return _rpcCall(AgentRpcConfig.methodMoveTodoToGroup, request.toMap());
   }
+
+  // ===== Agent 文件操作追踪 =====
+
+  /// 获取文件操作记录
+  Future<Map<String, dynamic>> getFileOperations(
+    GetFileOperationsRequest request,
+  ) async {
+    return _rpcCall(AgentRpcConfig.methodGetFileOperations, request.toMap());
+  }
+
+  /// 获取指定消息的文件操作记录
+  Future<Map<String, dynamic>> getFileOperationsByMessage(
+    GetFileOperationsByMessageRequest request,
+  ) async {
+    return _rpcCall(AgentRpcConfig.methodGetFileOperationsByMessage, request.toMap());
+  }
+
+  /// 清除文件操作记录
+  Future<Map<String, dynamic>> clearFileOperations(
+    ClearFileOperationsRequest request,
+  ) async {
+    return _rpcCall(AgentRpcConfig.methodClearFileOperations, request.toMap());
+  }
 }

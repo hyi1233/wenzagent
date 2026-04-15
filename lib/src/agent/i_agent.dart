@@ -387,4 +387,24 @@ abstract class IAgent {
   /// [todoId] todo 项 ID
   /// [groupId] 目标分组 ID（null 表示移至未分组）
   Future<void> moveTodoToGroup(String todoId, String? groupId);
+
+  // ===== 文件操作追踪 =====
+
+  /// 获取文件操作记录
+  ///
+  /// [limit] 最大返回数量，默认 100
+  /// [offset] 偏移量，默认 0
+  Future<List<Map<String, dynamic>>> getFileOperations({
+    int limit = 100,
+    int offset = 0,
+  });
+
+  /// 获取指定消息关联的文件操作记录
+  ///
+  /// [messageId] 用户消息ID
+  Future<List<Map<String, dynamic>>> getFileOperationsByMessage(
+      String messageId);
+
+  /// 清除文件操作记录
+  Future<void> clearFileOperations();
 }

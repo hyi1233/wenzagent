@@ -8,3 +8,4 @@ export 'sync_watermark_entity.dart';
 export 'session_summary_entity.dart';
 export 'todo_group_entity.dart';
 export 'todo_item_entity.dart';
+export 'file_operation_entity.dart';

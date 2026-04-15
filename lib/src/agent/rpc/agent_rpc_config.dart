@@ -100,6 +100,12 @@ class AgentRpcConfig {
   static const String methodClearCompletedTodos = 'agentClearCompletedTodos';
   static const String methodMoveTodoToGroup = 'agentMoveTodoToGroup';
 
+  // ===== Agent 文件操作追踪 =====
+
+  static const String methodGetFileOperations = 'agentGetFileOperations';
+  static const String methodGetFileOperationsByMessage = 'agentGetFileOperationsByMessage';
+  static const String methodClearFileOperations = 'agentClearFileOperations';
+
   // ===== Agent 生命周期 =====
 
   static const String methodPing = 'agentPing';
