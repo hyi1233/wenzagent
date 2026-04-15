@@ -323,10 +323,19 @@ class LlmChatAdapter implements IChatAdapter {
             }
           }
           notReplyRecord.reset();
-          // 有工具调用 → 记录 AI 消息（含 toolCalls）到历史
-          recordAssistantToolCallMessage(
-            llmResult.aiContentBuffer.toString(),
-            llmResult.toolCalls,
+          // 有工具调用 → 暂存 assistant 消息，不立即写入 session
+          final chatToolCalls = llmResult.toolCalls
+              .map((tc) => shared.ToolCall(
+                    id: tc.id,
+                    name: tc.function.name,
+                    arguments: LlmChatAdapter._parseArguments(tc.function.arguments),
+                  ))
+              .toList();
+          final pendingAssistantMsg = shared.ChatMessage.assistant(
+            id: const Uuid().v4(),
+            employeeId: currentEmployeeUuid!,
+            content: llmResult.aiContentBuffer.toString(),
+            toolCalls: chatToolCalls,
           );
 
           // 重复工具调用检测
@@ -353,7 +362,7 @@ class LlmChatAdapter implements IChatAdapter {
             consecutiveDuplicateCount = 0;
           }
 
-          // 权限检查 + 并行执行工具
+          // 权限检查 + 并行执行工具（不再内部持久化）
           final execResult = await executeToolCalls(
             llmResult.toolCalls,
             alreadyCallsSet: alreadyCallsSet,
@@ -365,6 +374,10 @@ class LlmChatAdapter implements IChatAdapter {
             controller.add(StreamResponse.error('Cancelled'));
             return;
           }
+
+          // 原子写入：assistant + toolResults（同步执行，无竞态窗口）
+          memoryManager.addMessage(currentEmployeeUuid!, deviceId!, pendingAssistantMsg);
+          persistToolResults(execResult.results);
 
           // 推送工具调用结果事件 + 错误提示
           for (final r in execResult.results) {

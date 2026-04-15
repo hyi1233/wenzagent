@@ -7,3 +7,4 @@ library;
 export 'chat_message.dart';
 export 'message_record.dart';
 export 'llm_message_mapper.dart';
+export 'message_sequence_report.dart';

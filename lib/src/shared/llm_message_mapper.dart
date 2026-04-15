@@ -10,6 +10,7 @@ import 'package:llm_dart/llm_dart.dart' as llm;
 
 import '../utils/logger.dart';
 import 'chat_message.dart';
+import 'message_sequence_report.dart';
 
 final _log = Logger('LlmMessageMapper');
 
@@ -321,6 +322,172 @@ class LlmMessageMapper {
     }
 
     return result;
+  }
+
+  // ── 消息序列诊断 ──
+
+  /// 分析消息序列，收集诊断信息（不修复，仅报告）
+  ///
+  /// 复用 `sanitizeForLlm` 的核心逻辑，但只收集问题而不修改消息。
+  static MessageSequenceReport analyzeMessageSequence(
+      List<ChatMessage> messages) {
+    final issues = <MessageSequenceIssue>[];
+    final summaries = <MessageSummary>[];
+    final chains = <ToolCallChain>[];
+
+    // toolCallId -> (toolName, assistantIndex)
+    final pendingToolCalls = <String, (String, int)>{};
+    // 已匹配的 toolCallId set（用于追踪未匹配的）
+    final matchedToolCallIds = <String>{};
+
+    for (var i = 0; i < messages.length; i++) {
+      final msg = messages[i];
+
+      // 生成消息摘要
+      summaries.add(MessageSummary(
+        index: i,
+        role: msg.role.name,
+        type: msg.type,
+        toolCallId: msg.toolCallId,
+        contentPreview: _truncate(msg.content ?? '', 80),
+      ));
+
+      if (msg.role == MessageRole.assistant &&
+          msg.toolCalls != null &&
+          msg.toolCalls!.isNotEmpty) {
+        // 如果之前有未匹配的 toolCallIds，报告问题
+        if (pendingToolCalls.isNotEmpty) {
+          for (final entry in pendingToolCalls.entries) {
+            issues.add(MessageSequenceIssue(
+              type: 'unmatched_tool_call',
+              index: entry.value.$2,
+              description:
+                  'assistant 消息中的 toolCall ${entry.key} (${entry.value.$1}) 没有对应的 toolResult',
+              toolCallId: entry.key,
+            ));
+            chains.add(ToolCallChain(
+              toolCallId: entry.key,
+              toolName: entry.value.$1,
+              assistantIndex: entry.value.$2,
+              matched: false,
+            ));
+          }
+          pendingToolCalls.clear();
+        }
+        // 记录本轮所有 toolCall
+        for (final tc in msg.toolCalls!) {
+          pendingToolCalls[tc.id] = (tc.name, i);
+        }
+      } else if (msg.role == MessageRole.tool) {
+        if (msg.isToolResultGroup) {
+          for (final r in msg.toolResults!) {
+            final info = pendingToolCalls.remove(r.toolCallId);
+            if (info == null) {
+              issues.add(MessageSequenceIssue(
+                type: 'orphaned_tool_result',
+                index: i,
+                description:
+                    'toolResult ${r.toolCallId} (${r.name ?? 'unknown'}) 没有匹配的 toolCall',
+                toolCallId: r.toolCallId,
+              ));
+              chains.add(ToolCallChain(
+                toolCallId: r.toolCallId,
+                toolName: r.name ?? 'unknown',
+                resultIndex: i,
+                matched: false,
+              ));
+            } else {
+              matchedToolCallIds.add(r.toolCallId);
+              chains.add(ToolCallChain(
+                toolCallId: r.toolCallId,
+                toolName: info.$1,
+                assistantIndex: info.$2,
+                resultIndex: i,
+                matched: true,
+              ));
+            }
+          }
+        } else {
+          final toolCallId = msg.toolCallId ?? '';
+          final info = pendingToolCalls.remove(toolCallId);
+          if (info == null && toolCallId.isNotEmpty) {
+            issues.add(MessageSequenceIssue(
+              type: 'orphaned_tool_result',
+              index: i,
+              description:
+                  'toolResult $toolCallId (${msg.toolName ?? 'unknown'}) 没有匹配的 toolCall',
+              toolCallId: toolCallId,
+            ));
+            chains.add(ToolCallChain(
+              toolCallId: toolCallId,
+              toolName: msg.toolName ?? 'unknown',
+              resultIndex: i,
+              matched: false,
+            ));
+          } else if (info != null) {
+            matchedToolCallIds.add(toolCallId);
+            chains.add(ToolCallChain(
+              toolCallId: toolCallId,
+              toolName: info.$1,
+              assistantIndex: info.$2,
+              resultIndex: i,
+              matched: true,
+            ));
+          }
+        }
+      } else {
+        // user / system 等非 tool 消息
+        if (pendingToolCalls.isNotEmpty) {
+          for (final entry in pendingToolCalls.entries) {
+            issues.add(MessageSequenceIssue(
+              type: 'unexpected_message_order',
+              index: i,
+              description:
+                  '在 toolCall ${entry.key} (${entry.value.$1}) 与其 toolResult 之间出现了 ${msg.role.name} 消息',
+              toolCallId: entry.key,
+            ));
+            chains.add(ToolCallChain(
+              toolCallId: entry.key,
+              toolName: entry.value.$1,
+              assistantIndex: entry.value.$2,
+              matched: false,
+            ));
+          }
+          pendingToolCalls.clear();
+        }
+      }
+    }
+
+    // 序列末尾残留未匹配的 toolCalls
+    if (pendingToolCalls.isNotEmpty) {
+      for (final entry in pendingToolCalls.entries) {
+        issues.add(MessageSequenceIssue(
+          type: 'unmatched_tool_call',
+          index: entry.value.$2,
+          description:
+              '序列末尾仍有未匹配的 toolCall ${entry.key} (${entry.value.$1})',
+          toolCallId: entry.key,
+        ));
+        chains.add(ToolCallChain(
+          toolCallId: entry.key,
+          toolName: entry.value.$1,
+          assistantIndex: entry.value.$2,
+          matched: false,
+        ));
+      }
+    }
+
+    return MessageSequenceReport(
+      issues: issues,
+      messageSummaries: summaries,
+      toolCallChains: chains,
+    );
+  }
+
+  /// 截断字符串到指定长度
+  static String _truncate(String s, int maxLen) {
+    if (s.length <= maxLen) return s;
+    return '${s.substring(0, maxLen)}...';
   }
 
   /// 从 result 列表中找到最后一条含 toolCalls 的 assistant 消息，

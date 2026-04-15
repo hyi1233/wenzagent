@@ -3,30 +3,6 @@ part of 'llm_chat_adapter.dart';
 // ===== 工具调用循环相关方法 =====
 
 extension _ToolCallingLoop on LlmChatAdapter {
-  /// 记录 assistant 消息（含 toolCalls）到会话历史
-  void recordAssistantToolCallMessage(
-    String aiContent,
-    List<llm.ToolCall> toolCalls,
-  ) {
-    final chatToolCalls = toolCalls
-        .map((tc) => shared.ToolCall(
-              id: tc.id,
-              name: tc.function.name,
-              arguments: LlmChatAdapter._parseArguments(tc.function.arguments),
-            ))
-        .toList();
-    memoryManager.addMessage(
-      currentEmployeeUuid!,
-      deviceId!,
-      shared.ChatMessage.assistant(
-        id: const Uuid().v4(),
-        employeeId: currentEmployeeUuid!,
-        content: aiContent,
-        toolCalls: chatToolCalls,
-      ),
-    );
-  }
-
   /// 重复工具调用检测
   ///
   /// 返回 null 表示无重复；返回非 null 表示检测到重复，包含更新后的签名和计数。
@@ -171,8 +147,7 @@ extension _ToolCallingLoop on LlmChatAdapter {
     }
 
     if (pendingExecutions.isEmpty) {
-      persistToolResults(allToolResults);
-      return _ToolExecSummary(cancelled: false, results: []);
+      return _ToolExecSummary(cancelled: false, results: allToolResults);
     }
 
     // Phase 2: 并行执行已批准的工具
@@ -201,8 +176,7 @@ extension _ToolCallingLoop on LlmChatAdapter {
           );
         }
       }
-      persistToolResults(allToolResults);
-      return _ToolExecSummary(cancelled: true, results: []);
+      return _ToolExecSummary(cancelled: true, results: allToolResults);
     }
 
     // 收集执行结果
@@ -216,8 +190,6 @@ extension _ToolCallingLoop on LlmChatAdapter {
         ),
       );
     }
-
-    persistToolResults(allToolResults);
 
     return _ToolExecSummary(cancelled: false, results: allToolResults);
   }
