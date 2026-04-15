@@ -5,6 +5,7 @@
 library;
 
 export 'llm_chat_adapter.dart';
+export 'sub_agent_llm_chat_adapter.dart';
 export 'session_memory_manager.dart';
 export 'provider_config.dart';
 export 'token_estimator.dart';

@@ -215,6 +215,9 @@ class AgentImpl extends _AgentImplBase
     // 注入 TodoManageTool 回调
     _injectTodoManageCallbacks();
 
+    // 注入 SpawnSubAgentTool 回调（工具注册器引用）
+    _injectSpawnSubAgentCallbacks();
+
     // 技能系统由 warmup 后台加载，不在 initialize 中阻塞
 
     // 设置工具注册器和权限管理器到适配器
@@ -495,6 +498,65 @@ class AgentImpl extends _AgentImplBase
     if (todoTool is TodoManageTool) {
       todoTool.getTodoList = () => _todoList;
     }
+  }
+
+  /// 注入 SpawnSubAgentTool 回调
+  ///
+  /// 所有依赖（provider 配置、权限转发、文件读取）均从 _chatAdapter /
+  /// _permissionManager 直接获取，不依赖 AgentFactoryImpl。
+  void _injectSpawnSubAgentCallbacks() {
+    final spawnTool = _toolRegistry.getTool('spawn_sub_agent');
+    if (spawnTool is! SpawnSubAgentTool) {
+      _AgentImplBase._log.warn(
+        'SpawnSubAgentTool not found in registry for injection. '
+        'Available tools: ${_toolRegistry.toolNames}',
+      );
+      return;
+    }
+
+    final agentEmployeeId = employeeId;
+
+    // 工具注册器引用
+    spawnTool.getAvailableTools = () => _toolRegistry.tools;
+
+    // 创建 SubAgentExecutor 并注入所有回调
+    final executor = SubAgentExecutor();
+
+    // Provider 配置：直接从 _chatAdapter 获取
+    executor.getAgentConfig = (eid) async {
+      final providerConfig = _chatAdapter.getProviderConfig();
+      final context = _chatAdapter.currentContext;
+      return AgentRuntimeConfig(
+        providerConfig: providerConfig,
+        systemPrompt: context?['systemPrompt'] as String?,
+        projectContext: null,
+      );
+    };
+
+    // 权限请求转发：通过 _permissionManager 转发
+    executor.requestPermission = (request) async {
+      if (_permissionManager.onPermissionRequest == null) {
+        return PermissionDecision.deny;
+      }
+      return _permissionManager.onPermissionRequest!(request);
+    };
+
+    // 文件读取
+    executor.readFileContent = (filePath) async {
+      try {
+        return await File(filePath).readAsString();
+      } catch (e) {
+        return null;
+      }
+    };
+
+    spawnTool.executor = executor;
+    spawnTool.employeeId = agentEmployeeId;
+    spawnTool.readFileContent = executor.readFileContent;
+
+    _AgentImplBase._log.info(
+      'SpawnSubAgentTool fully injected (executor + registry) for $agentEmployeeId',
+    );
   }
 
   /// 同步处理器状态到 Agent 状态

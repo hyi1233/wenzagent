@@ -8,15 +8,11 @@ import '../agent_tool.dart';
 /// 子 Agent 拥有独立的上下文、工具集和执行环境，
 /// 执行完成后返回结构化的结果摘要给主 Agent。
 ///
-/// 使用场景：
-/// - 任务需要深度分析大量文件
-/// - 需要广泛探索代码库
-/// - 任务复杂度足够高，需要专注的独立处理
+/// 注入流程（两层注入）：
+/// 1. AgentImpl.initialize() 注入 getAvailableTools（工具注册器引用）
+/// 2. AgentFactoryImpl 注入 executor（SubAgentExecutor 含 provider/权限/文件读取回调）
 ///
-/// 设计要点：
-/// - 子 Agent 默认只能使用只读工具，降低风险
-/// - 子 Agent 不可递归调用 spawn_sub_agent
-/// - 回调由 AgentFactoryImpl 注入（类似 ScheduleTaskTool 的注入模式）
+/// 如果 executor 未注入（例如测试环境），execute() 返回明确的诊断错误。
 class SpawnSubAgentTool extends AgentTool {
   static final _log = Logger('SpawnSubAgentTool');
 
@@ -28,18 +24,22 @@ class SpawnSubAgentTool extends AgentTool {
     'content_search',
     'file_info',
     'command_execute',
+    'code_symbols',
   ];
 
-  /// 子 Agent 执行器（由外部注入）
+  /// 子 Agent 执行器（由 AgentFactoryImpl 注入）
+  ///
+  /// 包含 provider 配置获取、权限转发、文件读取等回调。
+  /// 如果为 null，说明工厂未完成注入。
   SubAgentExecutor? executor;
 
-  /// 获取主 Agent 可用工具列表的回调（用于按名称筛选工具子集）
+  /// 获取主 Agent 可用工具列表的回调（由 AgentImpl.initialize() 注入）
   List<AgentTool> Function()? getAvailableTools;
 
-  /// 读取文件内容回调（用于 context_files 预加载）
+  /// 读取文件内容回调（由 AgentFactoryImpl 注入）
   Future<String?> Function(String filePath)? readFileContent;
 
-  /// 当前 Agent 的 employeeId（用于获取配置）
+  /// 当前 Agent 的 employeeId（由 AgentFactoryImpl 注入）
   String? employeeId;
 
   @override
@@ -81,7 +81,7 @@ class SpawnSubAgentTool extends AgentTool {
             },
             'description':
                 'List of tool names the sub-agent is allowed to use. '
-                'Default: ["file_read", "file_list", "file_search", "content_search", "file_info", "command_execute"]. '
+                'Default: ["file_read", "file_list", "file_search", "content_search", "file_info", "command_execute","code_symbols"]. '
                 'The sub-agent cannot use "spawn_sub_agent" to prevent recursion.',
           },
           'max_turns': {
@@ -112,11 +112,22 @@ class SpawnSubAgentTool extends AgentTool {
       return ToolResult.error('task is required');
     }
 
+    // 诊断：检查注入状态
     if (executor == null) {
-      return ToolResult.error(
-        'Sub-agent executor is not available. '
-        'The executor callback has not been injected.',
+      final diag = StringBuffer(
+        'Sub-agent executor is not available. Injection diagnostics:\n',
       );
+      diag.writeln('- executor: null (expected: SubAgentExecutor from AgentFactoryImpl)');
+      diag.writeln('- employeeId: ${employeeId ?? "null"}');
+      diag.writeln('- getAvailableTools: ${getAvailableTools != null ? "injected" : "null"}');
+      diag.writeln('- readFileContent: ${readFileContent != null ? "injected" : "null"}');
+      diag.writeln();
+      diag.writeln('Possible causes:');
+      diag.writeln('1. Agent created without going through AgentFactoryImpl');
+      diag.writeln('2. _injectSpawnSubAgentCallbacks failed silently (check logs)');
+      diag.writeln('3. The agent was not fully initialized before tool use');
+      _log.error(diag.toString().trim());
+      return ToolResult.error(diag.toString().trim());
     }
 
     if (employeeId == null) {

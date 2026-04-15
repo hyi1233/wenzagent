@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:uuid/uuid.dart';
 
-import '../agent/adapter/llm_chat_adapter.dart';
+import '../agent/adapter/sub_agent_llm_chat_adapter.dart';
 import '../agent/agent_state.dart';
 import '../agent/entity/entity.dart';
 import '../agent/tool/agent_tool.dart';
@@ -118,7 +118,7 @@ class SubAgentExecutor {
     }
 
     // ② 创建临时 Adapter（不持久化，纯内存）
-    final adapter = LlmChatAdapter();
+    final adapter = SubAgentLlmChatAdapter();
     final tempSessionId =
         '__sub_agent_${DateTime.now().millisecondsSinceEpoch}_${const Uuid().v4().substring(0, 8)}';
 
@@ -127,9 +127,16 @@ class SubAgentExecutor {
       await adapter.initSession(employeeId: tempSessionId);
 
       // ④ 设置模型
-      if (config.providerConfig != null) {
-        await adapter.updateProvider(config.providerConfig!);
+      if (config.providerConfig == null) {
+        return SubAgentResult(
+          success: false,
+          summary: '',
+          toolCalls: const {},
+          duration: stopwatch.elapsed,
+          error: '未配置 LLM Provider，无法执行子 Agent',
+        );
       }
+      await adapter.updateProvider(config.providerConfig!);
 
       // ⑤ 设置上下文（systemPrompt + 项目上下文）
       final context = <String, dynamic>{};
