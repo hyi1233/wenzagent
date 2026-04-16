@@ -33,26 +33,18 @@ class ScheduleTaskTool extends AgentTool {
 
   @override
   String get description =>
-      'Create, query, or cancel scheduled recurring tasks. '
-      'IMPORTANT: This tool ONLY registers/manages schedules — it does NOT '
-      'execute the task content immediately. The task will be executed automatically '
-      'when the scheduled time arrives.\n\n'
-      'Use this tool when the user asks you to do something on a schedule, '
-      'e.g. "remind me every day at 9am", "report work status every Friday", '
-      '"check logs every 4 hours".\n\n'
-      'Task types (taskType parameter):\n'
-      '- "reminder" (default): A simple notification. The message you write will be '
-      'directly delivered to the user as an assistant message when triggered. '
-      'No tools will be executed. Write the reminder content as the message — it '
-      'will be shown to the user as-is. Good for: reminders, notifications, alarms.\n'
-      '- "task": An autonomous execution task. When triggered, a system message '
-      'containing your instructions will be injected into the main agent via a queue, '
-      'and the agent will use its tools to execute the task. Write detailed, '
-      'self-contained instructions including what tools to use and what to produce. '
-      'Good for: log checking, data collection, file operations, API calls.\n\n'
-      'The "message" parameter is the content that will be used when the schedule '
-      'triggers. Do NOT try to execute the message content now — just pass it as-is '
-      'to this tool.';
+      '创建、查询或取消定时重复任务。'
+      '重要：此工具仅注册/管理定时计划，不会立即执行任务内容。'
+      '任务将在计划时间到达时自动执行。\n\n'
+      '当用户要求按计划执行操作时使用，例如"每天早上 9 点提醒我"、"每周五汇报工作"、'
+      '"每 4 小时检查日志"。\n\n'
+      '任务类型（taskType 参数）：\n'
+      '- "reminder"（默认）：简单通知。你写的消息将在触发时直接作为助手消息发送给用户，'
+      '不会执行任何工具。适合：提醒、通知、闹钟。\n'
+      '- "task"：自主执行任务。触发时，包含你指令的系统消息将通过队列注入主 Agent，'
+      'Agent 将使用其工具执行任务。请编写详细、自包含的指令，包括使用哪些工具和产出什么。'
+      '适合：日志检查、数据收集、文件操作、API 调用。\n\n'
+      '"message" 参数是定时触发时使用的内容。不要尝试现在执行消息内容，直接将其传递给此工具即可。';
 
   @override
   Map<String, dynamic> get inputJsonSchema => {
@@ -62,60 +54,54 @@ class ScheduleTaskTool extends AgentTool {
         'type': 'string',
         'enum': ['create', 'list', 'cancel', 'delete'],
         'description':
-            'Action to perform: create a new task, list existing tasks, '
-            'cancel/delete a task (both remove the task permanently). '
-            'Use "delete" when the user wants to remove/stop a scheduled task.',
+            '要执行的操作：创建新任务、列出现有任务、'
+            '取消/删除任务（两者都会永久移除任务）。'
+            '用户想移除/停止定时任务时使用 "delete"。',
       },
       'message': {
         'type': 'string',
         'description':
-            'The task instruction to be executed when the schedule triggers. '
-            'This is NOT executed now — it will be sent to you as a message '
-            'at the future scheduled time. Write it as a clear, self-contained '
-            'instruction that your future self can understand and act on, '
-            'including which tools to use and what output to produce.',
+            '定时触发时要执行的任务指令。'
+            '此内容不会立即执行，而是在未来的计划时间作为消息发送给你。'
+            '请编写清晰、自包含的指令，让未来的你能理解并执行，'
+            '包括使用哪些工具和期望什么产出。',
       },
       'schedule': {
         'type': 'string',
         'description':
-            'Schedule expression.\n'
-            '- Cron: "0 9 * * 1-5" (weekdays 9am), "*/30 * * * *" (every 30 min)\n'
-            '- ISO 8601 duration: "PT1H" (every hour), "P1D" (every day), "PT30M" (every 30 min)',
+            '定时表达式。\n'
+            '- Cron："0 9 * * 1-5"（工作日 9 点），"*/30 * * * *"（每 30 分钟）\n'
+            '- ISO 8601 时长："PT1H"（每小时），"P1D"（每天），"PT30M"（每 30 分钟）',
       },
       'name': {
         'type': 'string',
-        'description': 'A short name for the task, e.g. "Daily work report".',
+        'description': '任务简短名称，例如"每日工作汇报"。',
       },
       'taskId': {
         'type': 'string',
-        'description': 'Task ID (required for action=cancel or action=delete).',
+        'description': '任务 ID（action=cancel 或 action=delete 时必需）。',
       },
       'repeatType': {
         'type': 'string',
         'enum': ['once', 'recurring'],
         'description':
-            'Execution strategy (only for action=create). '
-            'IMPORTANT: You MUST always explicitly set this field based on user intent. '
-            '"once" = execute only once then auto-disable. '
-            '"recurring" = repeat on schedule indefinitely. '
-            'If the user says "every X", "periodically", "daily", "weekly", '
-            'or any recurring pattern, use "recurring". '
-            'If the user wants a one-time reminder or action, use "once".',
+            '执行策略（仅 action=create）。'
+            '重要：必须根据用户意图显式设置此字段。'
+            '"once" = 仅执行一次然后自动禁用。'
+            '"recurring" = 按计划无限重复。'
+            '如果用户说"每隔 X"、"定期"、"每天"、"每周"或任何重复模式，使用 "recurring"。'
+            '如果用户想要一次性提醒或操作，使用 "once"。',
       },
       'taskType': {
         'type': 'string',
         'enum': ['reminder', 'task'],
         'description':
-            'Task type (only for action=create). '
-            '"reminder" = reminder notification. The message you write is the '
-            'final reminder content — it will be directly delivered to the user '
-            'as an assistant message when triggered. No LLM API call, no tool execution. '
-            '"task" = autonomous execution task. When triggered, your instructions '
-            '(the message) will be injected into the main agent via a queue as a '
-            'system message. The agent will then use its available tools to execute '
-            'the task. Write detailed instructions for your future self. '
-            'Default: "reminder". Use "task" ONLY when the scheduled action '
-            'requires tool usage (e.g. file operations, API calls, code execution).',
+            '任务类型（仅 action=create）。'
+            '"reminder" = 提醒通知。你写的消息就是最终的提醒内容，触发时直接作为助手消息发送给用户。'
+            '不调用 LLM API，不执行工具。'
+            '"task" = 自主执行任务。触发时，你的指令（消息）将作为系统消息通过队列注入主 Agent，'
+            'Agent 将使用可用工具执行任务。请为未来的自己编写详细指令。'
+            '默认："reminder"。仅当定时操作需要使用工具时（如文件操作、API 调用、代码执行）才使用 "task"。',
       },
     },
     'required': ['action'],

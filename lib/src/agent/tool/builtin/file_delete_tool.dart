@@ -11,8 +11,7 @@ class FileDeleteTool extends AgentTool {
 
   @override
   String get description =>
-      'Delete a file or directory at the specified path. '
-      'For directories, set recursive to true to delete non-empty directories.';
+      '删除指定路径的文件或目录。对于目录，设置 recursive 为 true 可删除非空目录。';
 
   @override
   Map<String, dynamic> get inputJsonSchema => {
@@ -20,12 +19,12 @@ class FileDeleteTool extends AgentTool {
     'properties': {
       'path': {
         'type': 'string',
-        'description': 'Absolute path to the file or directory to delete. IMPORTANT: Always use absolute paths, never use relative paths.',
+        'description': '要删除的文件或目录的绝对路径。重要：始终使用绝对路径，不要使用相对路径。',
       },
       'recursive': {
         'type': 'boolean',
         'description':
-            'If true, delete directories recursively (including contents). Default: false',
+            '如果为 true，递归删除目录（包含内容）。默认：false',
       },
     },
     'required': ['path'],

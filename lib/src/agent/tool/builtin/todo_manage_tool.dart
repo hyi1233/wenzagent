@@ -61,25 +61,25 @@ class TodoManageTool extends AgentTool {
 
   @override
   String get description =>
-      'Manage a persistent todo list with group support. '
-      'Data persists across agent restarts.\n\n'
-      '**IMPORTANT**: Every todo item MUST belong to a group. '
-      'You must call "create_group" first to create a group, '
-      'then use "add" with the "group" parameter to add items into it. '
-      'Adding a todo without specifying a group is NOT allowed.\n\n'
-      'Actions:\n'
-      '- "create_group": Create a new group (MUST be done first)\n'
-      '- "list_groups": View all groups\n'
-      '- "add": Create a new todo item (requires "group" parameter)\n'
-      '- "list": View items by scope (active/completed/all)\n'
-      '- "update": Change status or content of an item\n'
-      '- "remove": Delete a specific item\n'
-      '- "clear": Remove all completed items\n'
-      '- "rename_group": Rename a group\n'
-      '- "delete_group": Delete a group (items move to ungrouped)\n'
-      '- "move_to_group": Move a todo item to a group\n\n'
-      'Typical workflow: create_group -> add (with group) -> update -> complete.\n\n'
-      'The todo list is persisted in the database.';
+      '管理持久化的待办列表，支持分组。'
+      '数据跨 Agent 重启持久保存。\n\n'
+      '**重要**：每个待办项必须属于一个分组。'
+      '必须先调用 "create_group" 创建分组，'
+      '然后使用 "add" 并指定 "group" 参数添加待办项。'
+      '不指定分组直接添加待办是不允许的。\n\n'
+      '操作：\n'
+      '- "create_group"：创建新分组（必须先执行）\n'
+      '- "list_groups"：查看所有分组\n'
+      '- "add"：创建新待办项（需要 "group" 参数）\n'
+      '- "list"：按范围查看项目（active/completed/all）\n'
+      '- "update"：修改项目状态或内容\n'
+      '- "remove"：删除指定项目\n'
+      '- "clear"：清除所有已完成项\n'
+      '- "rename_group"：重命名分组\n'
+      '- "delete_group"：删除分组（项目移至未分组）\n'
+      '- "move_to_group"：将待办项移至分组\n\n'
+      '典型流程：create_group -> add（带 group）-> update -> complete。\n\n'
+      '待办列表持久化在数据库中。';
 
   @override
   Map<String, dynamic> get inputJsonSchema => {
@@ -99,49 +99,49 @@ class TodoManageTool extends AgentTool {
               'delete_group',
               'move_to_group',
             ],
-            'description': 'Action to perform on the todo list.',
+            'description': '要对待办列表执行的操作。',
           },
           'content': {
             'type': 'string',
             'description':
-                'Todo item content. Required for "add". Optional for "update" to change content.',
+                '待办项内容。"add" 时必需，"update" 时可选用于修改内容。',
           },
           'id': {
             'type': 'string',
             'description':
-                'Todo item ID. Required for "update", "remove", and "move_to_group".',
+                '待办项 ID。"update"、"remove" 和 "move_to_group" 时必需。',
           },
           'status': {
             'type': 'string',
             'enum': ['pending', 'in_progress', 'completed'],
             'description':
-                'New status for the item. Used with "update" action.',
+                '项目的新状态。用于 "update" 操作。',
           },
           'scope': {
             'type': 'string',
             'enum': ['active', 'completed', 'all'],
             'description':
-                'Scope for "list" action. Default is "active".',
+                '列表显示范围。默认："active"。',
           },
           'group': {
             'type': 'string',
             'description':
-                'Group name for "add" action. REQUIRED - every todo must belong to a group. '
-                'The group must already exist (use "create_group" first). '
-                'Adding a todo without a group is not allowed.',
+                '"add" 操作的分组名称。必需——每个待办必须属于一个分组。'
+                '分组必须已存在（先用 "create_group" 创建）。'
+                '不允许不指定分组添加待办。',
           },
           'group_id': {
             'type': 'string',
             'description':
-                'Group ID for "rename_group", "delete_group", and "move_to_group" actions.',
+                '分组 ID，用于 "rename_group"、"delete_group" 和 "move_to_group" 操作。',
           },
           'new_name': {
             'type': 'string',
-            'description': 'New name for "rename_group" action.',
+            'description': '"rename_group" 操作的新名称。',
           },
           'name': {
             'type': 'string',
-            'description': 'Group name for "create_group" action.',
+            'description': '"create_group" 操作的分组名称。',
           },
         },
         'required': ['action'],

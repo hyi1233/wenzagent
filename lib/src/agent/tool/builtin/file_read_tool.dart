@@ -18,11 +18,7 @@ class FileReadTool extends AgentTool {
 
   @override
   String get description =>
-      'Read the contents of a file at the specified path. '
-      'Returns the file content as text. '
-      'Optionally specify offset (line number to start from, 0-based) '
-      'and limit (maximum number of lines to read). '
-      'Default max file size: 50KB. Use offset and limit to read large files in chunks.';
+      '读取指定路径文件的内容，返回文本形式。可指定 offset（起始行号，从 0 开始）和 limit（最大读取行数）来分段读取大文件。默认最大文件大小：50KB。';
 
   @override
   Map<String, dynamic> get inputJsonSchema => {
@@ -30,22 +26,22 @@ class FileReadTool extends AgentTool {
         'properties': {
           'path': {
             'type': 'string',
-            'description': 'Absolute path to the file to read. IMPORTANT: Always use absolute paths (e.g., /home/user/project/file.txt or D:\\project\\file.txt), never use relative paths.',
+            'description': '要读取的文件的绝对路径。重要：始终使用绝对路径，不要使用相对路径。',
           },
           'offset': {
             'type': 'integer',
             'description':
-                'Line number to start reading from (0-based). Default: 0',
+                '起始读取行号（从 0 开始）。默认：0',
           },
           'limit': {
             'type': 'integer',
             'description':
-                'Maximum number of lines to read. Default: read all lines',
+                '最大读取行数。默认：读取所有行',
           },
           'maxBytes': {
             'type': 'integer',
             'description':
-                'Maximum file size in bytes to read. Default: 51200 (50KB), max: 204800 (200KB)',
+                '最大读取文件大小（字节）。默认：51200（50KB），最大：204800（200KB）',
           },
         },
         'required': ['path'],

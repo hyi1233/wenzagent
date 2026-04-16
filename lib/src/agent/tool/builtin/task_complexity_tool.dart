@@ -13,14 +13,16 @@ import '../agent_tool.dart';
 class TaskComplexityTool extends AgentTool {
   static final _log = Logger('TaskComplexityTool');
 
-  /// 只读工具集：仅供分析子 Agent 使用，不允许任何写操作
-  static const List<String> _readOnlyToolNames = [
+  /// 分析子 Agent 可用工具集：只读工具 + 命令执行，用于探索代码库
+  static const List<String> _analysisToolNames = [
     'file_list',
     'file_read',
     'file_search',
     'content_search',
     'code_symbols',
     'env_info',
+    'command_execute',
+    'end',
   ];
 
   /// 子 Agent 执行器（由 AgentImpl 注入，复用主 Agent 的 provider/权限配置）
@@ -40,11 +42,11 @@ class TaskComplexityTool extends AgentTool {
 
   @override
   String get description =>
-      'Analyze the complexity of a development task and recommend a delegation strategy. '
-      'Uses AI to assess whether the task is simple (single sub-agent delegation), '
-      'medium (todo-driven multi-step delegation), or complex (spec-driven phased delegation).\n\n'
-      'Call this tool when you receive a new user task to determine how to plan and delegate. '
-      'All tasks are delegated to sub-agents — complexity only affects planning granularity.';
+      '分析开发任务的复杂度并推荐委派策略。'
+      '通过 AI 评估任务是简单（单次子 Agent 委派）、'
+      '中型（待办驱动的多步委派）还是复杂（规格驱动的分阶段委派）。\n\n'
+      '在收到新用户任务时调用此工具来确定规划和委派方式。'
+      '所有任务都委派给子 Agent 执行，复杂度仅影响规划粒度。';
 
   @override
   Map<String, dynamic> get inputJsonSchema => {
@@ -53,13 +55,12 @@ class TaskComplexityTool extends AgentTool {
           'task': {
             'type': 'string',
             'description':
-                'The user task description to analyze for complexity assessment.',
+                '要进行复杂度分析的用户任务描述。',
           },
           'context': {
             'type': 'string',
             'description':
-                'Optional additional context about the current project, files involved, '
-                'or any relevant information that helps assess task complexity.',
+                '可选的补充上下文，如当前项目信息、相关文件等，有助于评估任务复杂度。',
           },
         },
         'required': ['task'],
@@ -111,7 +112,7 @@ class TaskComplexityTool extends AgentTool {
     }
 
     final selectedTools = <AgentTool>[];
-    for (final name in _readOnlyToolNames) {
+    for (final name in _analysisToolNames) {
       final tool = toolMap[name];
       if (tool != null) {
         selectedTools.add(tool);
@@ -165,7 +166,10 @@ class TaskComplexityTool extends AgentTool {
   /// 分析子 Agent 的 system prompt
   static const _analysisSystemPrompt =
       '你是一个开发任务复杂度评估专家。你的任务是探索代码库，分析给定的开发任务，判断其复杂度等级并给出委派建议。\n\n'
-      '你有只读工具可用（file_list, file_read, file_search, content_search, code_symbols, env_info, end），注意end工具是确认任务完成，如果给的信息不足，使用end抛出原因。'
+      '你有以下工具可用：\n'
+      '- file_list, file_read, file_search, content_search, code_symbols, env_info：用于探索代码结构和文件内容\n'
+      '- command_execute：用于执行命令（如 git log、grep、find 等）辅助分析\n'
+      '- end：确认任务完成并返回分析结果，如果信息不足则使用 end 说明原因\n\n'
       '请主动探索相关文件和代码结构，基于实际代码库情况做出准确判断。\n\n'
       '重要：主 Agent 是纯粹的规划者和委派者，不直接执行任何文件操作或命令。'
       '所有实际工作都通过 spawn_sub_agent 委派给子 Agent 执行。复杂度等级仅影响规划和委派策略。\n\n'
@@ -180,7 +184,9 @@ class TaskComplexityTool extends AgentTool {
     final buffer = StringBuffer();
 
     buffer.writeln();
-    buffer.writeln('请先探索代码库中与任务相关的文件和结构，然后根据你的发现和上面的分级标准进行分析。');
+    buffer.writeln('## 任务描述');
+    buffer.writeln();
+    buffer.writeln('请先探索代码库中与任务相关的文件和结构，然后根据下面的分级标准进行分析。');
     buffer.writeln();
     buffer.writeln('## 待分析的任务');
     buffer.writeln();

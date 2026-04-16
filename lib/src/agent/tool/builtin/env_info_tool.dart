@@ -34,13 +34,12 @@ class EnvInfoTool extends AgentTool {
 
   @override
   String get description =>
-      'Get system environment information. '
-      'Supports three types of queries:\n\n'
-      '- "system": Returns OS type, CPU cores, memory, Dart SDK version, and working directory.\n'
-      '- "tools": Detects installed development tools and their versions (git, node, python, dart, flutter, etc.). '
-      'Use the "query" parameter to check a specific tool.\n'
-      '- "project": Parses current project info from pubspec.yaml, package.json, or Cargo.toml.\n\n'
-      'Use this tool to understand the development environment before starting work.';
+      '获取系统环境信息，支持三种查询类型：\n\n'
+      '- "system"：返回操作系统类型、CPU 核心数、内存、Dart SDK 版本和工作目录。\n'
+      '- "tools"：检测已安装的开发工具及其版本（git、node、python、dart、flutter 等）。'
+      '使用 "query" 参数可检测指定工具。\n'
+      '- "project"：从 pubspec.yaml、package.json 或 Cargo.toml 解析当前项目信息。\n\n'
+      '用于在开始工作前了解开发环境。';
 
   @override
   Map<String, dynamic> get inputJsonSchema => {
@@ -50,14 +49,13 @@ class EnvInfoTool extends AgentTool {
             'type': 'string',
             'enum': ['system', 'tools', 'project'],
             'description':
-                'Type of environment information to retrieve.',
+                '要获取的环境信息类型。',
           },
           'query': {
             'type': 'string',
             'description':
-                'Specific query within the info_type. '
-                'For "tools": check a specific tool name. '
-                'For "project": specify a project directory path.',
+                '在 info_type 内的特定查询。"tools" 用于检测指定工具名称，'
+                '"project" 用于指定项目目录路径。',
           },
         },
         'required': ['info_type'],

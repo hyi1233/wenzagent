@@ -160,7 +160,11 @@ class SubAgentLlmChatAdapter implements IChatAdapter {
         final notReplyRecord = _NotReplyRecord(maxNotReplyCount: 5);
         final alreadyCallsSet = <String>{};
 
-        for (var iteration = 0; iteration < _maxToolCallIterations; iteration++) {
+        for (
+          var iteration = 0;
+          iteration < _maxToolCallIterations;
+          iteration++
+        ) {
           if (cancellationToken?.isCancelled == true) {
             controller.add(StreamResponse.error('Cancelled'));
             return;
@@ -172,7 +176,9 @@ class SubAgentLlmChatAdapter implements IChatAdapter {
           // 构建工具列表
           final List<llm.Tool>? llmTools;
           if (hasTools && _toolRegistry != null && _providerConfig != null) {
-            llmTools = _toolRegistry!.getLlmDartTools(_providerConfig!.provider);
+            llmTools = _toolRegistry!.getLlmDartTools(
+              _providerConfig!.provider,
+            );
           } else {
             llmTools = null;
           }
@@ -217,7 +223,9 @@ class SubAgentLlmChatAdapter implements IChatAdapter {
               break;
             } else {
               if (notReplyRecord.tooLongNotReply()) {
-                _log.warn('ai not reply, too long: ${notReplyRecord.notReplyCount}');
+                _log.warn(
+                  'ai not reply, too long: ${notReplyRecord.notReplyCount}',
+                );
                 break;
               }
               _log.debug('ai not reply, waiting...');
@@ -229,11 +237,13 @@ class SubAgentLlmChatAdapter implements IChatAdapter {
 
           // 有工具调用 → 暂存 assistant 消息
           final chatToolCalls = llmResult.toolCalls
-              .map((tc) => shared.ToolCall(
-                    id: tc.id,
-                    name: tc.function.name,
-                    arguments: _parseArguments(tc.function.arguments),
-                  ))
+              .map(
+                (tc) => shared.ToolCall(
+                  id: tc.id,
+                  name: tc.function.name,
+                  arguments: _parseArguments(tc.function.arguments),
+                ),
+              )
               .toList();
           final pendingAssistantMsg = shared.ChatMessage.assistant(
             id: const Uuid().v4(),
@@ -287,7 +297,9 @@ class SubAgentLlmChatAdapter implements IChatAdapter {
                 employeeId: _sessionId!,
                 results: execResult.results,
               ).copyWith(
-                metadata: {'toolNames': execResult.results.map((r) => r.name).toList()},
+                metadata: {
+                  'toolNames': execResult.results.map((r) => r.name).toList(),
+                },
               ),
             );
           }
@@ -327,9 +339,7 @@ class SubAgentLlmChatAdapter implements IChatAdapter {
 
           if (iteration == _maxToolCallIterations - 1) {
             controller.add(
-              StreamResponse.error(
-                '已达到最大工具调用轮次（$_maxToolCallIterations 次）',
-              ),
+              StreamResponse.error('已达到最大工具调用轮次（$_maxToolCallIterations 次）'),
             );
             return;
           }
@@ -337,9 +347,9 @@ class SubAgentLlmChatAdapter implements IChatAdapter {
 
         controller.add(StreamResponse.done());
         _log.debug('stream done');
-      } catch (e) {
+      } catch (e, st) {
         controller.add(StreamResponse.error('LLM 请求失败: $e'));
-        _log.error('stream error', e);
+        _log.error('stream error', e, st);
       } finally {
         cancelSubscription?.cancel();
         _isStreaming = false;
@@ -397,7 +407,9 @@ class SubAgentLlmChatAdapter implements IChatAdapter {
   @override
   Future<void> updateProvider(Map<String, dynamic> providerConfig) async {
     final config = ProviderConfig.fromMap(providerConfig);
-    _log.debug('parsed config: provider=${config.provider}, model=${config.model}');
+    _log.debug(
+      'parsed config: provider=${config.provider}, model=${config.model}',
+    );
     config.validate();
 
     _chatCapability = await _buildChatCapability(config);
@@ -411,7 +423,9 @@ class SubAgentLlmChatAdapter implements IChatAdapter {
   }
 
   @override
-  Future<void> updateProjectContext(Map<String, dynamic>? projectContext) async {
+  Future<void> updateProjectContext(
+    Map<String, dynamic>? projectContext,
+  ) async {
     if (projectContext != null) {
       _context = {...?_context, ...projectContext};
     }
@@ -514,10 +528,10 @@ class SubAgentLlmChatAdapter implements IChatAdapter {
 
   /// 与主 Agent 一致的固定系统提示词前缀
   static const String _fixedSystemPromptPrefix =
-      '## System Environment\n\n'
-      'You are running on the following platform. Use this information to determine the correct commands and tools for the current OS.\n'
-      'For example: use `dir` on Windows vs `ls` on Linux/macOS; use `where` on Windows vs `which` on Linux/macOS; '
-      'use `cmd /c` on Windows vs `sh -c` on Linux/macOS; use backslash `\\` paths on Windows vs forward slash `/` on Linux/macOS.\n\n';
+      '## 系统环境\n\n'
+      '你运行在以下平台上，请根据操作系统选择正确的命令和工具。\n'
+      '例如：Windows 使用 `dir`，Linux/macOS 使用 `ls`；Windows 使用 `where`，Linux/macOS 使用 `which`；'
+      'Windows 使用 `cmd /c`，Linux/macOS 使用 `sh -c`；Windows 使用反斜杠 `\\` 路径，Linux/macOS 使用正斜杠 `/`。\n\n';
 
   /// 构建运行时系统环境信息段落
   static String _buildSystemInfoSection() {
@@ -525,13 +539,15 @@ class SubAgentLlmChatAdapter implements IChatAdapter {
     final osVersion = Platform.operatingSystemVersion;
     final pathSep = Platform.pathSeparator;
     final isWindows = Platform.isWindows;
-    final shell = isWindows ? 'cmd /c (Windows Command Prompt / PowerShell)' : 'sh -c (Unix shell)';
-    return '## Runtime System Information\n\n'
-        '- **OS**: $os\n'
-        '- **OS Version**: $osVersion\n'
-        '- **Path Separator**: "$pathSep"\n'
+    final shell = isWindows
+        ? 'cmd /c (Windows Command Prompt / PowerShell)'
+        : 'sh -c (Unix shell)';
+    return '## 运行时系统信息\n\n'
+        '- **操作系统**: $os\n'
+        '- **系统版本**: $osVersion\n'
+        '- **路径分隔符**: "$pathSep"\n'
         '- **Shell**: $shell\n'
-        '- **CPU Cores**: ${Platform.numberOfProcessors}\n';
+        '- **CPU 核心数**: ${Platform.numberOfProcessors}\n';
   }
 
   /// 构建系统提示词（与主 Agent 保持一致的结构）
@@ -963,20 +979,20 @@ class _LlmStreamResult {
   });
 
   factory _LlmStreamResult.cancelled() => _LlmStreamResult(
-        aiContentBuffer: StringBuffer(),
-        aiThinkingBuffer: StringBuffer(),
-        isDone: true,
-        toolCalls: const [],
-        cancelled: true,
-      );
+    aiContentBuffer: StringBuffer(),
+    aiThinkingBuffer: StringBuffer(),
+    isDone: true,
+    toolCalls: const [],
+    cancelled: true,
+  );
 
   factory _LlmStreamResult.error(String msg) => _LlmStreamResult(
-        aiContentBuffer: StringBuffer(),
-        aiThinkingBuffer: StringBuffer(),
-        isDone: true,
-        toolCalls: const [],
-        error: msg,
-      );
+    aiContentBuffer: StringBuffer(),
+    aiThinkingBuffer: StringBuffer(),
+    isDone: true,
+    toolCalls: const [],
+    error: msg,
+  );
 }
 
 class _DuplicateCheckResult {

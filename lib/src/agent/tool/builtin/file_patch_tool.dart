@@ -15,18 +15,14 @@ class FilePatchTool extends AgentTool {
 
   @override
   String get description =>
-      'Apply precise text patches to a file. Each patch replaces an exact '
-      'match of old_text with new_text. Multiple patches can be applied in '
-      'a single operation.\n\n'
-      'Unlike file_write which overwrites the entire file, this tool only '
-      'modifies the specified text segments, preserving all other content.\n\n'
-      'Use this tool when you need to:\n'
-      '- Make targeted edits to specific parts of a file\n'
-      '- Fix a bug in a function without touching the rest\n'
-      '- Rename a variable across multiple locations in one file\n'
-      '- Update import statements or configuration values\n\n'
-      'IMPORTANT: old_text must match exactly (including whitespace and indentation). '
-      'If the match fails, the tool returns an error with line number hints.';
+      '对文件应用精确的文本补丁。每个补丁将 old_text 精确替换为 new_text。单次操作可应用多个补丁。\n\n'
+      '与 file_write（覆盖整个文件）不同，此工具仅修改指定的文本片段，保留其余内容。\n\n'
+      '适用场景：\n'
+      '- 对文件的特定部分进行精准修改\n'
+      '- 修复函数中的 bug 而不影响其余代码\n'
+      '- 在一个文件中重命名变量\n'
+      '- 更新 import 语句或配置值\n\n'
+      '重要：old_text 必须精确匹配（包括空白和缩进）。匹配失败时会返回带有行号提示的错误。';
 
   @override
   Map<String, dynamic> get inputJsonSchema => {
@@ -34,7 +30,7 @@ class FilePatchTool extends AgentTool {
         'properties': {
           'path': {
             'type': 'string',
-            'description': 'Absolute path to the target file.',
+            'description': '目标文件的绝对路径。',
           },
           'patches': {
             'type': 'array',
@@ -44,25 +40,22 @@ class FilePatchTool extends AgentTool {
                 'old_text': {
                   'type': 'string',
                   'description':
-                      'The exact text to find and replace. Must match exactly '
-                      'including whitespace and indentation.',
+                      '要查找和替换的精确文本，必须完全匹配（包括空白和缩进）。',
                 },
                 'new_text': {
                   'type': 'string',
                   'description':
-                      'The replacement text.',
+                      '替换后的文本。',
                 },
               },
               'required': ['old_text', 'new_text'],
             },
-            'description': 'List of patches to apply. Each patch has old_text and new_text.',
+            'description': '要应用的补丁列表，每个补丁包含 old_text 和 new_text。',
           },
           'create_if_missing': {
             'type': 'boolean',
             'description':
-                'If true, creates the file when it does not exist. '
-                'When creating, new_text from the first patch is used as the file content. '
-                'Default: false.',
+                '如果为 true，文件不存在时创建新文件。创建时使用第一个补丁的 new_text 作为文件内容。默认：false。',
           },
         },
         'required': ['path', 'patches'],

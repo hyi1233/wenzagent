@@ -83,7 +83,10 @@ class ToolRegistry {
 
     // end 工具始终对 LLM 可见，确保 AI 能主动结束工具调用循环
     if (!exposedTools.any((t) => t.name == 'end')) {
-      exposedTools = [...exposedTools, _tools['end']!];
+      final endTool = _tools['end'];
+      if (endTool != null) {
+        exposedTools = [...exposedTools, endTool];
+      }
     }
 
     return exposedTools.map((t) {

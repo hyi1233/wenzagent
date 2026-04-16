@@ -62,20 +62,20 @@ class SpecManageTool extends AgentTool {
 
   @override
   String get description =>
-      'Manage persistent spec (specification) documents with group support. '
-      'Data persists across agent restarts.\n\n'
-      'Actions:\n'
-      '- "add": Create a new spec item (requires title; optional: content, priority, group, tags)\n'
-      '- "list": View items by scope (active/completed/all)\n'
-      '- "update": Change status, title, or content of an item\n'
-      '- "remove": Delete a specific item\n'
-      '- "clear": Remove all completed items\n'
-      '- "create_group": Create a new group\n'
-      '- "list_groups": View all groups\n'
-      '- "rename_group": Rename a group\n'
-      '- "delete_group": Delete a group (items move to ungrouped)\n'
-      '- "move_to_group": Move a spec item to a group\n\n'
-      'Specs are persisted in the database.';
+      '管理持久化的规格说明文档，支持分组。'
+      '数据跨 Agent 重启持久保存。\n\n'
+      '操作：\n'
+      '- "add"：创建新规格项（需要 title；可选：content、priority、group、tags）\n'
+      '- "list"：按范围查看项目（active/completed/all）\n'
+      '- "update"：修改项目状态、标题或内容\n'
+      '- "remove"：删除指定项目\n'
+      '- "clear"：清除所有已完成项\n'
+      '- "create_group"：创建新分组\n'
+      '- "list_groups"：查看所有分组\n'
+      '- "rename_group"：重命名分组\n'
+      '- "delete_group"：删除分组（项目移至未分组）\n'
+      '- "move_to_group"：将规格项移至分组\n\n'
+      '规格说明持久化在数据库中。';
 
   @override
   Map<String, dynamic> get inputJsonSchema => {
@@ -95,63 +95,63 @@ class SpecManageTool extends AgentTool {
               'delete_group',
               'move_to_group',
             ],
-            'description': 'Action to perform on the spec list.',
+            'description': '要对规格列表执行的操作。',
           },
           'title': {
             'type': 'string',
             'description':
-                'Spec item title. Required for "add". Optional for "update" to change title.',
+                '规格项标题。"add" 时必需，"update" 时可选用于修改标题。',
           },
           'content': {
             'type': 'string',
             'description':
-                'Spec item content/description. Optional for "add" and "update".',
+                '规格项内容/描述。"add" 和 "update" 时可选。',
           },
           'id': {
             'type': 'string',
             'description':
-                'Spec item ID. Required for "update", "remove", and "move_to_group".',
+                '规格项 ID。"update"、"remove" 和 "move_to_group" 时必需。',
           },
           'status': {
             'type': 'string',
             'enum': ['draft', 'pending', 'in_progress', 'completed'],
             'description':
-                'New status for the item. Used with "update" action.',
+                '项目的新状态。用于 "update" 操作。',
           },
           'priority': {
             'type': 'string',
             'enum': ['low', 'medium', 'high'],
             'description':
-                'Priority level for "add" action. Default is "medium".',
+                '"add" 操作的优先级。默认："medium"。',
           },
           'tags': {
             'type': 'string',
             'description':
-                'Comma-separated tags for "add" action.',
+                '"add" 操作的标签，逗号分隔。',
           },
           'scope': {
             'type': 'string',
             'enum': ['active', 'completed', 'all'],
             'description':
-                'Scope for "list" action. Default is "active".',
+                '列表显示范围。默认："active"。',
           },
           'group': {
             'type': 'string',
             'description':
-                'Group name for "add" action. Creates the group if it does not exist.',
+                '"add" 操作的分组名称。如分组不存在则自动创建。',
           },
           'group_id': {
             'type': 'string',
             'description':
-                'Group ID for "rename_group", "delete_group", and "move_to_group" actions.',
+                '分组 ID，用于 "rename_group"、"delete_group" 和 "move_to_group" 操作。',
           },
           'new_name': {
             'type': 'string',
-            'description': 'New name for "rename_group" action.',
+            'description': '"rename_group" 操作的新名称。',
           },
           'name': {
             'type': 'string',
-            'description': 'Group name for "create_group" action.',
+            'description': '"create_group" 操作的分组名称。',
           },
         },
         'required': ['action'],

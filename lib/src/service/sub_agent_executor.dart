@@ -148,13 +148,13 @@ class SubAgentExecutor {
       // ⑤ 设置上下文（systemPrompt + 项目上下文）
       final context = <String, dynamic>{};
       final effectiveSystemPrompt = systemPrompt ??
-          'You are a sub-agent responsible for completing the assigned task. '
-              'Return a structured summary of your results, not the full conversation.\n\n'
-              'Requirements:\n'
-              '- Summarize your findings and results concisely\n'
-              '- List key information and data\n'
-              '- If you encounter problems, explain the cause and suggest solutions\n'
-              '- Do not include raw tool call output; only summarize key information';
+          '你是一个子 Agent，负责完成分配的任务。'
+              '返回结构化的结果摘要，而非完整对话。\n\n'
+              '要求：\n'
+              '- 简洁地总结你的发现和结果\n'
+              '- 列出关键信息和数据\n'
+              '- 如遇到问题，说明原因并建议解决方案\n'
+              '- 不要包含原始工具调用输出，仅总结关键信息';
 
       if (config.systemPrompt != null) {
         context['systemPrompt'] =

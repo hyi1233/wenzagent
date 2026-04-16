@@ -11,8 +11,7 @@ class FileInfoTool extends AgentTool {
 
   @override
   String get description =>
-      'Get metadata about a file or directory, including size, '
-      'last modified time, type, and permissions.';
+      '获取文件或目录的元信息，包括大小、最后修改时间、类型和权限。';
 
   @override
   Map<String, dynamic> get inputJsonSchema => {
@@ -20,7 +19,7 @@ class FileInfoTool extends AgentTool {
     'properties': {
       'path': {
         'type': 'string',
-        'description': 'Absolute path to the file or directory. IMPORTANT: Always use absolute paths, never use relative paths.',
+        'description': '文件或目录的绝对路径。重要：始终使用绝对路径，不要使用相对路径。',
       },
     },
     'required': ['path'],

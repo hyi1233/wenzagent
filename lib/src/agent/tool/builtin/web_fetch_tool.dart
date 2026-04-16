@@ -22,15 +22,13 @@ class WebFetchTool extends AgentTool {
 
   @override
   String get description =>
-      'Fetch content from a URL via HTTP GET or POST request. '
-      'Returns processed content: HTML pages are converted to plain text, '
-      'JSON responses are formatted, and other content is returned as-is.\n\n'
-      'Use this tool when you need to:\n'
-      '- Read documentation or web pages\n'
-      '- Fetch API responses\n'
-      '- Access online resources\n\n'
-      'Only HTTP and HTTPS protocols are allowed. '
-      'Internal/private network addresses are blocked for security.';
+      '通过 HTTP GET 或 POST 请求获取 URL 内容。返回处理后的内容：'
+      'HTML 页面转为纯文本，JSON 响应格式化显示，其他内容原样返回。\n\n'
+      '适用场景：\n'
+      '- 读取文档或网页\n'
+      '- 获取 API 响应\n'
+      '- 访问在线资源\n\n'
+      '仅允许 HTTP 和 HTTPS 协议，内网/私有网络地址已被安全屏蔽。';
 
   @override
   Map<String, dynamic> get inputJsonSchema => {
@@ -38,30 +36,30 @@ class WebFetchTool extends AgentTool {
         'properties': {
           'url': {
             'type': 'string',
-            'description': 'The URL to fetch (HTTP or HTTPS only).',
+            'description': '要获取的 URL（仅限 HTTP 或 HTTPS）。',
           },
           'method': {
             'type': 'string',
             'enum': ['GET', 'POST'],
-            'description': 'HTTP method. Default: GET.',
+            'description': 'HTTP 请求方法。默认：GET。',
           },
           'headers': {
             'type': 'object',
-            'description': 'Custom HTTP headers as key-value pairs.',
+            'description': '自定义 HTTP 请求头，键值对形式。',
           },
           'body': {
             'type': 'string',
-            'description': 'Request body for POST requests.',
+            'description': 'POST 请求的请求体。',
           },
           'timeout': {
             'type': 'integer',
             'description':
-                'Timeout in seconds. Default: $_defaultTimeout.',
+                '超时时间（秒）。默认：$_defaultTimeout。',
           },
           'max_bytes': {
             'type': 'integer',
             'description':
-                'Maximum response size in bytes. Default: ${_defaultMaxBytes ~/ 1024}KB.',
+                '最大响应大小（字节）。默认：${_defaultMaxBytes ~/ 1024}KB。',
           },
         },
         'required': ['url'],

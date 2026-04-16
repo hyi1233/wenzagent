@@ -11,9 +11,7 @@ class FileWriteTool extends AgentTool {
 
   @override
   String get description =>
-      'Write content to a file at the specified path. '
-      'Creates the file and parent directories if they do not exist. '
-      'By default overwrites the file. Set append to true to append instead.';
+      '将内容写入指定路径的文件。如果文件或父目录不存在则自动创建。默认覆盖写入，设置 append 为 true 则追加写入。';
 
   @override
   Map<String, dynamic> get inputJsonSchema => {
@@ -21,16 +19,16 @@ class FileWriteTool extends AgentTool {
     'properties': {
       'path': {
         'type': 'string',
-        'description': 'Absolute path to the file to write. IMPORTANT: Always use absolute paths (e.g., /home/user/project/file.txt or D:\\project\\file.txt), never use relative paths.',
+        'description': '要写入的文件的绝对路径。重要：始终使用绝对路径，不要使用相对路径。',
       },
       'content': {
         'type': 'string',
-        'description': 'The content to write to the file',
+        'description': '要写入文件的内容',
       },
       'append': {
         'type': 'boolean',
         'description':
-            'If true, append content to the file instead of overwriting. Default: false',
+            '如果为 true，追加内容而非覆盖写入。默认：false',
       },
     },
     'required': ['path', 'content'],

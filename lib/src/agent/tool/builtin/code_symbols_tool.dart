@@ -12,13 +12,12 @@ class CodeSymbolsTool extends AgentTool {
 
   @override
   String get description =>
-      'Parse code symbols (classes, functions, methods, variables, imports) '
-      'from a source file. Supports Dart, Python, JavaScript, and TypeScript.\n\n'
-      'Returns symbol name, type, line number range, and signature.\n\n'
-      'Use this tool to:\n'
-      '- Understand file structure before editing\n'
-      '- Find specific function or class definitions\n'
-      '- Get an overview of a file without reading it entirely';
+      '解析源代码文件中的代码符号（类、函数、方法、变量、import 等）。支持 Dart、Python、JavaScript、TypeScript。\n\n'
+      '返回符号名称、类型、行号范围和签名。\n\n'
+      '用途：\n'
+      '- 在编辑前了解文件结构\n'
+      '- 查找特定函数或类定义\n'
+      '- 不读取完整文件即可了解概览';
 
   @override
   Map<String, dynamic> get inputJsonSchema => {
@@ -26,18 +25,18 @@ class CodeSymbolsTool extends AgentTool {
         'properties': {
           'path': {
             'type': 'string',
-            'description': 'Absolute path to the source file.',
+            'description': '源代码文件的绝对路径。',
           },
           'symbol_type': {
             'type': 'string',
             'enum': ['class', 'function', 'method', 'variable', 'import', 'all'],
             'description':
-                'Filter by symbol type. Default: "all".',
+                '按符号类型过滤。默认："all"。',
           },
           'name_pattern': {
             'type': 'string',
             'description':
-                'Regex pattern to filter symbol names. Only matching symbols are returned.',
+                '用于过滤符号名称的正则表达式，仅返回匹配的符号。',
           },
         },
         'required': ['path'],

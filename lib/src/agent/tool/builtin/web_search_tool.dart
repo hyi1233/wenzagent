@@ -20,13 +20,12 @@ class WebSearchTool extends AgentTool {
 
   @override
   String get description =>
-      'Search the web using a search engine. Returns a list of results with '
-      'title, URL, and summary for each match.\n\n'
-      'Use this tool when you need to:\n'
-      '- Look up documentation or APIs\n'
-      '- Find solutions to programming problems\n'
-      '- Search for current information\n'
-      '- Research best practices or tutorials';
+      '使用搜索引擎搜索互联网，返回包含标题、URL 和摘要的结果列表。\n\n'
+      '适用场景：\n'
+      '- 查找文档或 API\n'
+      '- 搜索编程问题的解决方案\n'
+      '- 获取最新信息\n'
+      '- 研究最佳实践或教程';
 
   @override
   Map<String, dynamic> get inputJsonSchema => {
@@ -34,12 +33,12 @@ class WebSearchTool extends AgentTool {
         'properties': {
           'query': {
             'type': 'string',
-            'description': 'Search keywords or question.',
+            'description': '搜索关键词或问题。',
           },
           'max_results': {
             'type': 'integer',
             'description':
-                'Maximum number of results to return. Default: $_defaultMaxResults.',
+                '最大返回结果数。默认：$_defaultMaxResults。',
           },
         },
         'required': ['query'],

@@ -41,8 +41,7 @@ class CommandExecuteTool extends AgentTool {
 
   @override
   String get description =>
-      'Execute a shell command and return its output (stdout and stderr). '
-      'Use with caution. The command runs in the system shell.';
+      '执行 shell 命令并返回输出（stdout 和 stderr）。请谨慎使用，命令在系统 shell 中运行。';
 
   @override
   Map<String, dynamic> get inputJsonSchema => {
@@ -50,22 +49,22 @@ class CommandExecuteTool extends AgentTool {
         'properties': {
           'command': {
             'type': 'string',
-            'description': 'The shell command to execute',
+            'description': '要执行的 shell 命令',
           },
           'workingDirectory': {
             'type': 'string',
             'description':
-                'The working directory for the command. Default: current directory',
+                '命令的工作目录。默认：当前目录',
           },
           'timeout': {
             'type': 'integer',
             'description':
-                'Timeout in seconds. The command will be killed if it exceeds this. Default: $_defaultTimeout',
+                '超时时间（秒）。超过此时间命令将被终止。默认：$_defaultTimeout',
           },
           'maxOutputBytes': {
             'type': 'integer',
             'description':
-                'Maximum bytes to collect per stream (stdout/stderr). Output will be truncated if exceeded. Default: ${_maxStreamBytes ~/ 1024}KB',
+                '每个输出流（stdout/stderr）的最大收集字节数。超出时截断输出。默认：${_maxStreamBytes ~/ 1024}KB',
           },
         },
         'required': ['command'],

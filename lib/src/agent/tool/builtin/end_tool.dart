@@ -10,15 +10,15 @@ class EndTool extends AgentTool {
 
   @override
   String get description => '''
-End the current conversation loop.
+结束当前对话循环。
 
-Call this tool when:
-- The task is fully completed and no further actions are needed.
-- You have gathered enough information and want to provide a final response to the user.
-- You determine that continuing the tool-calling loop would be unproductive.
+在以下情况调用此工具：
+- 任务已完成，无需进一步操作。
+- 已收集足够信息，准备向用户提供最终回复。
+- 判断继续工具调用循环不会有更多产出。
 
-This tool signals the system to stop processing and show the current results to the user.
-You can provide a brief reason via the 'reason' parameter.
+此工具通知系统停止处理并向用户展示当前结果。
+可通过 'reason' 参数提供简短说明。
 ''';
 
   @override
@@ -27,7 +27,7 @@ You can provide a brief reason via the 'reason' parameter.
     'properties': {
       'reason': {
         'type': 'string',
-        'description': 'Optional brief reason for ending the conversation (e.g., "task completed", "user question answered")',
+        'description': '可选的结束原因说明（例如："任务完成"、"用户问题已回答"）',
       },
     },
     'required': [],

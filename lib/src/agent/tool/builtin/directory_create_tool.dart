@@ -11,8 +11,7 @@ class DirectoryCreateTool extends AgentTool {
 
   @override
   String get description =>
-      'Create a new directory at the specified path. '
-      'Set recursive to true to create parent directories as needed.';
+      '在指定路径创建新目录。设置 recursive 为 true 可自动创建父目录。';
 
   @override
   Map<String, dynamic> get inputJsonSchema => {
@@ -20,12 +19,12 @@ class DirectoryCreateTool extends AgentTool {
     'properties': {
       'path': {
         'type': 'string',
-        'description': 'The path of the directory to create',
+        'description': '要创建的目录路径',
       },
       'recursive': {
         'type': 'boolean',
         'description':
-            'If true, create parent directories if they do not exist. Default: true',
+            '如果为 true，当父目录不存在时自动创建。默认：true',
       },
     },
     'required': ['path'],

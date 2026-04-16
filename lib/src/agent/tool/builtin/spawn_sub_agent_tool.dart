@@ -63,18 +63,18 @@ class SpawnSubAgentTool extends AgentTool {
 
   @override
   String get description =>
-      'Spawn a sub-agent to execute a task autonomously. '
-      'The sub-agent is the executor — it has access to all file operations, commands, search, and other execution tools. '
-      'It operates in its own isolated context and returns a structured summary of its work.\n\n'
-      'Use this tool for ALL actual work delegation. As the main agent (planner), you must delegate every execution task to a sub-agent.\n'
-      'The sub-agent can:\n'
-      '- Read, write, patch, and delete files\n'
-      '- Execute commands and manage background processes\n'
-      '- Search files, content, and code symbols\n'
-      '- Perform git operations\n'
-      '- Fetch web content and search the web\n\n'
-      'The sub-agent cannot spawn further sub-agents (no recursion), '
-      'nor manage todos/specs/scheduled tasks (those are the main agent\'s responsibility).';
+      '创建子 Agent 自主执行任务。'
+      '子 Agent 是执行者，拥有所有文件操作、命令执行、搜索等执行工具。'
+      '在独立上下文中运行，返回结构化的工作摘要。\n\n'
+      '所有实际工作必须通过此工具委派给子 Agent。作为主 Agent（规划者），你必须将每个执行任务委派给子 Agent。\n'
+      '子 Agent 可以：\n'
+      '- 读取、写入、补丁和删除文件\n'
+      '- 执行命令和管理后台进程\n'
+      '- 搜索文件、内容和代码符号\n'
+      '- 执行 Git 操作\n'
+      '- 获取网页内容和搜索互联网\n\n'
+      '子 Agent 不能递归创建子 Agent，'
+      '也不能管理待办/规格/定时任务（由主 Agent 负责）。';
 
   @override
   Map<String, dynamic> get inputJsonSchema => {
@@ -83,35 +83,34 @@ class SpawnSubAgentTool extends AgentTool {
       'task': {
         'type': 'string',
         'description':
-            'A clear, detailed description of the sub-task for the sub-agent to complete. '
-            'Include all necessary context and expected output format.',
+            '子任务的清晰详细描述，包含所有必要的上下文和预期输出格式。',
       },
       'system_prompt': {
         'type': 'string',
         'description':
-            'Optional custom system prompt for the sub-agent. '
-            'If not provided, a default prompt focusing on task completion and summary will be used.',
+            '子 Agent 的自定义系统提示词。'
+            '如未提供，使用聚焦于任务完成和结果摘要的默认提示词。',
       },
       'tools': {
         'type': 'array',
         'items': {'type': 'string'},
         'description':
-            'List of tool names the sub-agent is allowed to use. '
-            'Default includes all tools except: todo_manage, spec_manage, schedule_task, spawn_sub_agent. '
-            'The sub-agent cannot use "spawn_sub_agent" to prevent recursion, '
-            'nor "todo_manage"/"spec_manage"/"schedule_task" as those are managed by the main Agent only.',
+            '子 Agent 可使用的工具名称列表。'
+            '默认包含除 todo_manage、spec_manage、schedule_task、spawn_sub_agent 外的所有工具。'
+            '子 Agent 不能使用 "spawn_sub_agent"（防止递归），'
+            '也不能使用 "todo_manage"/"spec_manage"/"schedule_task"（由主 Agent 管理）。',
       },
       'max_turns': {
         'type': 'integer',
         'description':
-            'Maximum number of tool-calling iterations for the sub-agent. Default: 100.',
+            '子 Agent 的最大工具调用轮次。默认：100。',
       },
       'context_files': {
         'type': 'array',
         'items': {'type': 'string'},
         'description':
-            'List of file paths to preload into the sub-agent context before task execution. '
-            'Useful for providing the sub-agent with relevant code or documentation.',
+            '任务执行前预加载到子 Agent 上下文的文件路径列表。'
+            '用于向子 Agent 提供相关代码或文档。',
       },
     },
     'required': ['task'],

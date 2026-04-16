@@ -44,24 +44,23 @@ class BgCommandTool extends AgentTool {
 
   @override
   String get description =>
-      'Execute LONG-RUNNING commands (compilation, build, test suites, dev servers, '
-      'data processing) with automatic AI monitoring.\n\n'
-      'The "start" action is BLOCKING: it launches the command, monitors it every 10 '
-      'seconds using a built-in AI monitor, and returns the final result when the '
-      'command completes or is interrupted.\n\n'
-      'How the monitor works:\n'
-      '- Every 10 seconds, it reads the latest stdout/stderr output\n'
-      '- It sends the output + task description to an AI sub-agent\n'
-      '- The sub-agent decides whether to CONTINUE or INTERRUPT the task\n'
-      '- If interrupted, the process is killed and results are returned\n'
-      '- If the command exits on its own, results are returned immediately\n\n'
-      'IMPORTANT: Always provide a clear "task" parameter describing what the command '
-      'does and the expected outcome. This helps the monitor judge progress.\n\n'
-      'When to use bg_command vs command_execute:\n'
-      '- bg_command: compilation, build, test, deploy, dev server (expected >30s)\n'
-      '- command_execute: quick commands like ls, cat, grep, git status (<30s)\n\n'
-      'Other actions (status, output, terminate, list) are for manually managing '
-      'sessions started by sub-agents or in edge cases.';
+      '执行长时间运行的命令（编译、构建、测试、开发服务器、'
+      '数据处理等），带自动 AI 监控。\n\n'
+      '"start" 操作是阻塞的：启动命令后，每 10 秒通过内置 AI 监控器检查一次，'
+      '命令完成或被中断时返回最终结果。\n\n'
+      '监控器工作方式：\n'
+      '- 每 10 秒读取最新的 stdout/stderr 输出\n'
+      '- 将输出和任务描述发送给 AI 子 Agent\n'
+      '- 子 Agent 判断是继续还是中断任务\n'
+      '- 如果中断，终止进程并返回结果\n'
+      '- 如果命令自行退出，立即返回结果\n\n'
+      '重要：务必提供清晰的 "task" 参数描述命令的目的和预期结果，'
+      '以帮助监控器判断进度。\n\n'
+      '使用场景：\n'
+      '- bg_command：编译、构建、测试、部署、开发服务器（预计 >30s）\n'
+      '- command_execute：快速命令如 ls、cat、grep、git status（<30s）\n\n'
+      '其他操作（status、output、terminate、list）用于手动管理'
+      '子 Agent 启动的会话或边缘情况。';
 
   @override
   Map<String, dynamic> get inputJsonSchema => {
@@ -71,43 +70,41 @@ class BgCommandTool extends AgentTool {
             'type': 'string',
             'enum': ['start', 'status', 'output', 'terminate', 'list'],
             'description':
-                'Action to perform:\n'
-                '- "start": Launch command with auto-monitoring (BLOCKS until done)\n'
-                '- "status": Check command status\n'
-                '- "output": View stdout/stderr output\n'
-                '- "terminate": Kill a running command\n'
-                '- "list": List all sessions',
+                '要执行的操作：\n'
+                '- "start"：启动命令并自动监控（阻塞直到完成）\n'
+                '- "status"：检查命令状态\n'
+                '- "output"：查看 stdout/stderr 输出\n'
+                '- "terminate"：终止运行中的命令\n'
+                '- "list"：列出所有会话',
           },
           'command': {
             'type': 'string',
             'description':
-                'The shell command to execute (required for action="start").',
+                '要执行的 shell 命令（action="start" 时必需）。',
           },
           'task': {
             'type': 'string',
             'description':
-                'Task description for action="start". Describe what the command does '
-                'and the expected outcome. The built-in AI monitor uses this to judge '
-                'whether the task is progressing normally.\n'
-                'Example: "Build Flutter APK in release mode. Expected: build succeeds '
-                'with exit code 0, APK generated in build/app/outputs/."',
+                '任务描述（action="start" 时使用）。描述命令的目的和预期结果，'
+                '内置 AI 监控器使用此信息判断任务是否正常推进。\n'
+                '示例："以 release 模式构建 Flutter APK。预期：构建成功（退出码 0），'
+                'APK 生成在 build/app/outputs/。"',
           },
           'sessionId': {
             'type': 'string',
             'description':
-                'Session ID (required for action="status", "output", "terminate").',
+                '会话 ID（action="status"、"output"、"terminate" 时必需）。',
           },
           'workingDirectory': {
             'type': 'string',
             'description':
-                'Working directory for the command (only for action="start"). '
-                'Default: current directory.',
+                '命令的工作目录（仅 action="start"）。'
+                '默认：当前目录。',
           },
           'tailChars': {
             'type': 'integer',
             'description':
-                'Number of tail characters to return for stdout/stderr '
-                '(only for action="output"). Default: 3000.',
+                '返回 stdout/stderr 的尾部字符数（仅 action="output"）。默认：3000。',
           },
         },
         'required': ['action'],

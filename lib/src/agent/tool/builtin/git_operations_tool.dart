@@ -26,13 +26,11 @@ class GitOperationsTool extends AgentTool {
 
   @override
   String get description =>
-      'Perform Git operations on a repository. '
-      'Supports: status, diff, log, commit, add, branch, checkout, stash, show.\n\n'
-      'Read-only operations (status, diff, log, show, stash list) are safe.\n'
-      'Write operations (commit, add, checkout, branch create/delete, stash/pop) '
-      'require permission confirmation.\n\n'
-      'Use this tool when you need to inspect repository state, view changes, '
-      'commit code, switch branches, or manage stashes.';
+      '对 Git 仓库执行操作，支持：status、diff、log、commit、add、branch、checkout、stash、show。\n\n'
+      '只读操作（status、diff、log、show、stash list）安全无副作用。\n'
+      '写操作（commit、add、checkout、branch 创建/删除、stash/pop）'
+      '需要权限确认。\n\n'
+      '用于检查仓库状态、查看变更、提交代码、切换分支或管理暂存。';
 
   @override
   Map<String, dynamic> get inputJsonSchema => {
@@ -52,32 +50,31 @@ class GitOperationsTool extends AgentTool {
               'show',
             ],
             'description':
-                'Git action to perform. '
-                '"status" = working tree status, '
-                '"diff" = show changes, '
-                '"log" = commit history, '
-                '"commit" = stage all and commit, '
-                '"add" = stage files, '
-                '"branch" = list/create/delete branches, '
-                '"checkout" = switch branch or restore files, '
-                '"stash" = stash/pop/list, '
-                '"show" = show commit details.',
+                '要执行的 Git 操作。'
+                '"status" = 工作树状态，'
+                '"diff" = 查看变更，'
+                '"log" = 提交历史，'
+                '"commit" = 暂存全部并提交，'
+                '"add" = 暂存文件，'
+                '"branch" = 列出/创建/删除分支，'
+                '"checkout" = 切换分支或恢复文件，'
+                '"stash" = 暂存/恢复/列出，'
+                '"show" = 查看提交详情。',
           },
           'args': {
             'type': 'string',
             'description':
-                'Additional arguments for the action. '
-                'For commit: the commit message. '
-                'For add: file paths to stage (space-separated). '
-                'For branch: branch name (prefix with -d to delete). '
-                'For checkout: branch name or file path. '
-                'For stash: "pop", "list", or empty to stash. '
-                'For show: commit hash or ref.',
+                '操作的附加参数。commit：提交信息；'
+                'add：要暂存的文件路径（空格分隔）；'
+                'branch：分支名（前缀 -d 删除）；'
+                'checkout：分支名或文件路径；'
+                'stash："pop"、"list" 或空（暂存）；'
+                'show：提交哈希或引用。',
           },
           'working_directory': {
             'type': 'string',
             'description':
-                'Path to the Git repository. Default: current project working directory.',
+                'Git 仓库路径。默认：当前项目工作目录。',
           },
         },
         'required': ['action'],

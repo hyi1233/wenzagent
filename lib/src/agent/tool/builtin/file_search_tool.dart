@@ -14,10 +14,7 @@ class FileSearchTool extends AgentTool {
 
   @override
   String get description =>
-      'Search for files matching a name pattern within a directory. '
-      'The pattern supports simple wildcards: * matches any characters, '
-      '? matches a single character. '
-      'Returns a list of matching file paths.';
+      '在目录中按文件名模式搜索文件。支持简单通配符：* 匹配任意字符，? 匹配单个字符。返回匹配的文件路径列表。';
 
   @override
   Map<String, dynamic> get inputJsonSchema => {
@@ -25,16 +22,16 @@ class FileSearchTool extends AgentTool {
     'properties': {
       'directory': {
         'type': 'string',
-        'description': 'Absolute path to the root directory to search in. IMPORTANT: Always use absolute paths, never use relative paths.',
+        'description': '要搜索的根目录的绝对路径。重要：始终使用绝对路径，不要使用相对路径。',
       },
       'pattern': {
         'type': 'string',
         'description':
-            'File name pattern to match (e.g., "*.dart", "test_*.py", "README*")',
+            '要匹配的文件名模式（如 "*.dart"、"test_*.py"、"README*"）',
       },
       'recursive': {
         'type': 'boolean',
-        'description': 'If true, search recursively. Default: true',
+        'description': '如果为 true，递归搜索子目录。默认：true',
       },
     },
     'required': ['directory', 'pattern'],

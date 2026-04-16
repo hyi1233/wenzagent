@@ -20,9 +20,7 @@ class ContentSearchTool extends AgentTool {
 
   @override
   String get description =>
-      'Search file contents for a text or regex pattern (grep-like). '
-      'Returns matching lines with file paths and line numbers. '
-      'Optionally filter files by name pattern.';
+      '在文件内容中搜索文本或正则表达式（类似 grep）。返回匹配行及文件路径和行号。可按文件名模式过滤。';
 
   @override
   Map<String, dynamic> get inputJsonSchema => {
@@ -30,25 +28,25 @@ class ContentSearchTool extends AgentTool {
     'properties': {
       'directory': {
         'type': 'string',
-        'description': 'The root directory to search in',
+        'description': '要搜索的根目录',
       },
       'pattern': {
         'type': 'string',
-        'description': 'Text or regex pattern to search for in file contents',
+        'description': '要在文件内容中搜索的文本或正则表达式',
       },
       'filePattern': {
         'type': 'string',
         'description':
-            'Optional glob pattern to filter files (e.g., "*.dart"). Default: search all text files',
+            '可选的 glob 模式用于过滤文件（如 "*.dart"）。默认：搜索所有文本文件',
       },
       'maxResults': {
         'type': 'integer',
         'description':
-            'Maximum number of matching lines to return. Default: 100',
+            '最大返回匹配行数。默认：100',
       },
       'caseSensitive': {
         'type': 'boolean',
-        'description': 'Whether the search is case-sensitive. Default: true',
+        'description': '是否区分大小写。默认：true',
       },
     },
     'required': ['directory', 'pattern'],

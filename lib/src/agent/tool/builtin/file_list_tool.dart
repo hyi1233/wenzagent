@@ -18,10 +18,7 @@ class FileListTool extends AgentTool {
 
   @override
   String get description =>
-      'List files and directories in the specified directory path. '
-      'Returns a list of entries with their type (file/directory), name, and size. '
-      'Non-recursive mode: max 500 entries. Recursive mode: max 200 entries. '
-      'Use the file_search tool with specific patterns to narrow results if needed.';
+      '列出指定目录下的文件和子目录，返回条目类型（文件/目录）、名称和大小。非递归模式最多返回 500 条，递归模式最多 200 条。如需精确查找，请使用 file_search 工具。';
 
   @override
   Map<String, dynamic> get inputJsonSchema => {
@@ -29,16 +26,16 @@ class FileListTool extends AgentTool {
         'properties': {
           'path': {
             'type': 'string',
-            'description': 'Absolute path to the directory to list contents of. IMPORTANT: Always use absolute paths, never use relative paths.',
+            'description': '要列出内容的目录的绝对路径。重要：始终使用绝对路径，不要使用相对路径。',
           },
           'recursive': {
             'type': 'boolean',
-            'description': 'If true, list contents recursively. Default: false',
+            'description': '如果为 true，递归列出子目录内容。默认：false',
           },
           'includeHidden': {
             'type': 'boolean',
             'description':
-                'If true, include hidden files (starting with dot). Default: false',
+                '如果为 true，包含隐藏文件（以点号开头）。默认：false',
           },
         },
         'required': ['path'],
