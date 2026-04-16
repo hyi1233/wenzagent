@@ -2,6 +2,18 @@ import 'dart:convert';
 
 import '../../utils/logger.dart';
 
+/// 命令 pattern 推导粒度
+enum CommandPatternGranularity {
+  /// 命令前缀（如 git.*）
+  prefix,
+
+  /// 命令组合（如 git\s+commit.*）
+  base,
+
+  /// 精确匹配完整命令
+  exact;
+}
+
 /// 规则匹配模式
 enum PermissionMatchMode {
   /// 精确匹配参数值
@@ -96,9 +108,16 @@ class PermissionRule {
   /// 从参数值自动推导正则模式
   ///
   /// 路径类: /path/to/file.txt → /path/to/.*
-  /// 命令类: git commit -m "msg" → git.*
-  static String derivePattern(String value) {
+  /// 命令类: git commit -m "msg" → git\s+commit.*（当 permissionType 为 command_execute 时）
+  /// 其他: value → value.*
+  static String derivePattern(String value, {String? permissionType}) {
     if (value.isEmpty) return '.*';
+
+    // 命令类型：提取命令名+子命令作为前缀
+    if (permissionType == 'command_execute') {
+      return deriveCommandPattern(value,
+          granularity: CommandPatternGranularity.base);
+    }
 
     // 识别路径（包含 / 或 \）
     if (value.contains('/') || value.contains('\\')) {
@@ -118,6 +137,38 @@ class PermissionRule {
       return '${RegExp.escape(parts.first)}.*';
     }
     return '.*';
+  }
+
+  /// 从命令字符串推导不同粒度的正则模式
+  ///
+  /// [command] 完整命令字符串
+  /// [granularity] 粒度级别
+  ///
+  /// 示例（以 `git commit -m "msg"` 为输入）:
+  /// - [CommandPatternGranularity.prefix]: `git.*` → 匹配所有 git 命令
+  /// - [CommandPatternGranularity.base]: `git\s+commit.*` → 匹配所有 git commit 变体
+  /// - [CommandPatternGranularity.exact]: `git\ commit\ \-m\ "msg"` → 精确匹配
+  static String deriveCommandPattern(String command,
+      {required CommandPatternGranularity granularity}) {
+    if (command.isEmpty) return '.*';
+
+    final parts = command.trim().split(RegExp(r'\s+'));
+    if (parts.isEmpty) return '.*';
+
+    switch (granularity) {
+      case CommandPatternGranularity.prefix:
+        // 命令前缀：git.* → 匹配所有 git 命令
+        return '${RegExp.escape(parts.first)}.*';
+      case CommandPatternGranularity.base:
+        // 命令组合：git\s+commit.* → 匹配所有 git commit 变体
+        if (parts.length >= 2) {
+          return '${RegExp.escape(parts[0])}\\s+${RegExp.escape(parts[1])}.*';
+        }
+        return '${RegExp.escape(parts.first)}.*';
+      case CommandPatternGranularity.exact:
+        // 精确匹配：转义完整命令
+        return RegExp.escape(command);
+    }
   }
 
   Map<String, dynamic> toJson() => {

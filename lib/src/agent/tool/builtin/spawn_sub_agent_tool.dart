@@ -62,16 +62,18 @@ class SpawnSubAgentTool extends AgentTool {
 
   @override
   String get description =>
-      'Spawn a sub-agent to handle a complex sub-task autonomously. '
-      'The sub-agent has its own isolated context and can use tools to complete the task. '
-      'It returns a structured summary of its findings, not the full conversation.\n\n'
-      'Use this tool when:\n'
-      '- The task requires deep analysis of many files\n'
-      '- You need to explore the codebase extensively\n'
-      '- The task is complex enough to benefit from focused, isolated attention\n'
-      '- You want to parallelize work by delegating a sub-task\n\n'
-      'The sub-agent cannot spawn further sub-agents (no recursion). '
-      'It operates with a restricted set of tools for safety.';
+      'Spawn a sub-agent to execute a task autonomously. '
+      'The sub-agent is the executor — it has access to all file operations, commands, search, and other execution tools. '
+      'It operates in its own isolated context and returns a structured summary of its work.\n\n'
+      'Use this tool for ALL actual work delegation. As the main agent (planner), you must delegate every execution task to a sub-agent.\n'
+      'The sub-agent can:\n'
+      '- Read, write, patch, and delete files\n'
+      '- Execute commands and manage background processes\n'
+      '- Search files, content, and code symbols\n'
+      '- Perform git operations\n'
+      '- Fetch web content and search the web\n\n'
+      'The sub-agent cannot spawn further sub-agents (no recursion), '
+      'nor manage todos/specs/scheduled tasks (those are the main agent\'s responsibility).';
 
   @override
   Map<String, dynamic> get inputJsonSchema => {

@@ -23,9 +23,42 @@ import 'web_search_tool.dart';
 
 /// 内置工具集合
 ///
-/// 提供所有内置工具的工厂方法。
+/// 提供所有内置工具的工厂方法，以及规划/执行工具分类。
 class BuiltinTools {
   BuiltinTools._();
+
+  /// 主 Agent（规划器）可见的工具名称。
+  ///
+  /// 这些工具仅用于任务分析、规划和委派，不包含任何文件/命令执行工具。
+  static const Set<String> plannerToolNames = {
+    'task_complexity', // 任务复杂度分析
+    'todo_manage', // 待办管理
+    'spec_manage', // 规格管理
+    'spawn_sub_agent', // 委派子 Agent 执行
+    'schedule_task', // 定时任务
+  };
+
+  /// 子 Agent（执行器）可用的工具名称。
+  ///
+  /// 包含所有文件操作、命令执行、搜索等实际执行工具。
+  static const Set<String> executorToolNames = {
+    'file_read',
+    'file_write',
+    'file_list',
+    'file_search',
+    'content_search',
+    'file_info',
+    'file_delete',
+    'file_patch',
+    'directory_create',
+    'command_execute',
+    'bg_command',
+    'git_operations',
+    'code_symbols',
+    'env_info',
+    'web_fetch',
+    'web_search',
+  };
 
   /// 获取所有内置工具
   static List<AgentTool> all() {

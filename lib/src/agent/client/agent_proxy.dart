@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:io';
 
 import 'package:uuid/uuid.dart';
@@ -810,10 +810,11 @@ class AgentProxy {
 
   Future<void> respondToPermission(
     String requestId,
-    PermissionDecision decision,
-  ) async {
+    PermissionDecision decision, {
+    PermissionApprovalScope scope = PermissionApprovalScope.once,
+  }) async {
     if (isLocalMode && _localAgent != null) {
-      return _localAgent.respondToPermission(requestId, decision);
+      return _localAgent.respondToPermission(requestId, decision, scope: scope);
     }
     final request = RespondPermissionRequest(
       employeeId: employeeId,

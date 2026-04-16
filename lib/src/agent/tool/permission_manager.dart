@@ -108,8 +108,9 @@ class ToolPermissionManager {
     // 构建权限请求（包含参数信息用于 UI 展示 4 个选项）
     final argKey = tool.permissionArgKey;
     final argValue = argKey != null ? arguments[argKey] as String? : null;
-    final suggestedPattern =
-        argValue != null ? PermissionRule.derivePattern(argValue) : null;
+    final suggestedPattern = argValue != null
+        ? PermissionRule.derivePattern(argValue, permissionType: toolName)
+        : null;
 
     final request = AgentPermissionRequest(
       requestId:

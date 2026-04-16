@@ -9,8 +9,16 @@ final _anthropicToolNameRegex = RegExp(r'^[a-zA-Z0-9_-]{1,64}$');
 /// 工具注册器
 ///
 /// 管理 Agent 可用的工具集合，支持动态注册和注销。
+/// 支持通过 [setExposedToolNames] 控制哪些工具对 LLM 可见（用于主 Agent 只暴露规划工具）。
 class ToolRegistry {
   final Map<String, AgentTool> _tools = {};
+
+  /// 对 LLM 可见的工具名称集合。
+  ///
+  /// 为 null 时所有工具都可见（向后兼容）。
+  /// 设置后，[getLlmDartTools] 只返回此集合中的工具。
+  /// [tools] getter 和 [getTool] 不受影响，子 Agent 仍可通过它们获取所有工具。
+  Set<String>? _exposedToolNames;
 
   /// 注册单个工具
   ///
@@ -65,14 +73,30 @@ class ToolRegistry {
   ///
   /// 用于传递给 llm_dart ChatCapability 的 chatStream 方法。
   /// [provider] 用于 Anthropic 工具名清洗。
+  ///
+  /// 如果通过 [setExposedToolNames] 设置了可见工具集合，
+  /// 则只返回该集合中的工具；否则返回所有已注册工具。
   List<llm.Tool> getLlmDartTools(LLMProvider provider) {
-    return _tools.values.map((t) {
+    final exposedTools = _exposedToolNames != null
+        ? _tools.values.where((t) => _exposedToolNames!.contains(t.name))
+        : _tools.values;
+
+    return exposedTools.map((t) {
       final tool = t.toLlmDartTool();
       if (provider == LLMProvider.anthropic) {
         return _sanitizeToolForAnthropic(tool);
       }
       return tool;
     }).toList();
+  }
+
+  /// 设置对 LLM 可见的工具名称集合。
+  ///
+  /// 设置后，[getLlmDartTools] 只返回此集合中的工具。
+  /// 传入 null 重置为所有工具可见。
+  /// [tools] getter 和 [getTool] 不受影响，仍返回所有已注册工具。
+  void setExposedToolNames(Set<String>? names) {
+    _exposedToolNames = names != null ? Set.unmodifiable(names) : null;
   }
 
   /// 清洗 Tool 以满足 Anthropic 工具名规范

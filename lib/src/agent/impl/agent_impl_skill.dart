@@ -366,7 +366,10 @@ mixin _AgentImplSkill on _AgentImplBase {
         arg: argKey,
         pattern:
             request.suggestedPattern ??
-            (argValue != null ? PermissionRule.derivePattern(argValue) : '.*'),
+            (argValue != null
+                ? PermissionRule.derivePattern(argValue,
+                    permissionType: request.permissionType)
+                : '.*'),
         mode: PermissionMatchMode.regex,
         createTime: now,
       ),
