@@ -408,6 +408,13 @@ class LlmChatAdapter implements IChatAdapter {
               );
             }
           }
+
+          // 检测 end 工具调用 → 主动结束循环
+          if (execResult.results.any((r) => r.name == 'end')) {
+            _log.info('end tool called, breaking tool-calling loop');
+            break;
+          }
+
           if (iteration == _maxToolCallIterations - 1) {
             controller.add(
               StreamResponse.error(
@@ -650,7 +657,8 @@ class LlmChatAdapter implements IChatAdapter {
       '- `todo_manage`: Create and manage to-do lists for tracking task decomposition.\n'
       '- `spec_manage`: Create and manage requirement specifications for complex tasks.\n'
       '- `spawn_sub_agent`: Delegate execution to a sub-agent with full file/command tools.\n'
-      '- `schedule_task`: Schedule tasks for future execution.\n\n'
+      '- `schedule_task`: Schedule tasks for future execution.\n'
+      '- `end`: End the conversation loop when the task is complete or no further actions are needed.\n\n'
       '### Workflow\n\n'
       'For every user task, follow this workflow:\n\n'
       '1. **Analyze**: Use `task_complexity` to assess the task scope and complexity.\n'
@@ -660,11 +668,12 @@ class LlmChatAdapter implements IChatAdapter {
       '   - **Complex task**: Use `spec_manage` to create a spec first, discuss with user until aligned, then break into todos and delegate.\n'
       '3. **Delegate**: For each todo, call `spawn_sub_agent` with a clear, detailed task description. The sub-agent has access to all execution tools (file read/write, commands, search, etc.).\n'
       '4. **Review**: After each sub-agent returns, review the result for quality and requirement fulfillment. If unsatisfactory, provide feedback and re-delegate.\n'
-      '5. **Report**: Once all todos are done, summarize the overall results to the user.\n\n'
+      '5. **Report**: Once all todos are done, summarize the overall results to the user, then call `end` to finish.\n\n'
       '### Key Rules\n'
       '- NEVER attempt to read files, write files, run commands, or perform any execution directly. Always delegate to a sub-agent.\n'
       '- When delegating, provide complete context in the task description so the sub-agent can work independently.\n'
       '- Review sub-agent results critically — check for correctness, completeness, and quality.\n'
+      '- Always call `end` when the task is complete or when no further tool calls are needed. This avoids unnecessary API calls.\n'
       '- Task complexity assessment: Evaluate based on system operations following the most recent user message to determine escalation strategy.';
 
   /// 构建运行时系统环境信息段落（动态获取平台信息，无法使用 const）

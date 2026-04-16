@@ -1,5 +1,6 @@
 import '../agent_tool.dart';
 import 'bg_command_tool.dart';
+import 'end_tool.dart';
 import 'code_symbols_tool.dart';
 import 'command_execute_tool.dart';
 import 'content_search_tool.dart';
@@ -36,12 +37,14 @@ class BuiltinTools {
     'spec_manage', // 规格管理
     'spawn_sub_agent', // 委派子 Agent 执行
     'schedule_task', // 定时任务
+    'end', // 主动结束对话循环
   };
 
   /// 子 Agent（执行器）可用的工具名称。
   ///
   /// 包含所有文件操作、命令执行、搜索等实际执行工具。
   static const Set<String> executorToolNames = {
+    'end',
     'file_read',
     'file_write',
     'file_list',
@@ -63,6 +66,7 @@ class BuiltinTools {
   /// 获取所有内置工具
   static List<AgentTool> all() {
     return [
+      EndTool(),
       FileReadTool(),
       FileWriteTool(),
       FileListTool(),
@@ -90,6 +94,7 @@ class BuiltinTools {
   /// 仅获取只读工具（不需要权限的工具）
   static List<AgentTool> readOnly() {
     return [
+      EndTool(),
       FileReadTool(),
       FileListTool(),
       FileSearchTool(),

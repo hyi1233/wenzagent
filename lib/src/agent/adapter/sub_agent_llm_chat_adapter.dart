@@ -319,6 +319,12 @@ class SubAgentLlmChatAdapter implements IChatAdapter {
             }
           }
 
+          // 检测 end 工具调用 → 主动结束循环
+          if (execResult.results.any((r) => r.name == 'end')) {
+            _log.info('end tool called, breaking tool-calling loop');
+            break;
+          }
+
           if (iteration == _maxToolCallIterations - 1) {
             controller.add(
               StreamResponse.error(

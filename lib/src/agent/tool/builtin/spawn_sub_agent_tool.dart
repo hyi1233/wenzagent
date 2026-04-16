@@ -24,6 +24,7 @@ class SpawnSubAgentTool extends AgentTool {
   /// - spawn_sub_agent: 禁止递归生成子 Agent。
   /// - task_complexity: 任务复杂度分析由主 Agent 在接收到用户任务时调用，子 Agent 不需要。
   static const List<String> _defaultToolNames = [
+    'end',
     'file_read',
     'file_write',
     'file_list',
