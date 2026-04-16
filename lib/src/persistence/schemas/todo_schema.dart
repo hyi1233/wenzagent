@@ -21,6 +21,16 @@ class TodoTopicSchema {
       CREATE INDEX IF NOT EXISTS idx_todo_topics_employee
         ON todo_topics(employee_id);
     ''');
+    // 兼容旧表缺少 completed_at 列的情况
+    _ensureColumn(db, 'todo_topics', 'completed_at', 'INTEGER');
+  }
+
+  static void _ensureColumn(Database db, String table, String column, String type) {
+    try {
+      db.execute('ALTER TABLE $table ADD COLUMN $column $type');
+    } catch (_) {
+      // 列已存在，忽略
+    }
   }
 }
 
@@ -50,5 +60,7 @@ class TodoTaskItemSchema {
       CREATE INDEX IF NOT EXISTS idx_todo_task_items_topic
         ON todo_task_items(topic_id);
     ''');
+    // 兼容旧表缺少 completed_at 列的情况
+    TodoTopicSchema._ensureColumn(db, 'todo_task_items', 'completed_at', 'INTEGER');
   }
 }

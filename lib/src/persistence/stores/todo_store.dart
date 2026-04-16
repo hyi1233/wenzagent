@@ -86,7 +86,7 @@ class TodoStore {
       INSERT OR REPLACE INTO todo_topics (
         id, employee_id, title, description, status,
         sort_order, deleted, create_time, update_time, completed_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ''', [
       topic.id,
       topic.employeeId,
