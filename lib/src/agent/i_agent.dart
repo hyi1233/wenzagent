@@ -297,6 +297,7 @@ abstract class IAgent {
     String requestId,
     PermissionDecision decision, {
     PermissionApprovalScope scope = PermissionApprovalScope.once,
+    String? customPattern,
   });
 
   /// 获取当前权限请求（如果有）

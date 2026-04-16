@@ -40,10 +40,18 @@ class RespondPermissionRequest {
   final String requestId;
   final String decision;
 
+  /// 授权范围（"once" | "exact" | "pattern" | "all"）
+  final String? scope;
+
+  /// 自定义正则模式（仅当 scope="pattern" 时有效）
+  final String? customPattern;
+
   const RespondPermissionRequest({
     required this.employeeId,
     required this.requestId,
     required this.decision,
+    this.scope,
+    this.customPattern,
   });
 
   Map<String, dynamic> toMap() {
@@ -51,6 +59,8 @@ class RespondPermissionRequest {
       'employeeId': employeeId,
       'requestId': requestId,
       'decision': decision,
+      if (scope != null) 'scope': scope,
+      if (customPattern != null) 'customPattern': customPattern,
     };
   }
 
@@ -59,6 +69,8 @@ class RespondPermissionRequest {
       employeeId: map['employeeId'] as String,
       requestId: map['requestId'] as String,
       decision: map['decision'] as String,
+      scope: map['scope'] as String?,
+      customPattern: map['customPattern'] as String?,
     );
   }
 }

@@ -308,6 +308,7 @@ mixin _AgentImplSkill on _AgentImplBase {
     String requestId,
     PermissionDecision decision, {
     PermissionApprovalScope scope = PermissionApprovalScope.once,
+    String? customPattern,
   }) async {
     final completer = _pendingPermissions[requestId];
     final request = _pendingPermissionRequests[requestId];
@@ -319,7 +320,7 @@ mixin _AgentImplSkill on _AgentImplBase {
               decision == PermissionDecision.allowAlways) &&
           scope != PermissionApprovalScope.once &&
           request != null) {
-        _persistApproval(request, scope);
+        _persistApproval(request, scope, customPattern: customPattern);
       }
       // 兼容旧的 allowAlways 调用（无 scope 参数时等同 all）
       if (decision == PermissionDecision.allowAlways && request != null) {
@@ -344,8 +345,9 @@ mixin _AgentImplSkill on _AgentImplBase {
   /// 根据审批范围持久化授权规则到权限配置
   void _persistApproval(
     AgentPermissionRequest request,
-    PermissionApprovalScope scope,
-  ) {
+    PermissionApprovalScope scope, {
+    String? customPattern,
+  }) {
     final toolName = request.permissionType ?? request.functionName;
     final argKey = request.permissionArgKey;
     final argValue = request.permissionArgValue;
@@ -365,6 +367,7 @@ mixin _AgentImplSkill on _AgentImplBase {
         tool: toolName,
         arg: argKey,
         pattern:
+            customPattern ??
             request.suggestedPattern ??
             (argValue != null
                 ? PermissionRule.derivePattern(argValue,

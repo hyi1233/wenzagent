@@ -818,8 +818,10 @@ class CachedAgentProxy extends _CachedAgentProxyBase
   /// 响应权限请求
   Future<void> respondToPermission(String requestId,
       PermissionDecision decision,
-      {PermissionApprovalScope scope = PermissionApprovalScope.once}) async {
-    await _proxy.respondToPermission(requestId, decision, scope: scope);
+      {PermissionApprovalScope scope = PermissionApprovalScope.once,
+      String? customPattern}) async {
+    await _proxy.respondToPermission(requestId, decision,
+        scope: scope, customPattern: customPattern);
 
     // 清除缓存的权限请求
     _pendingPermissionRequests.remove(requestId);

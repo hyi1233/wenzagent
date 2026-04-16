@@ -331,7 +331,16 @@ class DeviceRpcHandler {
         orElse: () => PermissionDecision.deny,
       );
 
-      await agent.respondToPermission(request.requestId, decision);
+      final scope = request.scope != null
+          ? PermissionApprovalScope.fromString(request.scope!)
+          : PermissionApprovalScope.once;
+
+      await agent.respondToPermission(
+        request.requestId,
+        decision,
+        scope: scope,
+        customPattern: request.customPattern,
+      );
       return {};
     });
 

@@ -9,6 +9,7 @@ import '../agent/tool/agent_tool.dart';
 import '../agent/tool/builtin/bg_command_tool.dart';
 import '../agent/tool/builtin/builtin_tools.dart';
 import '../agent/tool/builtin/command_session_pool.dart';
+import '../agent/tool/permission_rule.dart';
 import '../agent/tool/tool_registry.dart';
 import '../utils/logger.dart';
 import 'entity/agent_runtime_config.dart';
@@ -79,6 +80,12 @@ class SubAgentExecutor {
   /// 返回用户的权限决策（allow/deny/allowAlways）。
   Future<PermissionDecision> Function(
       AgentPermissionRequest request)? requestPermission;
+
+  /// 获取主 Agent 的权限配置回调
+  ///
+  /// 子 Agent 会继承此配置，在本地先评估权限规则，
+  /// 仅在规则未匹配时才通过 requestPermission 转发到主 Agent。
+  PermissionConfig? Function()? getParentPermissionConfig;
 
   /// 读取文件内容回调（用于预加载 context_files）
   ///
@@ -187,7 +194,8 @@ class SubAgentExecutor {
 
       // 设置权限转发
       if (requestPermission != null) {
-        final forwarder = PermissionForwarder();
+        final parentConfig = getParentPermissionConfig?.call();
+        final forwarder = PermissionForwarder(parentConfig: parentConfig);
         forwarder.onForwardPermissionRequest = requestPermission;
         adapter.setPermissionManager(forwarder);
       } else {

@@ -223,9 +223,6 @@ class AgentImpl extends _AgentImplBase
     // 注册内置工具（可选）
     if (enableBuiltinTools) {
       _toolRegistry.registerTools(BuiltinTools.all());
-
-      // 主 Agent 只暴露规划工具，所有执行操作委派给子 Agent
-      _toolRegistry.setExposedToolNames(BuiltinTools.plannerToolNames);
     }
 
     // 注入 TodoManageTool 回调
@@ -948,6 +945,9 @@ class AgentImpl extends _AgentImplBase
       return _permissionManager.onPermissionRequest!(request);
     };
 
+    // 继承主 Agent 的权限配置
+    executor.getParentPermissionConfig = () => _permissionManager.config;
+
     // 文件读取
     executor.readFileContent = (filePath) async {
       try {
@@ -1036,6 +1036,9 @@ class AgentImpl extends _AgentImplBase
       }
       return _permissionManager.onPermissionRequest!(request);
     };
+
+    // 继承主 Agent 的权限配置
+    executor.getParentPermissionConfig = () => _permissionManager.config;
 
     // 文件读取
     executor.readFileContent = (filePath) async {

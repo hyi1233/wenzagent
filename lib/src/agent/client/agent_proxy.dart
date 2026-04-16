@@ -812,14 +812,18 @@ class AgentProxy {
     String requestId,
     PermissionDecision decision, {
     PermissionApprovalScope scope = PermissionApprovalScope.once,
+    String? customPattern,
   }) async {
     if (isLocalMode && _localAgent != null) {
-      return _localAgent.respondToPermission(requestId, decision, scope: scope);
+      return _localAgent.respondToPermission(requestId, decision,
+          scope: scope, customPattern: customPattern);
     }
     final request = RespondPermissionRequest(
       employeeId: employeeId,
       requestId: requestId,
       decision: decision.name,
+      scope: scope.name,
+      customPattern: customPattern,
     );
     await _rpcUtil!.respondPermission(request);
   }

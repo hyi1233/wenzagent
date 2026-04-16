@@ -21,6 +21,7 @@ import 'context_compressor.dart';
 import 'session_memory_manager.dart';
 
 part 'llm_stream_handler.dart';
+
 part 'llm_tool_calling_loop.dart';
 
 /// Tool calling 循环最大迭代次数
@@ -169,7 +170,10 @@ class LlmChatAdapter implements IChatAdapter {
     required MessageStoreService messageStore,
     required String deviceId,
   }) {
-    memoryManager.configurePersistence(messageStore: messageStore, deviceId: deviceId);
+    memoryManager.configurePersistence(
+      messageStore: messageStore,
+      deviceId: deviceId,
+    );
   }
 
   /// 会话清空回调（由 DeviceAgentManager 注入，用于设置 clearSeq/lastSeq 和清理通知）
@@ -311,11 +315,15 @@ class LlmChatAdapter implements IChatAdapter {
             }
             _log.info('tool use empty, stop tool calling loop');
             if (llmResult.isDone) {
-              _log.debug('ai call tool done: ${llmResult.aiContentBuffer.toString()}');
+              _log.debug(
+                'ai call tool done: ${llmResult.aiContentBuffer.toString()}',
+              );
               break;
             } else {
               if (notReplyRecord.tooLongNotReply()) {
-                _log.warn('ai not reply, too long no reply:${notReplyRecord.notReplyCount}');
+                _log.warn(
+                  'ai not reply, too long no reply:${notReplyRecord.notReplyCount}',
+                );
                 break;
               }
               _log.debug('ai not reply, wait for ai reply');
@@ -326,11 +334,15 @@ class LlmChatAdapter implements IChatAdapter {
           notReplyRecord.reset();
           // 有工具调用 → 立即写入 assistant 消息，让前端能及时看到 AI 的文本回复
           final chatToolCalls = llmResult.toolCalls
-              .map((tc) => shared.ToolCall(
-                    id: tc.id,
-                    name: tc.function.name,
-                    arguments: LlmChatAdapter._parseArguments(tc.function.arguments),
-                  ))
+              .map(
+                (tc) => shared.ToolCall(
+                  id: tc.id,
+                  name: tc.function.name,
+                  arguments: LlmChatAdapter._parseArguments(
+                    tc.function.arguments,
+                  ),
+                ),
+              )
               .toList();
           final pendingAssistantMsg = shared.ChatMessage.assistant(
             id: const Uuid().v4(),
@@ -364,7 +376,11 @@ class LlmChatAdapter implements IChatAdapter {
           }
 
           // 立即持久化 assistant 消息（含文本 + toolCalls），前端可即时看到 AI 回复
-          memoryManager.addMessage(currentEmployeeUuid!, deviceId!, pendingAssistantMsg);
+          memoryManager.addMessage(
+            currentEmployeeUuid!,
+            deviceId!,
+            pendingAssistantMsg,
+          );
 
           // 权限检查 + 并行执行工具
           final execResult = await executeToolCalls(
@@ -421,7 +437,9 @@ class LlmChatAdapter implements IChatAdapter {
                 '已达到最大工具调用轮次（$_maxToolCallIterations 次），请尝试简化您的需求或拆分为多个问题',
               ),
             );
-            _log.error('已达到最大工具调用轮次（$_maxToolCallIterations 次），请尝试简化您的需求或拆分为多个问题');
+            _log.error(
+              '已达到最大工具调用轮次（$_maxToolCallIterations 次），请尝试简化您的需求或拆分为多个问题',
+            );
             return;
           }
         }
@@ -507,7 +525,9 @@ class LlmChatAdapter implements IChatAdapter {
   @override
   Future<void> updateProvider(Map<String, dynamic> providerConfig) async {
     final config = ProviderConfig.fromMap(providerConfig);
-    _log.debug('parsed config: provider=${config.provider}, model=${config.model}, baseUrl=${config.baseUrl}');
+    _log.debug(
+      'parsed config: provider=${config.provider}, model=${config.model}, baseUrl=${config.baseUrl}',
+    );
     config.validate();
     _log.debug('config validated successfully');
 
@@ -643,38 +663,52 @@ class LlmChatAdapter implements IChatAdapter {
     return await builder.build();
   }
 
-  /// 固定的系统提示词前缀（规划/委派架构 + 系统信息）
+  /// 固定的系统提示词前缀（智能切换架构 + 系统信息）
   static const String _fixedSystemPromptPrefix =
       '## 系统环境\n\n'
       '你运行在以下平台上，请根据操作系统选择正确的命令和工具。\n'
       '例如：Windows 使用 `dir`，Linux/macOS 使用 `ls`；Windows 使用 `where`，Linux/macOS 使用 `which`；'
       'Windows 使用 `cmd /c`，Linux/macOS 使用 `sh -c`；Windows 使用反斜杠 `\\` 路径，Linux/macOS 使用正斜杠 `/`。\n\n'
-      '## 你的角色：任务规划者和委派者\n\n'
-      '你是**主 Agent** —— 一个任务规划者和委派者。你不直接执行文件操作、运行命令或修改代码。\n'
-      '所有实际工作必须通过 `spawn_sub_agent` 工具委派给子 Agent 执行。\n\n'
-      '### 可用工具\n'
-      '- `task_complexity`：分析任务复杂度，确定最佳规划策略。\n'
+      '## 你的角色：智能任务执行者\n\n'
+      '你是**主 Agent**，拥有所有工具的直接访问权限。你可以根据任务复杂度自主决定执行方式：\n'
+      '- **简单任务**（读文件、查信息、简单问答）：直接使用工具执行，无需规划。\n'
+      '- **中/复杂任务**（多文件修改、架构变更、功能开发）：使用 spec>todo>impl 规划工作流。\n\n'
+      '### 可用工具\n\n'
+      '**规划工具：**\n'
+      '- `task_complexity`：分析任务复杂度，确定最佳执行策略。\n'
       '- `todo_manage`：创建和管理待办列表，跟踪任务分解。\n'
       '- `spec_manage`：创建和管理需求规格说明，用于复杂任务。\n'
-      '- `spawn_sub_agent`：将执行工作委派给子 Agent（拥有完整的文件/命令工具）。\n'
+      '- `spawn_sub_agent`：将子任务委派给子 Agent（适用于需要独立上下文的复杂多步骤任务）。\n'
       '- `schedule_task`：安排定时任务。\n'
       '- `end`：结束对话循环。\n\n'
+      '**执行工具：**\n'
+      '- `file_read`：读取文件内容。\n'
+      '- `file_write`：写入文件。\n'
+      '- `file_patch`：对文件应用补丁。\n'
+      '- `file_list`：列出目录内容。\n'
+      '- `file_info`：获取文件/目录详细信息。\n'
+      '- `file_delete`：删除文件或目录。\n'
+      '- `directory_create`：创建目录。\n'
+      '- `command_execute`：执行命令。\n'
+      '- `bg_command`：执行后台命令。\n'
+      '- `content_search`：搜索文件内容。\n'
+      '- `code_symbols`：分析代码摘要结构。\n'
+      '- `git_operations`：执行 Git 操作。\n'
+      '- `env_info`：获取环境信息。\n'
+      '- `web_fetch`：获取网页内容(http请求)。\n'
+      '- `web_search`：搜索互联网。\n\n'
       '### 工作流程\n\n'
-      '对于每个用户任务，遵循以下流程：\n\n'
+      '对于每个用户任务，根据复杂度选择策略：\n\n'
+      '**简单任务（直接执行）：**\n'
+      '读取文件、查询信息、简单修改等单步操作，直接使用对应的执行工具完成。\n\n'
+      '**普通/复杂任务（规划工作流）：**\n'
       '1. **分析**：使用 `task_complexity` 评估任务范围和复杂度。\n'
       '2. **规划**：根据复杂度：\n'
-      '   - **简单任务**：创建单个待办项，通过 `spawn_sub_agent` 委派。\n'
-      '   - **中型任务**：使用 `todo_manage` 拆分为子项，逐个通过 `spawn_sub_agent` 委派。\n'
-      '   - **复杂任务**：先使用 `spec_manage` 创建规格说明，与用户讨论对齐后，再拆分为待办并委派。\n'
-      '3. **委派**：对每个待办项，调用 `spawn_sub_agent` 并提供清晰详细的任务描述。子 Agent 拥有所有执行工具（文件读写、命令、搜索等）。\n'
-      '4. **验收**：子 Agent 返回结果后，检查质量和需求满足度。不满意则提供反馈重新委派。\n'
-      '5. **汇报**：所有待办完成后，向用户总结整体结果，然后调用 `end` 结束。\n\n'
-      '### 关键规则\n'
-      '- 绝不直接读取文件、写入文件、运行命令或执行任何操作。始终委派给子 Agent。\n'
-      '- 委派时在任务描述中提供完整上下文，让子 Agent 能独立工作。\n'
-      '- 严格审查子 Agent 的结果，检查正确性、完整性和质量。\n'
-      '- 任务完成或无需继续工具调用时，务必调用 `end`，避免不必要的 API 调用。\n'
-      '- 任务复杂度评估：根据最近用户消息之后的系统操作来确定升级策略。';
+      '   - **普通任务**：使用 `todo_manage` 拆分为子项，逐个执行或通过 `spawn_sub_agent` 委派。\n'
+      '   - **复杂任务**：先使用 `spec_manage` 创建规格说明，与用户讨论对齐后，再拆分为待办并执行。\n'
+      '3. **执行**：对每个待办项，可直接执行或通过 `spawn_sub_agent` 委派（提供清晰详细的任务描述）。\n'
+      '4. **验收**：检查结果的质量和需求满足度。不满意则修正或重新执行。\n'
+      '5. **汇报**：所有待办完成后，向用户总结整体结果，然后调用 `end` 结束。\n\n';
 
   /// 构建运行时系统环境信息段落（动态获取平台信息，无法使用 const）
   static String _buildSystemInfoSection() {
@@ -682,7 +716,9 @@ class LlmChatAdapter implements IChatAdapter {
     final osVersion = Platform.operatingSystemVersion;
     final pathSep = Platform.pathSeparator;
     final isWindows = Platform.isWindows;
-    final shell = isWindows ? 'cmd /c (Windows Command Prompt / PowerShell)' : 'sh -c (Unix shell)';
+    final shell = isWindows
+        ? 'cmd /c (Windows Command Prompt / PowerShell)'
+        : 'sh -c (Unix shell)';
     return '## 运行时系统信息\n\n'
         '- **操作系统**: $os\n'
         '- **系统版本**: $osVersion\n'
@@ -760,7 +796,9 @@ class LlmChatAdapter implements IChatAdapter {
 
   /// 注入一条 assistant 消息到当前会话
   Future<void> injectAssistantMessage(
-    String messageId, String content, String deviceIdentifier,
+    String messageId,
+    String content,
+    String deviceIdentifier,
   ) async {
     final chatMessage = shared.ChatMessage.assistant(
       id: messageId,
@@ -769,12 +807,18 @@ class LlmChatAdapter implements IChatAdapter {
       createdAt: DateTime.now(),
       metadata: {'status': 'completed'},
     );
-    memoryManager.addMessage(currentEmployeeUuid!, deviceIdentifier, chatMessage);
+    memoryManager.addMessage(
+      currentEmployeeUuid!,
+      deviceIdentifier,
+      chatMessage,
+    );
   }
 
   /// 注入一条 system 消息到当前会话
   void injectSystemMessage(
-    String messageId, String content, String deviceIdentifier,
+    String messageId,
+    String content,
+    String deviceIdentifier,
   ) {
     final chatMessage = shared.ChatMessage.system(
       id: messageId,
@@ -782,7 +826,11 @@ class LlmChatAdapter implements IChatAdapter {
       content: content,
       createdAt: DateTime.now(),
     ).copyWith(metadata: {'status': 'completed', 'trigger': 'scheduled_task'});
-    memoryManager.addMessage(currentEmployeeUuid!, deviceIdentifier, chatMessage);
+    memoryManager.addMessage(
+      currentEmployeeUuid!,
+      deviceIdentifier,
+      chatMessage,
+    );
   }
 
   /// 删除单条消息（从内存和数据库中删除）
