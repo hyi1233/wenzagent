@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:llm_dart/llm_dart.dart' as llm;
 import 'package:meta/meta.dart';
@@ -633,11 +634,62 @@ class LlmChatAdapter implements IChatAdapter {
     return await builder.build();
   }
 
+  /// 固定的系统提示词前缀（任务分级执行流程 + 系统信息）
+  static const String _fixedSystemPromptPrefix =
+      '## System Environment\n\n'
+      'You are running on the following platform. Use this information to determine the correct commands and tools for the current OS.\n'
+      'For example: use `dir` on Windows vs `ls` on Linux/macOS; use `where` on Windows vs `which` on Linux/macOS; '
+      'use `cmd /c` on Windows vs `sh -c` on Linux/macOS; use backslash `\\` paths on Windows vs forward slash `/` on Linux/macOS.\n\n'
+      '## Tiered Task Execution Workflow\n\n'
+      'Upon receiving a user task, always assess its complexity first and choose the appropriate execution strategy:\n\n'
+      '### 1. Small Task → Direct Execution\n'
+      'Applies to: single-file modifications, simple queries, format conversions, and other work completable within 1-3 rounds of tool calls.\n'
+      'Approach: The main Agent executes directly using tools. No need to create to-do items or spec documents.\n\n'
+      '### 2. Medium Task → To-Do Driven + Sub-Agent Execution\n'
+      'Applies to: work involving multi-file modifications, multiple steps, and clear expectations.\n'
+      'Approach:\n'
+      '1. Use todo_manage to create a to-do list, breaking the task into independently executable sub-items\n'
+      '2. For each to-do item, use spawn_sub_agent to create a sub-Agent for execution\n'
+      '3. After the sub-Agent returns results, the main Agent reviews code quality and requirement fulfillment\n'
+      '4. If accepted, mark the to-do as completed; if not, correct and re-execute\n'
+      '5. Report overall results to the user after all to-dos are completed\n\n'
+      '### 3. Complex Task → Spec-Driven + Phased Execution\n'
+      'Applies to: work with unclear requirements, architectural changes, or requiring collaboration across multiple medium tasks.\n'
+      'Approach:\n'
+      '1. Prompt the user to create a Spec, use spec_manage to record requirement specifications\n'
+      '2. Discuss and refine the Spec with the user iteratively until requirements are fully aligned\n'
+      '3. Break the final Spec into multiple medium tasks, use todo_manage to create a to-do list\n'
+      '4. Execute each task following the medium-task workflow\n'
+      '5. After all to-dos are completed, perform a final check against the Spec\n'
+      'Note:\n'
+      'Task complexity assessment: Evaluate based on system operations following the most recent user message to determine escalation strategy.';
+
+  /// 构建运行时系统环境信息段落（动态获取平台信息，无法使用 const）
+  static String _buildSystemInfoSection() {
+    final os = Platform.operatingSystem;
+    final osVersion = Platform.operatingSystemVersion;
+    final pathSep = Platform.pathSeparator;
+    final isWindows = Platform.isWindows;
+    final shell = isWindows ? 'cmd /c (Windows Command Prompt / PowerShell)' : 'sh -c (Unix shell)';
+    return '## Runtime System Information\n\n'
+        '- **OS**: $os\n'
+        '- **OS Version**: $osVersion\n'
+        '- **Path Separator**: "$pathSep"\n'
+        '- **Shell**: $shell\n'
+        '- **CPU Cores**: ${Platform.numberOfProcessors}\n'
+        '- **Working Directory**: ${Directory.current.path}\n';
+  }
+
   /// 构建系统提示词
   String? _buildSystemPrompt() {
     if (_context == null) return null;
 
     final parts = <String>[];
+
+    // 固定前缀：任务分级执行流程 + 平台说明
+    parts.add(_fixedSystemPromptPrefix);
+    // 运行时系统环境信息（OS、Shell、路径分隔符等）
+    parts.add(_buildSystemInfoSection());
 
     final systemPrompt = _context!['systemPrompt'] as String?;
     if (systemPrompt != null && systemPrompt.isNotEmpty) {

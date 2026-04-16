@@ -17,15 +17,28 @@ class SpawnSubAgentTool extends AgentTool {
   static final _log = Logger('SpawnSubAgentTool');
 
   /// 默认允许子 Agent 使用的工具列表
+  ///
+  /// 包含除 todo_manage、spec_manage、schedule_task、spawn_sub_agent 外的所有工具。
+  /// - todo_manage/spec_manage: 这些是主 Agent 的任务管理工具，子 Agent 不应操作。
+  /// - schedule_task: 定时任务由主 Agent 管理。
+  /// - spawn_sub_agent: 禁止递归生成子 Agent。
   static const List<String> _defaultToolNames = [
     'file_read',
+    'file_write',
     'file_list',
     'file_search',
     'content_search',
     'file_info',
+    'file_delete',
+    'file_patch',
+    'directory_create',
     'command_execute',
     'bg_command',
+    'git_operations',
     'code_symbols',
+    'env_info',
+    'web_fetch',
+    'web_search',
   ];
 
   /// 子 Agent 执行器（由 AgentFactoryImpl 注入）
@@ -61,47 +74,44 @@ class SpawnSubAgentTool extends AgentTool {
 
   @override
   Map<String, dynamic> get inputJsonSchema => {
-        'type': 'object',
-        'properties': {
-          'task': {
-            'type': 'string',
-            'description':
-                'A clear, detailed description of the sub-task for the sub-agent to complete. '
-                'Include all necessary context and expected output format.',
-          },
-          'system_prompt': {
-            'type': 'string',
-            'description':
-                'Optional custom system prompt for the sub-agent. '
-                'If not provided, a default prompt focusing on task completion and summary will be used.',
-          },
-          'tools': {
-            'type': 'array',
-            'items': {
-              'type': 'string',
-            },
-            'description':
-                'List of tool names the sub-agent is allowed to use. '
-                'Default: ["file_read", "file_list", "file_search", "content_search", "file_info", "command_execute", "bg_command", "code_symbols"]. '
-                'The sub-agent cannot use "spawn_sub_agent" to prevent recursion.',
-          },
-          'max_turns': {
-            'type': 'integer',
-            'description':
-                'Maximum number of tool-calling iterations for the sub-agent. Default: 30.',
-          },
-          'context_files': {
-            'type': 'array',
-            'items': {
-              'type': 'string',
-            },
-            'description':
-                'List of file paths to preload into the sub-agent context before task execution. '
-                'Useful for providing the sub-agent with relevant code or documentation.',
-          },
-        },
-        'required': ['task'],
-      };
+    'type': 'object',
+    'properties': {
+      'task': {
+        'type': 'string',
+        'description':
+            'A clear, detailed description of the sub-task for the sub-agent to complete. '
+            'Include all necessary context and expected output format.',
+      },
+      'system_prompt': {
+        'type': 'string',
+        'description':
+            'Optional custom system prompt for the sub-agent. '
+            'If not provided, a default prompt focusing on task completion and summary will be used.',
+      },
+      'tools': {
+        'type': 'array',
+        'items': {'type': 'string'},
+        'description':
+            'List of tool names the sub-agent is allowed to use. '
+            'Default includes all tools except: todo_manage, spec_manage, schedule_task, spawn_sub_agent. '
+            'The sub-agent cannot use "spawn_sub_agent" to prevent recursion, '
+            'nor "todo_manage"/"spec_manage"/"schedule_task" as those are managed by the main Agent only.',
+      },
+      'max_turns': {
+        'type': 'integer',
+        'description':
+            'Maximum number of tool-calling iterations for the sub-agent. Default: 100.',
+      },
+      'context_files': {
+        'type': 'array',
+        'items': {'type': 'string'},
+        'description':
+            'List of file paths to preload into the sub-agent context before task execution. '
+            'Useful for providing the sub-agent with relevant code or documentation.',
+      },
+    },
+    'required': ['task'],
+  };
 
   @override
   bool get requiresPermission => false;
@@ -118,14 +128,22 @@ class SpawnSubAgentTool extends AgentTool {
       final diag = StringBuffer(
         'Sub-agent executor is not available. Injection diagnostics:\n',
       );
-      diag.writeln('- executor: null (expected: SubAgentExecutor from AgentFactoryImpl)');
+      diag.writeln(
+        '- executor: null (expected: SubAgentExecutor from AgentFactoryImpl)',
+      );
       diag.writeln('- employeeId: ${employeeId ?? "null"}');
-      diag.writeln('- getAvailableTools: ${getAvailableTools != null ? "injected" : "null"}');
-      diag.writeln('- readFileContent: ${readFileContent != null ? "injected" : "null"}');
+      diag.writeln(
+        '- getAvailableTools: ${getAvailableTools != null ? "injected" : "null"}',
+      );
+      diag.writeln(
+        '- readFileContent: ${readFileContent != null ? "injected" : "null"}',
+      );
       diag.writeln();
       diag.writeln('Possible causes:');
       diag.writeln('1. Agent created without going through AgentFactoryImpl');
-      diag.writeln('2. _injectSpawnSubAgentCallbacks failed silently (check logs)');
+      diag.writeln(
+        '2. _injectSpawnSubAgentCallbacks failed silently (check logs)',
+      );
       diag.writeln('3. The agent was not fully initialized before tool use');
       _log.error(diag.toString().trim());
       return ToolResult.error(diag.toString().trim());
@@ -139,13 +157,19 @@ class SpawnSubAgentTool extends AgentTool {
     final systemPrompt = arguments['system_prompt'] as String?;
     final requestedToolNames =
         (arguments['tools'] as List?)?.cast<String>() ?? _defaultToolNames;
-    final maxTurns = arguments['max_turns'] as int? ?? 30;
-    final contextFiles =
-        (arguments['context_files'] as List?)?.cast<String>();
+    final maxTurns = arguments['max_turns'] as int? ?? 100;
+    final contextFiles = (arguments['context_files'] as List?)?.cast<String>();
 
-    // 安全：禁止递归调用 spawn_sub_agent
-    final safeToolNames =
-        requestedToolNames.where((name) => name != 'spawn_sub_agent').toList();
+    // 安全：禁止子 Agent 使用仅限主 Agent 的工具
+    const restrictedTools = {
+      'spawn_sub_agent', // 禁止递归
+      'todo_manage', // 任务管理由主 Agent 负责
+      'spec_manage', // 规格管理由主 Agent 负责
+      'schedule_task', // 定时任务由主 Agent 负责
+    };
+    final safeToolNames = requestedToolNames
+        .where((name) => !restrictedTools.contains(name))
+        .toList();
 
     // 从主 Agent 的工具注册器获取工具实例
     final availableTools = getAvailableTools?.call() ?? [];
@@ -191,8 +215,8 @@ class SpawnSubAgentTool extends AgentTool {
       final toolCallSummary = result.toolCalls.isEmpty
           ? 'No tools were called.'
           : result.toolCalls.entries
-              .map((e) => '${e.key}: ${e.value} calls')
-              .join(', ');
+                .map((e) => '${e.key}: ${e.value} calls')
+                .join(', ');
 
       return ToolResult.success(
         '## Sub-agent Result\n\n'
