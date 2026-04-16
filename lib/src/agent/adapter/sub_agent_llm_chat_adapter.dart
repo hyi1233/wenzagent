@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:llm_dart/llm_dart.dart' as llm;
 import 'package:uuid/uuid.dart';
@@ -505,11 +506,40 @@ class SubAgentLlmChatAdapter implements IChatAdapter {
     return await builder.build();
   }
 
-  /// 构建系统提示词
-  String? _buildSystemPrompt() {
-    if (_context == null) return null;
+  /// 与主 Agent 一致的固定系统提示词前缀
+  static const String _fixedSystemPromptPrefix =
+      '## System Environment\n\n'
+      'You are running on the following platform. Use this information to determine the correct commands and tools for the current OS.\n'
+      'For example: use `dir` on Windows vs `ls` on Linux/macOS; use `where` on Windows vs `which` on Linux/macOS; '
+      'use `cmd /c` on Windows vs `sh -c` on Linux/macOS; use backslash `\\` paths on Windows vs forward slash `/` on Linux/macOS.\n\n';
 
+  /// 构建运行时系统环境信息段落
+  static String _buildSystemInfoSection() {
+    final os = Platform.operatingSystem;
+    final osVersion = Platform.operatingSystemVersion;
+    final pathSep = Platform.pathSeparator;
+    final isWindows = Platform.isWindows;
+    final shell = isWindows ? 'cmd /c (Windows Command Prompt / PowerShell)' : 'sh -c (Unix shell)';
+    return '## Runtime System Information\n\n'
+        '- **OS**: $os\n'
+        '- **OS Version**: $osVersion\n'
+        '- **Path Separator**: "$pathSep"\n'
+        '- **Shell**: $shell\n'
+        '- **CPU Cores**: ${Platform.numberOfProcessors}\n';
+  }
+
+  /// 构建系统提示词（与主 Agent 保持一致的结构）
+  String? _buildSystemPrompt() {
     final parts = <String>[];
+
+    // 固定前缀：任务分级执行流程 + 平台说明
+    parts.add(_fixedSystemPromptPrefix);
+    // 运行时系统环境信息
+    parts.add(_buildSystemInfoSection());
+
+    if (_context == null) {
+      return parts.join('\n\n');
+    }
 
     final systemPrompt = _context!['systemPrompt'] as String?;
     if (systemPrompt != null && systemPrompt.isNotEmpty) {
@@ -552,7 +582,7 @@ class SubAgentLlmChatAdapter implements IChatAdapter {
       parts.add('补充信息:\n$additionalInfo');
     }
 
-    return parts.isEmpty ? null : parts.join('\n\n');
+    return parts.join('\n\n');
   }
 
   /// 构建 LLM 消息列表

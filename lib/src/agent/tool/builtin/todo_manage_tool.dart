@@ -63,17 +63,22 @@ class TodoManageTool extends AgentTool {
   String get description =>
       'Manage a persistent todo list with group support. '
       'Data persists across agent restarts.\n\n'
+      '**IMPORTANT**: Every todo item MUST belong to a group. '
+      'You must call "create_group" first to create a group, '
+      'then use "add" with the "group" parameter to add items into it. '
+      'Adding a todo without specifying a group is NOT allowed.\n\n'
       'Actions:\n'
-      '- "add": Create a new todo item (optional: group name)\n'
+      '- "create_group": Create a new group (MUST be done first)\n'
+      '- "list_groups": View all groups\n'
+      '- "add": Create a new todo item (requires "group" parameter)\n'
       '- "list": View items by scope (active/completed/all)\n'
       '- "update": Change status or content of an item\n'
       '- "remove": Delete a specific item\n'
       '- "clear": Remove all completed items\n'
-      '- "create_group": Create a new group\n'
-      '- "list_groups": View all groups\n'
       '- "rename_group": Rename a group\n'
       '- "delete_group": Delete a group (items move to ungrouped)\n'
       '- "move_to_group": Move a todo item to a group\n\n'
+      'Typical workflow: create_group -> add (with group) -> update -> complete.\n\n'
       'The todo list is persisted in the database.';
 
   @override
@@ -121,7 +126,9 @@ class TodoManageTool extends AgentTool {
           'group': {
             'type': 'string',
             'description':
-                'Group name for "add" action. Creates the group if it does not exist.',
+                'Group name for "add" action. REQUIRED - every todo must belong to a group. '
+                'The group must already exist (use "create_group" first). '
+                'Adding a todo without a group is not allowed.',
           },
           'group_id': {
             'type': 'string',
@@ -189,36 +196,33 @@ class TodoManageTool extends AgentTool {
       return ToolResult.error('content is required for add action');
     }
 
+    // group 为必填，必须先创建分组再添加待办
+    final groupName = arguments['group'] as String?;
+    if (groupName == null || groupName.isEmpty) {
+      return ToolResult.error(
+        'group is required for add action. '
+        'Every todo item must belong to a group. '
+        'Use "create_group" action first to create a group, '
+        'then add todo items with the "group" parameter.',
+      );
+    }
+
+    if (findGroupByName == null) {
+      return ToolResult.error('Group operations not available');
+    }
+
+    // 查找已存在的分组，不自动创建
+    final group = await findGroupByName!(employeeId!, groupName);
+    if (group == null) {
+      return ToolResult.error(
+        'Group "$groupName" does not exist. '
+        'Use "create_group" action to create it first.',
+      );
+    }
+    final groupId = group.id;
+
     final now = DateTime.now();
     final id = 'todo_${now.millisecondsSinceEpoch}';
-
-    // 处理分组
-    String? groupId;
-    final groupName = arguments['group'] as String?;
-    if (groupName != null && groupName.isNotEmpty) {
-      if (findGroupByName == null || saveGroup == null) {
-        return ToolResult.error('Group operations not available');
-      }
-      var group = await findGroupByName!(employeeId!, groupName);
-      if (group == null) {
-        // 自动创建分组
-        final groupIdStr = 'tg_${now.millisecondsSinceEpoch}';
-        group = TodoGroupEntity(
-          id: groupIdStr,
-          employeeId: employeeId!,
-          name: groupName,
-          createTime: now,
-          updateTime: now,
-        );
-        await saveGroup!(group);
-        broadcastEvent?.call('todoGroupChanged', {
-          'action': 'created',
-          'groupId': groupIdStr,
-          'name': groupName,
-        });
-      }
-      groupId = group.id;
-    }
 
     final item = TodoItemEntity(
       id: id,
@@ -239,8 +243,7 @@ class TodoManageTool extends AgentTool {
       'groupId': groupId,
     });
 
-    final groupInfo = groupName != null ? ' (group: $groupName)' : '';
-    return ToolResult.success('Todo added: [$id] $content$groupInfo');
+    return ToolResult.success('Todo added: [$id] $content (group: $groupName)');
   }
 
   Future<ToolResult> _list(Map<String, dynamic> arguments) async {

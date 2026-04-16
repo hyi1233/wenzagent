@@ -17,6 +17,7 @@ import 'schedule_task_tool.dart';
 import 'spawn_sub_agent_tool.dart';
 import 'todo_manage_tool.dart';
 import 'spec_manage_tool.dart';
+import 'task_complexity_tool.dart';
 import 'web_fetch_tool.dart';
 import 'web_search_tool.dart';
 
@@ -49,6 +50,7 @@ class BuiltinTools {
       CodeSymbolsTool(),
       TodoManageTool(),
       SpecManageTool(),
+      TaskComplexityTool(),
     ];
   }
 

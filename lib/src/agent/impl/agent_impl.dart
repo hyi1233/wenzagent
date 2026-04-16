@@ -9,6 +9,7 @@ import '../../utils/logger.dart';
 import '../tool/builtin/bg_command_tool.dart';
 import '../tool/builtin/command_session_pool.dart';
 import '../tool/builtin/spec_manage_tool.dart';
+import '../tool/builtin/task_complexity_tool.dart';
 
 part 'agent_impl_messaging.dart';
 part 'agent_impl_skill.dart';
@@ -242,6 +243,9 @@ class AgentImpl extends _AgentImplBase
     // 创建后台命令会话池并注入到 BgCommandTool
     _commandSessionPool = CommandSessionPool();
     _injectBgCommandCallbacks();
+
+    // 注入 TaskComplexityTool 的 LLM 回调
+    _injectTaskComplexityCallbacks();
 
     // 技能系统由 warmup 后台加载，不在 initialize 中阻塞
 
@@ -996,6 +1000,26 @@ class AgentImpl extends _AgentImplBase
 
     _AgentImplBase._log.info(
       'BgCommandTool injected (pool + monitor LLM) for $employeeId',
+    );
+  }
+
+  /// 注入 TaskComplexityTool 的 LLM 回调
+  void _injectTaskComplexityCallbacks() {
+    final tool = _toolRegistry.getTool('task_complexity');
+    if (tool is! TaskComplexityTool) {
+      _AgentImplBase._log.warn(
+        'TaskComplexityTool not found in registry for injection. '
+        'Available tools: ${_toolRegistry.toolNames}',
+      );
+      return;
+    }
+
+    tool.invokeLlm = (prompt) async {
+      return await _chatAdapter.invokeOnce(prompt);
+    };
+
+    _AgentImplBase._log.info(
+      'TaskComplexityTool injected (invokeLlm) for $employeeId',
     );
   }
 

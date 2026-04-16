@@ -140,7 +140,7 @@ class SubAgentExecutor {
           summary: '',
           toolCalls: const {},
           duration: stopwatch.elapsed,
-          error: '未配置 LLM Provider，无法执行子 Agent',
+          error: 'LLM Provider not configured, cannot execute sub-agent',
         );
       }
       await adapter.updateProvider(config.providerConfig!);
@@ -148,13 +148,13 @@ class SubAgentExecutor {
       // ⑤ 设置上下文（systemPrompt + 项目上下文）
       final context = <String, dynamic>{};
       final effectiveSystemPrompt = systemPrompt ??
-          '你是一个子 Agent，负责完成分配给你的任务。'
-              '完成后返回结构化的结果摘要，不要返回完整对话过程。'
-              '\n\n要求：\n'
-              '- 简洁明了地总结你的发现和结果\n'
-              '- 列出关键信息和数据\n'
-              '- 如果遇到问题，说明原因和建议的解决方案\n'
-              '- 不要包含工具调用的原始输出，只总结关键信息';
+          'You are a sub-agent responsible for completing the assigned task. '
+              'Return a structured summary of your results, not the full conversation.\n\n'
+              'Requirements:\n'
+              '- Summarize your findings and results concisely\n'
+              '- List key information and data\n'
+              '- If you encounter problems, explain the cause and suggest solutions\n'
+              '- Do not include raw tool call output; only summarize key information';
 
       if (config.systemPrompt != null) {
         context['systemPrompt'] =
@@ -197,7 +197,7 @@ class SubAgentExecutor {
       // ⑦ 构建输入消息（包含预加载文件内容）
       final messageBuilder = StringBuffer();
       if (contextFiles != null && contextFiles.isNotEmpty) {
-        messageBuilder.writeln('## 预加载文件内容');
+        messageBuilder.writeln('## Preloaded File Contents');
         messageBuilder.writeln();
         for (final filePath in contextFiles) {
           final content = await readFileContent?.call(filePath);
@@ -208,7 +208,7 @@ class SubAgentExecutor {
             messageBuilder.writeln('```');
             messageBuilder.writeln();
           } else {
-            messageBuilder.writeln('### $filePath (文件不存在或读取失败)');
+            messageBuilder.writeln('### $filePath (file not found or read failed)');
             messageBuilder.writeln();
           }
         }
@@ -256,7 +256,7 @@ class SubAgentExecutor {
         }
       } on TimeoutException {
         hasError = true;
-        errorMsg = '执行超时 (${timeout.inMinutes} 分钟)';
+        errorMsg = 'Execution timed out (${timeout.inMinutes} min)';
       } catch (e) {
         hasError = true;
         errorMsg = e.toString();
@@ -267,7 +267,7 @@ class SubAgentExecutor {
       var summary = resultBuffer.toString();
       if (summary.length > _maxSummaryLength) {
         summary =
-            '${summary.substring(0, _maxSummaryLength)}\n\n[结果已截断，原始输出 ${summary.length} 字符]';
+            '${summary.substring(0, _maxSummaryLength)}\n\n[Result truncated, original output ${summary.length} chars]';
       }
 
       return SubAgentResult(
@@ -275,7 +275,7 @@ class SubAgentExecutor {
         summary: summary.isEmpty ? '' : summary,
         toolCalls: toolCallStats,
         duration: stopwatch.elapsed,
-        error: hasError ? (errorMsg ?? '未知错误') : null,
+        error: hasError ? (errorMsg ?? 'Unknown error') : null,
       );
     } catch (e) {
       stopwatch.stop();
@@ -284,7 +284,7 @@ class SubAgentExecutor {
         summary: '',
         toolCalls: const {},
         duration: stopwatch.elapsed,
-        error: 'SubAgentExecutor 异常: $e',
+        error: 'SubAgentExecutor error: $e',
       );
     } finally {
       // ⑨ 销毁临时环境
