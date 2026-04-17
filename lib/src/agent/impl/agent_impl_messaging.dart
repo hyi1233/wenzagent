@@ -422,6 +422,39 @@ mixin _AgentImplMessaging on _AgentImplBase {
     return _pendingPermissionRequests.values.first;
   }
 
+  // ===== IAgent: 确认管理 =====
+
+  @override
+  Future<void> respondToConfirm(String requestId, String selectedOption) async {
+    _touch();
+    final completer = _pendingConfirms[requestId];
+    if (completer == null || completer.isCompleted) {
+      _AgentImplBase._log.warn('respondToConfirm: 未找到待处理的确认请求: $requestId');
+      return;
+    }
+
+    completer.complete(selectedOption);
+
+    // 广播确认响应事件
+    _eventController.add(
+      AgentEvent(
+        type: AgentEventType.confirmResponse,
+        data: {
+          'requestId': requestId,
+          'selectedOption': selectedOption,
+        },
+        employeeId: employeeId,
+      ),
+    );
+  }
+
+  @override
+  AgentConfirmRequest? getPendingConfirmRequest() {
+    // 返回第一个待处理的确认请求
+    if (_pendingConfirmRequests.isEmpty) return null;
+    return _pendingConfirmRequests.values.first;
+  }
+
   @override
   Future<void> clearCurrentSession() async {
     _touch();

@@ -31,6 +31,12 @@ mixin _CachedProxyEventHandler on _CachedAgentProxyBase {
       case AgentEventType.toolPermissionRequest:
         _handlePermissionRequest(data);
         break;
+      case AgentEventType.confirmRequest:
+        _handleConfirmRequest(data);
+        break;
+      case AgentEventType.confirmResponse:
+        _handleConfirmResponse(data);
+        break;
       case AgentEventType.messageReplied:
         _handleMessageReplied(data);
         break;
@@ -306,6 +312,32 @@ mixin _CachedProxyEventHandler on _CachedAgentProxyBase {
     }
   }
 
+  /// 处理确认请求事件
+  void _handleConfirmRequest(Map<String, dynamic> data) {
+    try {
+      final request = AgentConfirmRequest.fromMap(data);
+      _pendingConfirmRequests[request.requestId] = request;
+      _CachedAgentProxyBase._log.info('收到确认请求: ${request.requestId}, 标题: ${request.title}');
+
+      // 通知客户端重新加载消息
+      _notifyMessagesChanged();
+    } catch (e) {
+      _CachedAgentProxyBase._log.error('处理确认请求失败', e);
+    }
+  }
+
+  /// 处理确认响应事件（其他设备已选择，本地需清除缓存）
+  void _handleConfirmResponse(Map<String, dynamic> data) {
+    final requestId = data['requestId'] as String?;
+    if (requestId == null) return;
+
+    final removed = _pendingConfirmRequests.remove(requestId);
+    if (removed != null) {
+      _CachedAgentProxyBase._log.info('收到确认响应（其他设备已处理）: $requestId');
+      _notifyMessagesChanged();
+    }
+  }
+
   /// 处理消息被回复事件
   Future<void> _handleMessageReplied(Map<String, dynamic> data) async {
     final originalMessageId = data['originalMessageId'] as String?;
@@ -392,6 +424,7 @@ mixin _CachedProxyEventHandler on _CachedAgentProxyBase {
     });
 
     _pendingPermissionRequests.clear();
+    _pendingConfirmRequests.clear();
 
     // 在删除前获取本地 maxSeq，用于设置 clearSeq = lastSeq = maxSeq
     final maxSeq = _messageStore.getMaxSeq(_deviceId, _employeeId);
@@ -436,8 +469,9 @@ mixin _CachedProxyEventHandler on _CachedAgentProxyBase {
       // Agent空闲时，使用 debounce 同步消息（避免与 agentStatusChanged 重复）
       _debouncedSyncMessages();
     } else if (state.status == AgentStatus.waitingPermission) {
-      // Agent等待权限时，查询权限请求
+      // Agent等待权限时，查询权限请求和确认请求
       _queryPendingPermission();
+      _queryPendingConfirm();
     }
   }
 }

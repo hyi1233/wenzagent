@@ -373,6 +373,28 @@ class AgentNotificationHub {
     }
   }
 
+  /// 用 DB 统计值修正内存未读计数
+  ///
+  /// 与 [restoreUnreadCount] 不同，此方法仅在内存中没有精确追踪时才覆盖。
+  /// 如果内存中已有精确的未读消息映射（_unreadMessages 非空），
+  /// 说明内存追踪更精确，跳过覆盖以避免远程旧值覆盖本地精确值。
+  ///
+  /// 适用场景：
+  /// - 已读标记后用 DB 统计修正内存缓存
+  /// - 远程摘要同步后修正本地计数
+  void adjustUnreadCountFromDb({
+    required String employeeId,
+    required int count,
+  }) {
+    // 如果内存中有精确追踪的未读消息，以内存为准
+    final trackedCount = _unreadMessages[employeeId]?.length ?? 0;
+    if (trackedCount > 0) {
+      return;
+    }
+    // 内存无追踪数据时，使用 DB 值恢复
+    restoreUnreadCount(employeeId: employeeId, count: count);
+  }
+
   // ============================================================
   // 查询方法
   // ============================================================

@@ -17,6 +17,52 @@ class InterruptRequest {
   }
 }
 
+/// 获取待处理确认请求
+class GetPendingConfirmRequest {
+  final String employeeId;
+
+  const GetPendingConfirmRequest({required this.employeeId});
+
+  Map<String, dynamic> toMap() {
+    return {'employeeId': employeeId};
+  }
+
+  factory GetPendingConfirmRequest.fromMap(Map<String, dynamic> map) {
+    return GetPendingConfirmRequest(
+      employeeId: map['employeeId'] as String,
+    );
+  }
+}
+
+/// 响应确认请求
+class RespondConfirmRequest {
+  final String employeeId;
+  final String requestId;
+  final String selectedOption;
+
+  const RespondConfirmRequest({
+    required this.employeeId,
+    required this.requestId,
+    required this.selectedOption,
+  });
+
+  Map<String, dynamic> toMap() {
+    return {
+      'employeeId': employeeId,
+      'requestId': requestId,
+      'selectedOption': selectedOption,
+    };
+  }
+
+  factory RespondConfirmRequest.fromMap(Map<String, dynamic> map) {
+    return RespondConfirmRequest(
+      employeeId: map['employeeId'] as String,
+      requestId: map['requestId'] as String,
+      selectedOption: map['selectedOption'] as String,
+    );
+  }
+}
+
 /// 获取待处理权限请求
 class GetPendingPermissionRequest {
   final String employeeId;

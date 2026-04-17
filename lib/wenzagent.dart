@@ -28,6 +28,18 @@ export 'src/host/host.dart';
 // Scheduler
 export 'src/scheduler/scheduler.dart';
 
+// Symbol Parser
+export 'src/agent/tool/builtin/symbol_parser/symbol_parser.dart';
+export 'src/agent/tool/builtin/symbol_parser/language_detector.dart';
+export 'src/agent/tool/builtin/symbol_parser/dart_parser.dart';
+export 'src/agent/tool/builtin/symbol_parser/python_parser.dart';
+export 'src/agent/tool/builtin/symbol_parser/js_ts_parser.dart';
+export 'src/agent/tool/builtin/symbol_parser/java_parser.dart';
+export 'src/agent/tool/builtin/symbol_parser/c_cpp_parser.dart';
+export 'src/agent/tool/builtin/symbol_parser/go_parser.dart';
+export 'src/agent/tool/builtin/symbol_parser/rust_parser.dart';
+export 'src/agent/tool/builtin/symbol_parser/generic_parser.dart';
+
 // Skill
 export 'src/skill/skill.dart';
 export 'src/skill/skill_context.dart';

@@ -236,6 +236,22 @@ class AgentRpcUtil {
     return _rpcCall(AgentRpcConfig.methodGetPendingPermission, request.toMap());
   }
 
+  // ===== Agent 确认管理 =====
+
+  /// 响应确认请求
+  Future<Map<String, dynamic>> respondConfirm(
+    RespondConfirmRequest request,
+  ) async {
+    return _rpcCall(AgentRpcConfig.methodRespondConfirm, request.toMap());
+  }
+
+  /// 获取待处理确认请求
+  Future<Map<String, dynamic>> getPendingConfirm(
+    GetPendingConfirmRequest request,
+  ) async {
+    return _rpcCall(AgentRpcConfig.methodGetPendingConfirm, request.toMap());
+  }
+
   // ===== Agent 状态查询 =====
 
   /// 获取状态快照

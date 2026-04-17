@@ -257,6 +257,41 @@ class AgentProxy {
     return AgentPermissionRequest.fromMap(requestData);
   }
 
+  // ===== 确认管理 =====
+
+  /// 获取当前确认请求（同步版本仅适用于本地模式）
+  AgentConfirmRequest? getPendingConfirmRequest() {
+    if (isLocalMode && _localAgent != null) {
+      return _localAgent.getPendingConfirmRequest();
+    }
+    return null;
+  }
+
+  /// 获取当前确认请求（异步版本，支持远程 RPC）
+  Future<AgentConfirmRequest?> getPendingConfirmRequestAsync() async {
+    if (isLocalMode && _localAgent != null) {
+      return _localAgent.getPendingConfirmRequest();
+    }
+    final request = GetPendingConfirmRequest(employeeId: employeeId);
+    final result = await _rpcUtil!.getPendingConfirm(request);
+    final requestData = result['request'] as Map<String, dynamic>?;
+    if (requestData == null) return null;
+    return AgentConfirmRequest.fromMap(requestData);
+  }
+
+  /// 响应确认请求
+  Future<void> respondToConfirm(String requestId, String selectedOption) async {
+    if (isLocalMode && _localAgent != null) {
+      return _localAgent.respondToConfirm(requestId, selectedOption);
+    }
+    final request = RespondConfirmRequest(
+      employeeId: employeeId,
+      requestId: requestId,
+      selectedOption: selectedOption,
+    );
+    await _rpcUtil!.respondConfirm(request);
+  }
+
   // ===== 会话消息 =====
 
   /// 获取会话消息

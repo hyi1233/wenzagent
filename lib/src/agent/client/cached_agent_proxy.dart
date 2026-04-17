@@ -68,6 +68,7 @@ abstract class _CachedAgentProxyBase {
 
   // ===== 权限与内存缓存 =====
   Map<String, AgentPermissionRequest> get _pendingPermissionRequests;
+  Map<String, AgentConfirmRequest> get _pendingConfirmRequests;
   Map<String, AgentMessage> get _inMemoryToolCallMessages;
 
   // ===== 事件订阅 =====
@@ -97,6 +98,7 @@ abstract class _CachedAgentProxyBase {
   Future<void> _saveToolCallMessageToDb(AgentMessage message);
   Future<void> _updateToolCallMessageInDb(AgentMessage message);
   Future<void> _queryPendingPermission();
+  Future<void> _queryPendingConfirm();
   void _debouncedSyncMessages();
   Future<void> _syncMessagesFromRemote();
   Future<void> _syncSessionSummaryFromRemote();
@@ -180,6 +182,10 @@ class CachedAgentProxy extends _CachedAgentProxyBase
   /// 权限请求缓存（远程模式使用）
   @override
   final Map<String, AgentPermissionRequest> _pendingPermissionRequests = {};
+
+  /// 确认请求缓存（远程模式使用）
+  @override
+  final Map<String, AgentConfirmRequest> _pendingConfirmRequests = {};
 
   /// 内存中的工具调用消息（本地模式使用，DB不保存临时消息）
   @override
@@ -701,6 +707,28 @@ class CachedAgentProxy extends _CachedAgentProxyBase
   Future<AgentPermissionRequest?> getPendingPermissionRequestAsync() =>
       _proxy.getPendingPermissionRequestAsync();
 
+  /// 获取当前确认请求
+  AgentConfirmRequest? getPendingConfirmRequest() {
+    // 远程模式：从缓存中获取
+    if (!_proxy.isLocalMode && _pendingConfirmRequests.isNotEmpty) {
+      return _pendingConfirmRequests.values.first;
+    }
+    // 本地模式：透传
+    return _proxy.getPendingConfirmRequest();
+  }
+
+  /// 获取当前确认请求（异步版本）
+  Future<AgentConfirmRequest?> getPendingConfirmRequestAsync() =>
+      _proxy.getPendingConfirmRequestAsync();
+
+  /// 响应确认请求
+  Future<void> respondToConfirm(String requestId, String selectedOption) async {
+    await _proxy.respondToConfirm(requestId, selectedOption);
+    // 清除缓存的确认请求
+    _pendingConfirmRequests.remove(requestId);
+    _CachedAgentProxyBase._log.info('已响应确认请求并清除缓存: $requestId');
+  }
+
   /// 清空当前会话
   ///
   /// 清空后重置本地水位线为 0，避免后续同步拉取大量无意义的删除事件。
@@ -711,6 +739,7 @@ class CachedAgentProxy extends _CachedAgentProxyBase
     // 第二步：清空本地数据库（远程模式）
     if (!_proxy.isLocalMode) {
       _pendingPermissionRequests.clear();
+      _pendingConfirmRequests.clear();
       // 使用正确的 deviceId 删除消息
       await _messageStore.deleteMessages(_deviceId, _employeeId);
       // 重置水位线，避免后续增量同步拉取大量删除事件
@@ -1119,6 +1148,9 @@ class CachedAgentProxy extends _CachedAgentProxyBase
 
     // 清除权限请求缓存
     _pendingPermissionRequests.clear();
+
+    // 清除确认请求缓存
+    _pendingConfirmRequests.clear();
 
     // 清除内存中的工具调用消息
     _inMemoryToolCallMessages.clear();

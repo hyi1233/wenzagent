@@ -146,13 +146,24 @@ extension DeviceAgentManagerEvents on DeviceAgentManager {
         return;
     }
 
+    // 对 sessionSummaryChanged 附加完整 summary 数据，确保远程设备能正确解析
+    Map<String, dynamic> broadcastData = data;
+    if (type == AgentEventType.sessionSummaryChanged) {
+      final summaryStore = SessionSummaryStore(deviceId: _deviceId);
+      final summary = summaryStore.getSummary(employeeId, deviceId: _deviceId);
+      broadcastData = Map<String, dynamic>.from(data);
+      if (summary != null) {
+        broadcastData['summary'] = summary.toMap();
+      }
+    }
+
     final msg = LanMessage(
       type: msgType,
       fromId: _deviceId,
       content: jsonEncode({
         'employeeId': employeeId,
         'type': type.value,
-        'data': data,
+        'data': broadcastData,
       }),
       topic: _topic,
     );

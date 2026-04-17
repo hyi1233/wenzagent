@@ -112,7 +112,8 @@ class DeviceNotificationManager {
   void markAllMessagesAsRead({required String employeeId, String? fromDeviceId}) {
     // 使用 fromDeviceId（消息所在设备）而非本机 _deviceId，确保远程会话也能正确更新 DB
     final targetDeviceId = fromDeviceId ?? _deviceId;
-    // 1. 先写 DB（messages + summary），确保广播时数据已是最新
+    // 1. 先写 DB（messages + session_summary），确保广播时数据已是最新
+    //    markAsReadInDb 内部已同步更新 session_summary.unread_count = 0
     _messageStoreService.markAsReadInDb(targetDeviceId, employeeId);
     // 2. 更新内存层
     _stateHolder.notificationHub.markAllAsRead(employeeId: employeeId, fromDeviceId: fromDeviceId);

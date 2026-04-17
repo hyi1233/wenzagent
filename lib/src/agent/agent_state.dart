@@ -1,4 +1,4 @@
-﻿import 'entity/entity.dart';
+import 'entity/entity.dart';
 
 /// Agent 工作状态
 enum AgentStatus {
@@ -249,6 +249,107 @@ enum PermissionApprovalScope {
     return PermissionApprovalScope.values.firstWhere(
       (e) => e.name == value,
       orElse: () => PermissionApprovalScope.once,
+    );
+  }
+}
+
+/// 确认选项
+///
+/// confirm 工具中用户可选择的一个选项。
+class ConfirmOption {
+  /// 选项标识符（如 "plan_a", "plan_b"）
+  final String key;
+
+  /// 选项显示文本（如 "方案A：使用Docker部署"）
+  final String label;
+
+  /// 选项详细描述（可选）
+  final String? description;
+
+  const ConfirmOption({
+    required this.key,
+    required this.label,
+    this.description,
+  });
+
+  Map<String, dynamic> toMap() {
+    return {
+      'key': key,
+      'label': label,
+      if (description != null) 'description': description,
+    };
+  }
+
+  factory ConfirmOption.fromMap(Map<String, dynamic> map) {
+    return ConfirmOption(
+      key: map['key'] as String,
+      label: map['label'] as String,
+      description: map['description'] as String?,
+    );
+  }
+}
+
+/// 确认请求信息（支持 JSON 序列化）
+///
+/// Agent 通过 confirm 工具向前端发送确认请求，
+/// 用户选择一个选项后，Agent 收到选择结果并继续执行。
+class AgentConfirmRequest {
+  /// 请求ID
+  final String requestId;
+
+  /// 确认标题（如"请选择部署方案"）
+  final String title;
+
+  /// 详细说明
+  final String message;
+
+  /// 选项列表（至少2个）
+  final List<ConfirmOption> options;
+
+  /// 默认选项 key
+  final String? defaultOption;
+
+  /// 附加数据
+  final Map<String, dynamic>? data;
+
+  /// 创建时间
+  final DateTime createTime;
+
+  AgentConfirmRequest({
+    required this.requestId,
+    required this.title,
+    required this.message,
+    required this.options,
+    this.defaultOption,
+    this.data,
+    DateTime? createTime,
+  }) : createTime = createTime ?? DateTime.now();
+
+  Map<String, dynamic> toMap() {
+    return {
+      'requestId': requestId,
+      'title': title,
+      'message': message,
+      'options': options.map((o) => o.toMap()).toList(),
+      if (defaultOption != null) 'defaultOption': defaultOption,
+      if (data != null) 'data': data,
+      'createTime': createTime.toIso8601String(),
+    };
+  }
+
+  factory AgentConfirmRequest.fromMap(Map<String, dynamic> map) {
+    return AgentConfirmRequest(
+      requestId: map['requestId'] as String,
+      title: map['title'] as String,
+      message: map['message'] as String,
+      options: (map['options'] as List)
+          .map((o) => ConfirmOption.fromMap(o as Map<String, dynamic>))
+          .toList(),
+      defaultOption: map['defaultOption'] as String?,
+      data: map['data'] as Map<String, dynamic>?,
+      createTime: map['createTime'] != null
+          ? DateTime.parse(map['createTime'] as String)
+          : DateTime.now(),
     );
   }
 }

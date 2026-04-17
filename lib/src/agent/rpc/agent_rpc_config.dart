@@ -79,6 +79,11 @@ class AgentRpcConfig {
   static const String methodRespondPermission = 'agentRespondPermission';
   static const String methodGetPendingPermission = 'agentGetPendingPermission';
 
+  // ===== Agent 确认管理 =====
+
+  static const String methodRespondConfirm = 'agentRespondConfirm';
+  static const String methodGetPendingConfirm = 'agentGetPendingConfirm';
+
   // ===== Agent 状态查询 =====
 
   static const String methodGetState = 'agentGetState';

@@ -23,4 +23,5 @@ export 'builtin/web_search_tool.dart';
 export 'builtin/env_info_tool.dart';
 export 'builtin/file_patch_tool.dart';
 export 'builtin/code_symbols_tool.dart';
+export 'builtin/confirm_tool.dart';
 export 'builtin/todo_manage_tool.dart';

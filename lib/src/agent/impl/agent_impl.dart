@@ -25,6 +25,8 @@ abstract class _AgentImplBase implements IAgent {
   ToolPermissionManager get _permissionManager;
   Map<String, Completer<PermissionDecision>> get _pendingPermissions;
   Map<String, AgentPermissionRequest> get _pendingPermissionRequests;
+  Map<String, Completer<String>> get _pendingConfirms;
+  Map<String, AgentConfirmRequest> get _pendingConfirmRequests;
   SkillLifecycleManager? get _skillManager;
   set _skillManager(SkillLifecycleManager? value);
   bool get _enableSkills;
@@ -116,6 +118,14 @@ class AgentImpl extends _AgentImplBase
   /// 待处理的权限请求信息
   @override
   final Map<String, AgentPermissionRequest> _pendingPermissionRequests = {};
+
+  /// 待处理的确认请求 Completer
+  @override
+  final Map<String, Completer<String>> _pendingConfirms = {};
+
+  /// 待处理的确认请求信息
+  @override
+  final Map<String, AgentConfirmRequest> _pendingConfirmRequests = {};
 
   /// 技能管理器
   @override
@@ -246,6 +256,9 @@ class AgentImpl extends _AgentImplBase
 
     // 注入 TaskComplexityTool 的 LLM 回调
     _injectTaskComplexityCallbacks();
+
+    // 注入 ConfirmTool 回调
+    _injectConfirmToolCallbacks();
 
     // 技能系统由 warmup 后台加载，不在 initialize 中阻塞
 
@@ -402,6 +415,15 @@ class AgentImpl extends _AgentImplBase
     }
     _pendingPermissions.clear();
     _pendingPermissionRequests.clear();
+
+    // 取消所有待处理的确认请求
+    for (final completer in _pendingConfirms.values) {
+      if (!completer.isCompleted) {
+        completer.completeError('Agent disposed');
+      }
+    }
+    _pendingConfirms.clear();
+    _pendingConfirmRequests.clear();
 
     _processor?.dispose();
     _processor = null;
@@ -1043,6 +1065,48 @@ class AgentImpl extends _AgentImplBase
 
     _AgentImplBase._log.info(
       'TaskComplexityTool fully injected (SubAgentExecutor + read-only tools) for $agentEmployeeId',
+    );
+  }
+
+  /// 注入 ConfirmTool 回调  ///  /// 设置 onConfirmRequest 回调：创建 Completer、广播事件、  /// 等待用户选择后返回结果。  void _injectConfirmToolCallbacks() {
+    final confirmTool = _toolRegistry.getTool('confirm');
+    if (confirmTool is! ConfirmTool) {
+      _AgentImplBase._log.warn(
+        'ConfirmTool not found in registry for injection. '
+        'Available tools: ${_toolRegistry.toolNames}',
+      );
+      return;
+    }
+
+    confirmTool.onConfirmRequest = (request) async {
+      final completer = Completer<String>();
+      _pendingConfirms[request.requestId] = completer;
+      _pendingConfirmRequests[request.requestId] = request;
+
+      // 设置处理器状态为等待权限（复用现有状态管理）
+      _processor?.setPermissionBlocked(request.requestId);
+
+      // 广播确认请求事件
+      _eventController.add(
+        AgentEvent(
+          type: AgentEventType.confirmRequest,
+          data: request.toMap(),
+          employeeId: employeeId,
+        ),
+      );
+
+      try {
+        return await completer.future;
+      } finally {
+        _pendingConfirms.remove(request.requestId);
+        _pendingConfirmRequests.remove(request.requestId);
+        // 恢复处理状态
+        _processor?.setPermissionBlocked(null);
+      }
+    };
+
+    _AgentImplBase._log.info(
+      'ConfirmTool injected (onConfirmRequest callback) for $employeeId',
     );
   }
 

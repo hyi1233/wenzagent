@@ -345,7 +345,8 @@ class DeviceMessageHandler {
             );
             final summaryStore = SessionSummaryStore(deviceId: _deviceId);
             summaryStore.upsertFromRemote(localSummary);
-            _stateHolder.notificationHub.restoreUnreadCount(
+            // 仅在内存无精确追踪时才修正未读计数，避免远程旧值覆盖本地精确值
+            _stateHolder.notificationHub.adjustUnreadCountFromDb(
               employeeId: employeeId,
               count: summary.unreadCount,
             );
@@ -498,20 +499,24 @@ class DeviceMessageHandler {
       final summaryStore = SessionSummaryStore(deviceId: _deviceId);
       summaryStore.upsertFromRemote(summary);
 
-      // 通知内存层更新未读计数
-      _stateHolder.notificationHub.restoreUnreadCount(
+      // 通知内存层更新未读计数（仅在内存无精确追踪时才覆盖，避免远程旧值覆盖本地精确值）
+      _stateHolder.notificationHub.adjustUnreadCountFromDb(
         employeeId: employeeId,
         count: summary.unreadCount,
       );
 
-      // 通知 UI 最新消息更新
+      // 通知 UI 最新消息更新（使用本地内存中的未读计数，而非远程的）
       if (summary.hasLatestMessage) {
         final agentMsg = _notificationManager.summaryToAgentMessage(summary);
+        final localUnreadCount = _stateHolder.notificationHub.getUnreadCount(
+          employeeId: employeeId,
+          fromDeviceId: fromDeviceId,
+        );
         _stateHolder.notificationHub.onLatestMessageUpdated(
           message: agentMsg,
           employeeId: employeeId,
           fromDeviceId: fromDeviceId,
-          unreadCount: summary.unreadCount,
+          unreadCount: localUnreadCount,
         );
       }
 

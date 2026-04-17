@@ -344,6 +344,21 @@ class DeviceRpcHandler {
       return {};
     });
 
+    // 确认管理方法
+    rpcServer.register(AgentRpcConfig.methodGetPendingConfirm, (params) async {
+      final request = GetPendingConfirmRequest.fromMap(params);
+      final agent = await _agentManager.ensureLocalAgentForRpc(request.employeeId);
+      final confirmRequest = agent.getPendingConfirmRequest();
+      return {'request': confirmRequest?.toMap()};
+    });
+
+    rpcServer.register(AgentRpcConfig.methodRespondConfirm, (params) async {
+      final request = RespondConfirmRequest.fromMap(params);
+      final agent = await _agentManager.ensureLocalAgentForRpc(request.employeeId);
+      await agent.respondToConfirm(request.requestId, request.selectedOption);
+      return {};
+    });
+
     // 上下文管理
     rpcServer.register(AgentRpcConfig.methodClearContext, (params) async {
       final request = ClearContextRequest.fromMap(params);

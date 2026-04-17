@@ -21,6 +21,12 @@ enum AgentEventType {
   /// 工具权限响应
   toolPermissionResponse,
 
+  /// 确认请求
+  confirmRequest,
+
+  /// 确认响应
+  confirmResponse,
+
   /// 消息被引用回复
   messageReplied,
 

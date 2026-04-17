@@ -305,6 +305,19 @@ abstract class IAgent {
   /// Agent 处于 waitingPermission 状态时返回权限请求信息
   AgentPermissionRequest? getPendingPermissionRequest();
 
+  // ===== 确认管理 =====
+
+  /// 响应确认请求
+  ///
+  /// [requestId] 确认请求ID
+  /// [selectedOption] 用户选择的选项 key
+  Future<void> respondToConfirm(String requestId, String selectedOption);
+
+  /// 获取当前待处理的确认请求
+  ///
+  /// Agent 处于 waitingPermission 状态时返回确认请求信息（如果有）
+  AgentConfirmRequest? getPendingConfirmRequest();
+
   // ===== 状态查询 =====
 
   /// 获取状态快照
