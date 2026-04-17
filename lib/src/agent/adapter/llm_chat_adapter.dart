@@ -187,6 +187,14 @@ class LlmChatAdapter implements IChatAdapter {
   /// 项目 UUID 变更回调
   void Function(String uuid)? onProjectUuidChanged;
 
+  /// Agent 处理完成事件回调（end 工具调用 / 正常结束 / 异常）
+  ///
+  /// 由 DeviceAgentManager 注入，用于推送通知提醒用户响铃。
+  /// 在 streamMessage 的 try/finally 中统一调用，保证所有退出路径都会触发。
+  /// [status] 结束状态：'end'（正常结束）、'error'（异常）、'cancelled'（取消）
+  /// [content] end 工具调用时携带的结束内容，可为空。
+  void Function({required String status, String? content})? onEndEvent;
+
   // ===== IChatAdapter 属性实现 =====
 
   String? get currentSessionUuid => currentEmployeeUuid;
@@ -250,6 +258,8 @@ class LlmChatAdapter implements IChatAdapter {
       _isStreaming = true;
       _dioCancelToken = llm.CancelToken();
       StreamSubscription? cancelSubscription;
+      String? endContent;
+      bool hadError = false;
 
       try {
         // 添加用户消息到历史
@@ -303,6 +313,7 @@ class LlmChatAdapter implements IChatAdapter {
           if (llmResult.toolCalls.isEmpty || !hasTools) {
             final aiContent = llmResult.aiContentBuffer.toString();
             if (aiContent.isNotEmpty) {
+              endContent = aiContent;
               memoryManager.addMessage(
                 currentEmployeeUuid!,
                 deviceId!,
@@ -433,6 +444,7 @@ class LlmChatAdapter implements IChatAdapter {
               'end tool called, breaking tool-calling loop:${endResult.content}',
             );
             if (endResult.content.isNotEmpty) {
+              endContent = endResult.content;
               controller.add(StreamResponse.chunk(endResult.content));
               memoryManager.addMessage(
                 currentEmployeeUuid!,
@@ -466,11 +478,16 @@ class LlmChatAdapter implements IChatAdapter {
         controller.add(StreamResponse.error('LLM 请求失败: $e'));
 
         _log.error('stream error', e);
+        hadError = true;
       } finally {
         cancelSubscription?.cancel();
         _isStreaming = false;
         _dioCancelToken = null;
         _runningTools.clear();
+        onEndEvent?.call(
+          status: hadError ? 'error' : 'end',
+          content: endContent,
+        );
         await controller.close();
       }
     }();

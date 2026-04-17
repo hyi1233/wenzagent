@@ -164,5 +164,17 @@ extension DeviceAgentManagerLifecycle on DeviceAgentManager {
         providerConfig: jsonEncode(providerConfig),
       );
     };
+
+    // Agent 处理完成事件回调：推送 AgentStatusNotifyEvent 通知 UI 响铃
+    adapter.onEndEvent = ({required String status, String? content}) {
+      final extra = <String, dynamic>{'endStatus': status};
+      if (content != null) extra['endContent'] = content;
+      _stateHolder.notificationHub.onAgentStatusChanged(
+        employeeId: employeeId,
+        fromDeviceId: _deviceId,
+        status: 'idle',
+        extra: extra,
+      );
+    };
   }
 }
