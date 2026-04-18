@@ -21,7 +21,57 @@ extension DeviceAgentManagerEvents on DeviceAgentManager {
       final type = event.type;
       final data = event.data;
 
-      if (type != AgentEventType.messageStatusChanged) return;
+      if (type != AgentEventType.messageStatusChanged) {
+        // 处理权限请求事件：持久化到 session_summary
+        if (type == AgentEventType.toolPermissionRequest) {
+          final requestId = data['requestId'] as String?;
+          if (requestId != null) {
+            _notificationManager.onPermissionRequested(
+              employeeId: employeeId,
+              fromDeviceId: _deviceId,
+              permissionJson: jsonEncode(data),
+            );
+          }
+        }
+
+        // 处理权限响应事件：清除 session_summary 中的 pending
+        if (type == AgentEventType.toolPermissionResponse) {
+          final requestId = data['requestId'] as String?;
+          if (requestId != null) {
+            _notificationManager.onPermissionResponded(
+              employeeId: employeeId,
+              fromDeviceId: _deviceId,
+              requestId: requestId,
+            );
+          }
+        }
+
+        // 处理确认请求事件：持久化到 session_summary
+        if (type == AgentEventType.confirmRequest) {
+          final requestId = data['requestId'] as String?;
+          if (requestId != null) {
+            _notificationManager.onConfirmRequested(
+              employeeId: employeeId,
+              fromDeviceId: _deviceId,
+              confirmJson: jsonEncode(data),
+            );
+          }
+        }
+
+        // 处理确认响应事件：清除 session_summary 中的 pending
+        if (type == AgentEventType.confirmResponse) {
+          final requestId = data['requestId'] as String?;
+          if (requestId != null) {
+            _notificationManager.onConfirmResponded(
+              employeeId: employeeId,
+              fromDeviceId: _deviceId,
+              requestId: requestId,
+            );
+          }
+        }
+
+        return;
+      }
       final status = data['status'] as String?;
       final messageId = data['messageId'] as String?;
 

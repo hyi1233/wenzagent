@@ -22,6 +22,7 @@ class SessionSummaryStore {
   /// 确保 session_summary 表存在（用于测试环境直接调用）
   void ensureTable() {
     SessionSummarySchema.create(_db);
+    SessionSummarySchema.ensurePendingColumns(_db);
   }
 
   // ═══════════════════════════════════════════════════
@@ -273,11 +274,90 @@ class SessionSummaryStore {
     );
   }
 
+  // ═══════════════════════════════════════════════════
+  // Pending 请求管理
+  // ═══════════════════════════════════════════════════
+
+  /// 设置待处理的权限请求
+  void setPendingPermission(
+    String employeeId,
+    String deviceId,
+    String permissionJson,
+  ) {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    _db.execute('''
+      UPDATE session_summary SET
+        pending_permission = ?,
+        pending_permission_time = ?,
+        update_time = ?
+      WHERE employee_id = ? AND device_id = ?
+    ''', [permissionJson, now, now, employeeId, deviceId]);
+  }
+
+  /// 清除待处理的权限请求
+  void clearPendingPermission(String employeeId, String deviceId) {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    _db.execute('''
+      UPDATE session_summary SET
+        pending_permission = NULL,
+        pending_permission_time = NULL,
+        update_time = ?
+      WHERE employee_id = ? AND device_id = ?
+    ''', [now, employeeId, deviceId]);
+  }
+
+  /// 设置待处理的确认请求
+  void setPendingConfirm(
+    String employeeId,
+    String deviceId,
+    String confirmJson,
+  ) {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    _db.execute('''
+      UPDATE session_summary SET
+        pending_confirm = ?,
+        pending_confirm_time = ?,
+        update_time = ?
+      WHERE employee_id = ? AND device_id = ?
+    ''', [confirmJson, now, now, employeeId, deviceId]);
+  }
+
+  /// 清除待处理的确认请求
+  void clearPendingConfirm(String employeeId, String deviceId) {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    _db.execute('''
+      UPDATE session_summary SET
+        pending_confirm = NULL,
+        pending_confirm_time = NULL,
+        update_time = ?
+      WHERE employee_id = ? AND device_id = ?
+    ''', [now, employeeId, deviceId]);
+  }
+
+  /// 获取所有有 pending 请求的摘要（权限或确认）
+  List<SessionSummaryEntity> getPendingSummaries({String? deviceId}) {
+    String sql;
+    List<Object?> params;
+    if (deviceId != null && deviceId.isNotEmpty) {
+      sql = 'SELECT * FROM session_summary WHERE device_id = ? '
+          'AND (pending_permission IS NOT NULL OR pending_confirm IS NOT NULL) '
+          'ORDER BY update_time DESC';
+      params = [deviceId];
+    } else {
+      sql = 'SELECT * FROM session_summary '
+          'WHERE pending_permission IS NOT NULL OR pending_confirm IS NOT NULL '
+          'ORDER BY update_time DESC';
+      params = [];
+    }
+    return _db.select(sql, params).map((row) => SessionSummaryEntity.fromMap(row)).toList();
+  }
+
   /// 从远程数据合并本地摘要（仅当远程数据更新时覆盖最新消息字段）
   ///
   /// 合并策略：
   /// - 最新消息字段（last_msg_*）：仅当远程 lastMsgTime 更新时才覆盖
   /// - 未读数：取本地和远程的最大值，避免因同步时序丢失未读
+  /// - pending 字段：优先取非空值，两端都有则取时间较新的
   void upsertFromRemote(SessionSummaryEntity remote) {
     final now = DateTime.now().millisecondsSinceEpoch;
     final remoteMsgTime = remote.lastMsgTime ?? 0;
@@ -285,8 +365,10 @@ class SessionSummaryStore {
       INSERT INTO session_summary (
         employee_id, device_id, unread_count,
         last_msg_id, last_msg_role, last_msg_content,
-        last_msg_time, last_msg_seq, update_time
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        last_msg_time, last_msg_seq, update_time,
+        pending_permission, pending_confirm,
+        pending_permission_time, pending_confirm_time
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(employee_id, device_id) DO UPDATE SET
         unread_count = MAX(COALESCE(session_summary.unread_count, 0), ?),
         last_msg_id = CASE WHEN ? > COALESCE(session_summary.last_msg_time, 0)
@@ -298,11 +380,49 @@ class SessionSummaryStore {
         last_msg_time = MAX(COALESCE(session_summary.last_msg_time, 0), ?),
         last_msg_seq = CASE WHEN ? > COALESCE(session_summary.last_msg_time, 0)
                             THEN ? ELSE session_summary.last_msg_seq END,
+        pending_permission = CASE
+          WHEN COALESCE(excluded.pending_permission, '') != '' AND COALESCE(session_summary.pending_permission, '') = ''
+            THEN excluded.pending_permission
+          WHEN COALESCE(session_summary.pending_permission, '') != '' AND COALESCE(excluded.pending_permission, '') = ''
+            THEN session_summary.pending_permission
+          WHEN COALESCE(excluded.pending_permission_time, 0) > COALESCE(session_summary.pending_permission_time, 0)
+            THEN excluded.pending_permission
+          ELSE session_summary.pending_permission
+        END,
+        pending_permission_time = CASE
+          WHEN COALESCE(excluded.pending_permission, '') != '' AND COALESCE(session_summary.pending_permission, '') = ''
+            THEN excluded.pending_permission_time
+          WHEN COALESCE(session_summary.pending_permission, '') != '' AND COALESCE(excluded.pending_permission, '') = ''
+            THEN session_summary.pending_permission_time
+          WHEN COALESCE(excluded.pending_permission_time, 0) > COALESCE(session_summary.pending_permission_time, 0)
+            THEN excluded.pending_permission_time
+          ELSE session_summary.pending_permission_time
+        END,
+        pending_confirm = CASE
+          WHEN COALESCE(excluded.pending_confirm, '') != '' AND COALESCE(session_summary.pending_confirm, '') = ''
+            THEN excluded.pending_confirm
+          WHEN COALESCE(session_summary.pending_confirm, '') != '' AND COALESCE(excluded.pending_confirm, '') = ''
+            THEN session_summary.pending_confirm
+          WHEN COALESCE(excluded.pending_confirm_time, 0) > COALESCE(session_summary.pending_confirm_time, 0)
+            THEN excluded.pending_confirm
+          ELSE session_summary.pending_confirm
+        END,
+        pending_confirm_time = CASE
+          WHEN COALESCE(excluded.pending_confirm, '') != '' AND COALESCE(session_summary.pending_confirm, '') = ''
+            THEN excluded.pending_confirm_time
+          WHEN COALESCE(session_summary.pending_confirm, '') != '' AND COALESCE(excluded.pending_confirm, '') = ''
+            THEN session_summary.pending_confirm_time
+          WHEN COALESCE(excluded.pending_confirm_time, 0) > COALESCE(session_summary.pending_confirm_time, 0)
+            THEN excluded.pending_confirm_time
+          ELSE session_summary.pending_confirm_time
+        END,
         update_time = ?
     ''', [
       remote.employeeId, remote.deviceId, remote.unreadCount,
       remote.lastMsgId, remote.lastMsgRole, remote.lastMsgContent,
       remoteMsgTime, remote.lastMsgSeq, now,
+      remote.pendingPermission, remote.pendingConfirm,
+      remote.pendingPermissionTime, remote.pendingConfirmTime,
       remote.unreadCount,
       remoteMsgTime, remote.lastMsgId,
       remoteMsgTime, remote.lastMsgRole,

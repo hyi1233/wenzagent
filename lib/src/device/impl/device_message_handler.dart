@@ -354,6 +354,22 @@ class DeviceMessageHandler {
               employeeId: employeeId,
               count: summary.unreadCount,
             );
+
+            // 处理 pending 字段：恢复远程设备的 pending 通知
+            if (summary.hasPendingPermission) {
+              _stateHolder.notificationHub.onPermissionPending(
+                employeeId: employeeId,
+                fromDeviceId: fromDeviceId,
+                permissionJson: summary.pendingPermission!,
+              );
+            }
+            if (summary.hasPendingConfirm) {
+              _stateHolder.notificationHub.onConfirmPending(
+                employeeId: employeeId,
+                fromDeviceId: fromDeviceId,
+                confirmJson: summary.pendingConfirm!,
+              );
+            }
           }
         }
 
@@ -521,6 +537,22 @@ class DeviceMessageHandler {
           employeeId: employeeId,
           fromDeviceId: fromDeviceId,
           unreadCount: localUnreadCount,
+        );
+      }
+
+      // 处理 pending 字段：恢复远程设备的 pending 通知
+      if (summary.hasPendingPermission) {
+        _stateHolder.notificationHub.onPermissionPending(
+          employeeId: employeeId,
+          fromDeviceId: summary.deviceId,
+          permissionJson: summary.pendingPermission!,
+        );
+      }
+      if (summary.hasPendingConfirm) {
+        _stateHolder.notificationHub.onConfirmPending(
+          employeeId: employeeId,
+          fromDeviceId: summary.deviceId,
+          confirmJson: summary.pendingConfirm!,
         );
       }
 

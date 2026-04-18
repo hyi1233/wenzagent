@@ -3,6 +3,9 @@ import 'dart:async';
 import '../entity/agent_message.dart';
 import 'agent_notification_event.dart';
 
+// ignore: unused_import 用于类型检查 pending 事件
+// 新增的 pending 事件类型已添加到 sealed class AgentNotificationEvent
+
 /// 订阅令牌（管理生命周期）
 class AgentNotificationSubscription {
   final StreamSubscription<AgentNotificationEvent> _sub;
@@ -73,6 +76,14 @@ class AgentNotificationHub {
             if (e.employeeId != employeeId) return false;
           case AgentStatusNotifyEvent e:
             if (e.employeeId != employeeId) return false;
+          case AgentPermissionPendingEvent e:
+            if (e.employeeId != employeeId) return false;
+          case AgentPermissionResolvedEvent e:
+            if (e.employeeId != employeeId) return false;
+          case AgentConfirmPendingEvent e:
+            if (e.employeeId != employeeId) return false;
+          case AgentConfirmResolvedEvent e:
+            if (e.employeeId != employeeId) return false;
         }
       }
 
@@ -87,6 +98,14 @@ class AgentNotificationHub {
           case AgentLatestMessageClearedEvent e:
             if (e.fromDeviceId != fromDeviceId) return false;
           case AgentStatusNotifyEvent e:
+            if (e.fromDeviceId != fromDeviceId) return false;
+          case AgentPermissionPendingEvent e:
+            if (e.fromDeviceId != fromDeviceId) return false;
+          case AgentPermissionResolvedEvent e:
+            if (e.fromDeviceId != fromDeviceId) return false;
+          case AgentConfirmPendingEvent e:
+            if (e.fromDeviceId != fromDeviceId) return false;
+          case AgentConfirmResolvedEvent e:
             if (e.fromDeviceId != fromDeviceId) return false;
           default:
             break;
@@ -132,6 +151,70 @@ class AgentNotificationHub {
         .where((e) => e is AgentUnreadCountChangedEvent).cast<AgentUnreadCountChangedEvent>()
         .listen(onCount);
     return AgentNotificationSubscription(sub);
+  }
+
+  // ============================================================
+  // Pending 请求事件（被 DeviceNotificationManager 调用）
+  // ============================================================
+
+  /// 通知权限请求 pending
+  ///
+  /// 由 DeviceNotificationManager 在权限请求持久化到 DB 后调用。
+  void onPermissionPending({
+    required String employeeId,
+    required String fromDeviceId,
+    required String permissionJson,
+  }) {
+    if (_isDisposed) return;
+    _controller.add(AgentPermissionPendingEvent(
+      employeeId: employeeId,
+      fromDeviceId: fromDeviceId,
+      permissionJson: permissionJson,
+    ));
+  }
+
+  /// 通知权限请求已处理
+  void onPermissionResolved({
+    required String employeeId,
+    required String fromDeviceId,
+    required String requestId,
+  }) {
+    if (_isDisposed) return;
+    _controller.add(AgentPermissionResolvedEvent(
+      employeeId: employeeId,
+      fromDeviceId: fromDeviceId,
+      requestId: requestId,
+    ));
+  }
+
+  /// 通知确认请求 pending
+  ///
+  /// 由 DeviceNotificationManager 在确认请求持久化到 DB 后调用。
+  void onConfirmPending({
+    required String employeeId,
+    required String fromDeviceId,
+    required String confirmJson,
+  }) {
+    if (_isDisposed) return;
+    _controller.add(AgentConfirmPendingEvent(
+      employeeId: employeeId,
+      fromDeviceId: fromDeviceId,
+      confirmJson: confirmJson,
+    ));
+  }
+
+  /// 通知确认请求已处理
+  void onConfirmResolved({
+    required String employeeId,
+    required String fromDeviceId,
+    required String requestId,
+  }) {
+    if (_isDisposed) return;
+    _controller.add(AgentConfirmResolvedEvent(
+      employeeId: employeeId,
+      fromDeviceId: fromDeviceId,
+      requestId: requestId,
+    ));
   }
 
   // ============================================================

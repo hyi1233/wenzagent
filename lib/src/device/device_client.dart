@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 
 import '../agent/client/cached_agent_proxy.dart';
 import '../agent/entity/entity.dart';
@@ -662,6 +662,42 @@ class DeviceClient {
         fromDeviceId: fromDeviceId,
       );
 
+  // ===== 会话摘要查询 =====
+
+  /// 获取所有会话摘要列表（含最新消息 + 未读 + pending 状态）
+  List<SessionSummaryEntity> getSessionSummaries({String? deviceId}) {
+    final summaryStore = SessionSummaryStore(deviceId: _deviceId);
+    return summaryStore.getAllSummaries(deviceId: deviceId ?? _deviceId);
+  }
+
+  /// 获取单个会话摘要
+  SessionSummaryEntity? getSessionSummary({
+    required String employeeId,
+    String? deviceId,
+  }) {
+    final summaryStore = SessionSummaryStore(deviceId: _deviceId);
+    return summaryStore.getSummary(employeeId, deviceId: deviceId ?? _deviceId);
+  }
+
+  /// 获取所有有 pending 请求的会话
+  List<SessionSummaryEntity> getPendingSessions() {
+    final summaryStore = SessionSummaryStore(deviceId: _deviceId);
+    return summaryStore.getPendingSummaries();
+  }
+
+  /// 获取有未读消息的会话列表
+  List<SessionSummaryEntity> getUnreadSessions({String? deviceId}) {
+    final summaryStore = SessionSummaryStore(deviceId: _deviceId);
+    final ids = summaryStore.getUnreadEmployeeIds(deviceId: deviceId ?? _deviceId);
+    if (ids.isEmpty) return [];
+    final summaries = <SessionSummaryEntity>[];
+    for (final id in ids) {
+      final s = summaryStore.getSummary(id, deviceId: deviceId ?? _deviceId);
+      if (s != null) summaries.add(s);
+    }
+    return summaries;
+  }
+
   // ===== 消息通知中心 =====
 
   AgentNotificationHub get notificationHub =>
@@ -692,6 +728,10 @@ class DeviceClient {
 
   Future<void> restoreUnreadStatus() =>
       _notificationManager.restoreUnreadStatus();
+
+  /// 恢复 pending 请求（App 启动时调用）
+  void restorePendingRequests() =>
+      _notificationManager.restorePendingRequests();
 
   Future<List<ChatMessage>> getLatestMessages({
     required String employeeId,

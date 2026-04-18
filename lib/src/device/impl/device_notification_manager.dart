@@ -14,7 +14,7 @@ import 'device_state_holder.dart';
 
 /// 通知与已读管理器
 ///
-/// 负责未读消息计数、已读状态管理、最新消息缓存等。
+/// 负责未读消息计数、已读状态管理、最新消息缓存、pending 请求持久化等。
 class DeviceNotificationManager {
   static final _log = Logger('DeviceNotificationManager');
 
@@ -192,6 +192,8 @@ class DeviceNotificationManager {
           );
         }
       }
+      // 恢复 pending 请求
+      restorePendingRequests();
     } catch (e) {
       _log.debug('restoreUnreadStatus failed: $e');
     }
@@ -223,6 +225,170 @@ class DeviceNotificationManager {
       employeeId,
       limit: limit,
     );
+  }
+
+  // ===== Pending 请求持久化 =====
+
+  /// App 启动时从 session_summary 恢复 pending 请求
+  ///
+  /// 遍历所有有 pending 请求的摘要，触发 notificationHub 事件，
+  /// 使 UI 能在重启后显示未处理的权限/确认请求。
+  void restorePendingRequests() {
+    try {
+      final summaryStore = SessionSummaryStore(deviceId: _deviceId);
+      final pendingSummaries = summaryStore.getPendingSummaries();
+
+      for (final summary in pendingSummaries) {
+        if (summary.hasPendingPermission) {
+          notificationHub.onPermissionPending(
+            employeeId: summary.employeeId,
+            fromDeviceId: summary.deviceId,
+            permissionJson: summary.pendingPermission!,
+          );
+          _log.debug('恢复权限请求: employeeId=${summary.employeeId}');
+        }
+        if (summary.hasPendingConfirm) {
+          notificationHub.onConfirmPending(
+            employeeId: summary.employeeId,
+            fromDeviceId: summary.deviceId,
+            confirmJson: summary.pendingConfirm!,
+          );
+          _log.debug('恢复确认请求: employeeId=${summary.employeeId}');
+        }
+      }
+    } catch (e) {
+      _log.debug('restorePendingRequests failed: $e');
+    }
+  }
+
+  /// 权限请求产生时调用：写入 DB + 广播事件
+  ///
+  /// 由 DeviceAgentManager 在收到 toolPermissionRequest 事件后调用。
+  void onPermissionRequested({
+    required String employeeId,
+    required String fromDeviceId,
+    required String permissionJson,
+  }) {
+    try {
+      final summaryStore = SessionSummaryStore(deviceId: _deviceId);
+      summaryStore.setPendingPermission(employeeId, fromDeviceId, permissionJson);
+
+      notificationHub.onPermissionPending(
+        employeeId: employeeId,
+        fromDeviceId: fromDeviceId,
+        permissionJson: permissionJson,
+      );
+
+      // 广播摘要变更到远程设备（携带 pending 数据）
+      _broadcastSessionSummaryWithPending(employeeId, fromDeviceId);
+
+      _log.info('权限请求已持久化: employeeId=$employeeId, device=$fromDeviceId');
+    } catch (e) {
+      _log.error('onPermissionRequested failed', e);
+    }
+  }
+
+  /// 权限请求响应后调用：清除 DB + 广播事件
+  ///
+  /// 由 DeviceAgentManager 在收到 toolPermissionResponse 事件后调用。
+  void onPermissionResponded({
+    required String employeeId,
+    required String fromDeviceId,
+    required String requestId,
+  }) {
+    try {
+      final summaryStore = SessionSummaryStore(deviceId: _deviceId);
+      summaryStore.clearPendingPermission(employeeId, fromDeviceId);
+
+      notificationHub.onPermissionResolved(
+        employeeId: employeeId,
+        fromDeviceId: fromDeviceId,
+        requestId: requestId,
+      );
+
+      // 广播摘要变更到远程设备（pending 已清除）
+      _broadcastSessionSummaryWithPending(employeeId, fromDeviceId);
+
+      _log.info('权限请求已清除: employeeId=$employeeId, requestId=$requestId');
+    } catch (e) {
+      _log.error('onPermissionResponded failed', e);
+    }
+  }
+
+  /// 确认请求产生时调用：写入 DB + 广播事件
+  ///
+  /// 由 DeviceAgentManager 在收到 confirmRequest 事件后调用。
+  void onConfirmRequested({
+    required String employeeId,
+    required String fromDeviceId,
+    required String confirmJson,
+  }) {
+    try {
+      final summaryStore = SessionSummaryStore(deviceId: _deviceId);
+      summaryStore.setPendingConfirm(employeeId, fromDeviceId, confirmJson);
+
+      notificationHub.onConfirmPending(
+        employeeId: employeeId,
+        fromDeviceId: fromDeviceId,
+        confirmJson: confirmJson,
+      );
+
+      // 广播摘要变更到远程设备（携带 pending 数据）
+      _broadcastSessionSummaryWithPending(employeeId, fromDeviceId);
+
+      _log.info('确认请求已持久化: employeeId=$employeeId, device=$fromDeviceId');
+    } catch (e) {
+      _log.error('onConfirmRequested failed', e);
+    }
+  }
+
+  /// 确认请求响应后调用：清除 DB + 广播事件
+  ///
+  /// 由 DeviceAgentManager 在收到 confirmResponse 事件后调用。
+  void onConfirmResponded({
+    required String employeeId,
+    required String fromDeviceId,
+    required String requestId,
+  }) {
+    try {
+      final summaryStore = SessionSummaryStore(deviceId: _deviceId);
+      summaryStore.clearPendingConfirm(employeeId, fromDeviceId);
+
+      notificationHub.onConfirmResolved(
+        employeeId: employeeId,
+        fromDeviceId: fromDeviceId,
+        requestId: requestId,
+      );
+
+      // 广播摘要变更到远程设备（pending 已清除）
+      _broadcastSessionSummaryWithPending(employeeId, fromDeviceId);
+
+      _log.info('确认请求已清除: employeeId=$employeeId, requestId=$requestId');
+    } catch (e) {
+      _log.error('onConfirmResponded failed', e);
+    }
+  }
+
+  /// 广播带 pending 数据的会话摘要到远程设备
+  void _broadcastSessionSummaryWithPending(String employeeId, String fromDeviceId) {
+    final lanClient = _connectionManager.lanClient;
+    if (lanClient == null || !lanClient.isConnected) return;
+
+    final summaryStore = SessionSummaryStore(deviceId: _deviceId);
+    final summary = summaryStore.getSummary(employeeId, deviceId: fromDeviceId);
+
+    final msg = LanMessage(
+      type: LanMessageType.agentSessionSummaryChanged,
+      fromId: _deviceId,
+      content: jsonEncode({
+        'employeeId': employeeId,
+        'fromDeviceId': fromDeviceId,
+        'summary': summary?.toMap(),
+      }),
+      topic: _topic,
+    );
+
+    lanClient.sendLanMessage(msg);
   }
 
   // ===== 消息缓存 =====

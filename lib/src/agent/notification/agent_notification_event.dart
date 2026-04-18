@@ -124,3 +124,85 @@ class AgentStatusNotifyEvent extends AgentNotificationEvent {
     this.extra,
   });
 }
+
+/// 权限请求 pending 通知
+///
+/// 当 Agent 产生权限请求并持久化到 session_summary 后触发，
+/// UI 可用于显示权限请求提示（如红点、弹窗等）。
+class AgentPermissionPendingEvent extends AgentNotificationEvent {
+  /// 员工 ID
+  final String employeeId;
+
+  /// 来源设备 ID
+  final String fromDeviceId;
+
+  /// 权限请求数据（JSON 字符串）
+  final String permissionJson;
+
+  AgentPermissionPendingEvent({
+    required this.employeeId,
+    required this.fromDeviceId,
+    required this.permissionJson,
+  });
+}
+
+/// 权限请求已处理通知
+///
+/// 当权限请求被响应并从 session_summary 清除后触发。
+class AgentPermissionResolvedEvent extends AgentNotificationEvent {
+  /// 员工 ID
+  final String employeeId;
+
+  /// 来源设备 ID
+  final String fromDeviceId;
+
+  /// 请求 ID
+  final String requestId;
+
+  AgentPermissionResolvedEvent({
+    required this.employeeId,
+    required this.fromDeviceId,
+    required this.requestId,
+  });
+}
+
+/// 确认请求 pending 通知
+///
+/// 当 Agent 产生确认请求并持久化到 session_summary 后触发，
+/// UI 可用于显示确认请求提示。
+class AgentConfirmPendingEvent extends AgentNotificationEvent {
+  /// 员工 ID
+  final String employeeId;
+
+  /// 来源设备 ID
+  final String fromDeviceId;
+
+  /// 确认请求数据（JSON 字符串）
+  final String confirmJson;
+
+  AgentConfirmPendingEvent({
+    required this.employeeId,
+    required this.fromDeviceId,
+    required this.confirmJson,
+  });
+}
+
+/// 确认请求已处理通知
+///
+/// 当确认请求被响应并从 session_summary 清除后触发。
+class AgentConfirmResolvedEvent extends AgentNotificationEvent {
+  /// 员工 ID
+  final String employeeId;
+
+  /// 来源设备 ID
+  final String fromDeviceId;
+
+  /// 请求 ID
+  final String requestId;
+
+  AgentConfirmResolvedEvent({
+    required this.employeeId,
+    required this.fromDeviceId,
+    required this.requestId,
+  });
+}

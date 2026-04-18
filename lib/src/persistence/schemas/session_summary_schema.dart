@@ -32,5 +32,52 @@ class SessionSummarySchema {
       CREATE INDEX IF NOT EXISTS idx_summary_last_msg_time
         ON session_summary(last_msg_time DESC)
     ''');
+
+    // v14: pending 字段（CREATE TABLE 时直接包含，避免 ALTER TABLE）
+    // 注意：如果表已存在且缺少这些列，需要通过 v14_migration 的 ALTER TABLE 添加
+    // 此处 CREATE TABLE IF NOT EXISTS 不会重建已有表，所以 ALTER TABLE 仍需保留
+  }
+
+  /// 确保 pending 字段存在（v14 新增列）
+  ///
+  /// 在 CREATE TABLE 之后调用，处理表已存在但缺少 pending 列的情况。
+  /// ALTER TABLE ADD COLUMN 对已存在的列是安全的（SQLite 会忽略）。
+  static void ensurePendingColumns(Database db) {
+    // 检查 pending_permission 列是否已存在
+    final columns = db.select(
+      "PRAGMA table_info(session_summary)",
+    );
+    final columnNames = columns.map((row) => row['name'] as String).toSet();
+
+    if (!columnNames.contains('pending_permission')) {
+      db.execute(
+        'ALTER TABLE session_summary ADD COLUMN pending_permission TEXT',
+      );
+    }
+    if (!columnNames.contains('pending_confirm')) {
+      db.execute(
+        'ALTER TABLE session_summary ADD COLUMN pending_confirm TEXT',
+      );
+    }
+    if (!columnNames.contains('pending_permission_time')) {
+      db.execute(
+        'ALTER TABLE session_summary ADD COLUMN pending_permission_time INTEGER',
+      );
+    }
+    if (!columnNames.contains('pending_confirm_time')) {
+      db.execute(
+        'ALTER TABLE session_summary ADD COLUMN pending_confirm_time INTEGER',
+      );
+    }
+
+    // 查询有 pending 请求的摘要优化索引
+    db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_summary_pending_permission
+        ON session_summary(pending_permission) WHERE pending_permission IS NOT NULL
+    ''');
+    db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_summary_pending_confirm
+        ON session_summary(pending_confirm) WHERE pending_confirm IS NOT NULL
+    ''');
   }
 }

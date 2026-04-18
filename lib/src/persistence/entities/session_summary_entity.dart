@@ -13,6 +13,18 @@ class SessionSummaryEntity {
   int? lastMsgTime;
   int? lastMsgSeq;
 
+  /// 待处理的权限请求（JSON 序列化的 AgentPermissionRequest）
+  String? pendingPermission;
+
+  /// 待处理的确认请求（JSON 序列化的 AgentConfirmRequest）
+  String? pendingConfirm;
+
+  /// 权限请求时间
+  int? pendingPermissionTime;
+
+  /// 确认请求时间
+  int? pendingConfirmTime;
+
   int updateTime;
 
   SessionSummaryEntity({
@@ -24,11 +36,26 @@ class SessionSummaryEntity {
     this.lastMsgContent,
     this.lastMsgTime,
     this.lastMsgSeq,
+    this.pendingPermission,
+    this.pendingConfirm,
+    this.pendingPermissionTime,
+    this.pendingConfirmTime,
     required this.updateTime,
   });
 
   bool get hasLatestMessage =>
       lastMsgId != null && lastMsgId!.isNotEmpty;
+
+  /// 是否有待处理的权限请求
+  bool get hasPendingPermission =>
+      pendingPermission != null && pendingPermission!.isNotEmpty;
+
+  /// 是否有待处理的确认请求
+  bool get hasPendingConfirm =>
+      pendingConfirm != null && pendingConfirm!.isNotEmpty;
+
+  /// 是否有任何待处理请求
+  bool get hasPendingRequest => hasPendingPermission || hasPendingConfirm;
 
   String get previewText {
     if (lastMsgContent == null) return '';
@@ -46,6 +73,10 @@ class SessionSummaryEntity {
     'last_msg_content': lastMsgContent,
     'last_msg_time': lastMsgTime,
     'last_msg_seq': lastMsgSeq,
+    'pending_permission': pendingPermission,
+    'pending_confirm': pendingConfirm,
+    'pending_permission_time': pendingPermissionTime,
+    'pending_confirm_time': pendingConfirmTime,
     'update_time': updateTime,
   };
 
@@ -59,6 +90,10 @@ class SessionSummaryEntity {
       lastMsgContent: map['last_msg_content'] as String?,
       lastMsgTime: map['last_msg_time'] as int?,
       lastMsgSeq: map['last_msg_seq'] as int?,
+      pendingPermission: map['pending_permission'] as String?,
+      pendingConfirm: map['pending_confirm'] as String?,
+      pendingPermissionTime: map['pending_permission_time'] as int?,
+      pendingConfirmTime: map['pending_confirm_time'] as int?,
       updateTime: map['update_time'] as int? ?? 0,
     );
   }

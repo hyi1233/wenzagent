@@ -18,6 +18,7 @@ import 'migrations/v10_migration.dart';
 import 'migrations/v11_migration.dart';
 import 'migrations/v12_migration.dart';
 import 'migrations/v13_migration.dart';
+import 'migrations/v14_migration.dart';
 
 /// 数据库管理器
 ///
@@ -94,6 +95,7 @@ class DatabaseManager {
     V11Migration(),
     V12Migration(),
     V13Migration(),
+    V14Migration(),
   ];
 
   /// 获取数据库连接
