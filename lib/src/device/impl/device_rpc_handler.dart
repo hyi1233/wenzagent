@@ -779,9 +779,11 @@ class DeviceRpcHandler {
     // 员工管理方法
     rpcServer.register(HostRpcConfig.methodGetEmployees, (params) async {
       final request = GetEmployeesRequest.fromMap(params);
+      final includeDeleted = params['includeDeleted'] as bool? ?? false;
       final employees = await _employeeManager.getEmployees(
         keyword: request.keyword,
         status: request.status,
+        includeDeleted: includeDeleted,
       );
       return {'employees': employees.map((e) => e.toMap()).toList()};
     });

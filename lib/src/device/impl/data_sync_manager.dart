@@ -1,4 +1,3 @@
-import '../../host/host_rpc_methods.dart';
 import '../../persistence/persistence.dart';
 import '../../service/service.dart';
 import '../../utils/logger.dart';
@@ -122,7 +121,7 @@ class DataSyncManager {
           if (existing == null) {
             await _employeeManager.saveEmployee(remote);
           } else {
-            _mergeAndSaveEmployee(existing, remote);
+            await _mergeAndSaveEmployee(existing, remote);
           }
           return remote;
         } catch (e) {
@@ -253,10 +252,11 @@ class DataSyncManager {
     for (final device in devices) {
       if (device.id == _deviceId) continue;
       try {
+        // 请求包含已删除的员工，以便正确同步删除状态（与 _doSyncSessionsFromDevices 一致）
         final result = await _connectionManager.invokeRemote(
           device.id,
           HostRpcConfig.methodGetEmployees,
-          {},
+          {'includeDeleted': true},
         );
         for (final data in (result['employees'] as List? ?? [])) {
           final employee = AiEmployeeEntity.fromMap(
@@ -264,8 +264,11 @@ class DataSyncManager {
           );
           final existing = await _employeeManager.getEmployeeIncludingDeleted(employee.uuid);
           if (existing == null) {
-            await _employeeManager.saveEmployee(employee);
-            changedIds.add(employee.uuid);
+            // 本地不存在 → 远程未删除的直接保存，已删除的不保存（避免数据污染）
+            if (employee.deleted != 1) {
+              await _employeeManager.saveEmployee(employee);
+              changedIds.add(employee.uuid);
+            }
           } else {
             final changed = await _mergeAndSaveEmployee(existing, employee);
             if (changed) changedIds.add(employee.uuid);
@@ -365,10 +368,6 @@ class DataSyncManager {
     });
   }
 
-  /// 将会话删除同步到所有在线设备
-  ///
-  /// 广播软删除的会话数据（含 deleted=1 和 deleteTime），
-  /// 让其他设备通过 methodSyncSessions 执行 deleteTime 合并。
   void _syncSessionDeleteToDevices(AiEmployeeSessionEntity session) {
     Future(() async {
       if (!_connectionManager.isConnected) return;

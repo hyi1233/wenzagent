@@ -85,12 +85,18 @@ class EmployeeStore {
   }
 
   /// 查找所有员工
+  ///
+  /// [includeDeleted] 为 true 时包含已删除的员工（用于跨设备同步场景）
   Future<List<AiEmployeeEntity>> findAll(
     String? deviceId, {
     String? keyword,
     String? status,
+    bool includeDeleted = false,
   }) async {
-    final conditions = <String>['deleted = 0'];
+    final conditions = <String>[];
+    if (!includeDeleted) {
+      conditions.add('deleted = 0');
+    }
     final params = <Object?>[];
 
     if (deviceId != null) {
@@ -108,7 +114,7 @@ class EmployeeStore {
       params.add(like);
     }
 
-    final where = conditions.join(' AND ');
+    final where = conditions.isNotEmpty ? conditions.join(' AND ') : '1=1';
     final sql =
         'SELECT * FROM employees WHERE $where ORDER BY is_pinned DESC, sort_order ASC';
 

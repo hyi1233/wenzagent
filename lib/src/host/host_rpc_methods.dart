@@ -64,9 +64,11 @@ void registerHostRpcMethods({
 
   // 获取员工列表
   rpcServer.register(HostRpcConfig.methodGetEmployees, (params) async {
+    final includeDeleted = params['includeDeleted'] as bool? ?? false;
     final employees = await employeeManager.getEmployees(
       keyword: params['keyword'] as String?,
       status: params['status'] as String?,
+      includeDeleted: includeDeleted,
     );
     return {'employees': employees.map((e) => e.toMap()).toList()};
   });

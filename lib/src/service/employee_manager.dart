@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 
 import '../persistence/persistence.dart';
 
@@ -49,10 +49,12 @@ abstract class EmployeeManager {
   /// 获取员工列表
   /// [allDevices] 为 true 时返回所有设备的员工（跨设备同步场景），
   /// 为 false 时仅返回本设备的员工（默认行为）
+  /// [includeDeleted] 为 true 时包含已删除的员工（用于跨设备同步场景）
   Future<List<AiEmployeeEntity>> getEmployees({
     String? keyword,
     String? status,
     bool allDevices = false,
+    bool includeDeleted = false,
   });
 
   /// 获取单个员工
@@ -100,8 +102,14 @@ class EmployeeManagerImpl implements EmployeeManager {
     String? keyword,
     String? status,
     bool allDevices = false,
+    bool includeDeleted = false,
   }) async {
-    return _store.findAll(allDevices ? null : _deviceId, keyword: keyword, status: status);
+    return _store.findAll(
+      allDevices ? null : _deviceId,
+      keyword: keyword,
+      status: status,
+      includeDeleted: includeDeleted,
+    );
   }
 
   @override
