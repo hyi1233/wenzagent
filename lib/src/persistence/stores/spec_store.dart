@@ -52,7 +52,7 @@ class SpecStore {
     return resultSet.map(_rowToItem).toList();
   }
 
-  /// 按 ID 查询单个 spec 项
+  /// 按 ID 查询单个 spec 项（不含已删除）
   SpecItemEntity? findById(String id) {
     final resultSet = _db.select(
       'SELECT * FROM spec_items WHERE id = ? AND deleted = 0',
@@ -62,6 +62,27 @@ class SpecStore {
       return _rowToItem(row);
     }
     return null;
+  }
+
+  /// 按 ID 查询单个 spec 项（含已删除）
+  SpecItemEntity? findByIdIncludingDeleted(String id) {
+    final resultSet = _db.select(
+      'SELECT * FROM spec_items WHERE id = ?',
+      [id],
+    );
+    for (final row in resultSet) {
+      return _rowToItem(row);
+    }
+    return null;
+  }
+
+  /// 查询员工的所有 spec 项（含已删除）
+  List<SpecItemEntity> findAllByEmployee(String employeeId) {
+    final resultSet = _db.select(
+      'SELECT * FROM spec_items WHERE employee_id = ? ORDER BY sort_order ASC, create_time ASC',
+      [employeeId],
+    );
+    return resultSet.map(_rowToItem).toList();
   }
 
   /// 保存 spec 项（INSERT OR REPLACE）
@@ -146,6 +167,61 @@ class SpecStore {
       _db.execute('ROLLBACK');
       rethrow;
     }
+  }
+
+  // ===== 远程同步 merge 方法 =====
+
+  /// 从远程数据 merge 写入单个 spec 项
+  ///
+  /// 合并策略：
+  /// - 本地不存在 → INSERT
+  /// - 远程 updateTime > 本地 updateTime → UPDATE
+  /// - 软删除合并：取 deleted=1 的一方（双方都删除则保留较新的）
+  ///
+  /// 返回 true 表示数据有变化（新增或更新）
+  bool upsertFromRemote(SpecItemEntity remote) {
+    final existing = findByIdIncludingDeleted(remote.id);
+    if (existing == null) {
+      // 本地不存在 → 直接插入
+      save(remote);
+      return true;
+    }
+
+    // 基于 updateTime 判断是否需要更新数据
+    final shouldUpdateData = remote.updateTime.isAfter(existing.updateTime);
+
+    // 软删除合并：deleted=1 优先，双方都为 1 则保留较新的
+    int mergedDeleted;
+    if (remote.deleted == 1 && existing.deleted == 0) {
+      mergedDeleted = 1;
+    } else if (existing.deleted == 1 && remote.deleted == 0) {
+      mergedDeleted = 1;
+    } else {
+      // 双方相同（都为 0 或都为 1）
+      mergedDeleted = remote.deleted;
+    }
+
+    final shouldUpdateDelete = mergedDeleted != existing.deleted;
+
+    if (shouldUpdateData || shouldUpdateDelete) {
+      final base = shouldUpdateData ? remote : existing;
+      save(base.copyWith(deleted: mergedDeleted));
+      return true;
+    }
+    return false;
+  }
+
+  /// 从远程数据 merge 写入多个 spec 项（批量）
+  ///
+  /// 返回有变化的条数
+  int upsertAllFromRemote(List<SpecItemEntity> items) {
+    int changedCount = 0;
+    for (final item in items) {
+      if (upsertFromRemote(item)) {
+        changedCount++;
+      }
+    }
+    return changedCount;
   }
 
   /// 按状态统计数量

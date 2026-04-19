@@ -1,4 +1,5 @@
 import '../persistence/persistence.dart';
+import '../persistence/store_merge_util.dart';
 import '../rpc/remote_call_server.dart';
 import '../service/service.dart';
 import 'client_session_manager.dart';
@@ -34,6 +35,14 @@ class HostRpcConfig {
   static const String methodGetSessionSummaries = 'hostGetSessionSummaries';
   static const String methodSyncSessionSummaries = 'hostSyncSessionSummaries';
 
+  // ===== Spec 同步 =====
+  static const String methodGetSpecs = 'hostGetSpecs';
+  static const String methodSyncSpecs = 'hostSyncSpecs';
+
+  // ===== Todo 同步 =====
+  static const String methodGetTodos = 'hostGetTodos';
+  static const String methodSyncTodos = 'hostSyncTodos';
+
   // ===== 设备管理 =====
   static const String methodGetOnlineDevices = 'getOnlineDevices';
   static const String methodGetDeviceInfo = 'getDeviceInfo';
@@ -48,6 +57,9 @@ class HostRpcConfig {
   static const String methodEnableScheduledTask = 'hostEnableScheduledTask';
   static const String methodDisableScheduledTask = 'hostDisableScheduledTask';
   static const String methodTriggerScheduledTask = 'hostTriggerScheduledTask';
+
+  // ===== 设备配置查询 =====
+  static const String methodGetDeviceConfig = 'hostGetDeviceConfig';
 }
 
 /// 注册Host端RPC方法
@@ -204,43 +216,23 @@ void registerHostRpcMethods({
         await employeeManager.saveEmployee(employee);
       } else {
         // 合并：deleteTime 独立比较，数据按 updateTime 合并
-        final localDT = existing.deletedTime;
-        final remoteDT = employee.deletedTime;
-        DateTime? mergedDeleteTime;
-        int mergedDeleted;
-
-        if (localDT == null && remoteDT == null) {
-          mergedDeleteTime = null;
-          mergedDeleted = 0;
-        } else if (localDT == null) {
-          // 远程有删除记录 → 保留远程删除状态
-          mergedDeleteTime = remoteDT;
-          mergedDeleted = employee.deleted;
-        } else if (remoteDT == null) {
-          // 本地有删除记录 → 保留本地删除状态
-          mergedDeleteTime = localDT;
-          mergedDeleted = existing.deleted;
-        } else {
-          // 双方都有删除记录 → 取 deleteTime 更大的决定 deleted
-          if (localDT.isAfter(remoteDT)) {
-            mergedDeleteTime = localDT;
-            mergedDeleted = existing.deleted;
-          } else {
-            mergedDeleteTime = remoteDT;
-            mergedDeleted = employee.deleted;
-          }
-        }
-
-        final shouldUpdateData =
-            employee.updateTime.isAfter(existing.updateTime);
+        final mergeResult = StoreMergeUtil.mergeDeleteState(
+          localDeleteTime: existing.deletedTime,
+          localDeleted: existing.deleted,
+          remoteDeleteTime: employee.deletedTime,
+          remoteDeleted: employee.deleted,
+        );
+        final shouldUpdateData = StoreMergeUtil.shouldUpdateData(
+            existing.updateTime, employee.updateTime);
         final shouldUpdateDelete =
-            mergedDeleteTime != localDT || mergedDeleted != existing.deleted;
+            mergeResult.mergedDeleteTime != existing.deletedTime ||
+                mergeResult.mergedDeleted != existing.deleted;
 
         if (shouldUpdateData || shouldUpdateDelete) {
           final base = shouldUpdateData ? employee : existing;
           await employeeManager.updateEmployee(base.copyWith(
-            deleted: mergedDeleted,
-            deletedTime: mergedDeleteTime,
+            deleted: mergeResult.mergedDeleted,
+            deletedTime: mergeResult.mergedDeleteTime,
           ));
         }
       }
@@ -264,40 +256,23 @@ void registerHostRpcMethods({
         }
       } else {
         // 合并：deleteTime + deleted 独立比较，数据按 updateTime 合并
-        final localDT = existing.deleteTime;
-        final remoteDT = session.deleteTime;
-        DateTime? mergedDeleteTime;
-        int mergedDeleted;
-
-        if (localDT == null && remoteDT == null) {
-          mergedDeleteTime = null;
-          mergedDeleted = 0;
-        } else if (localDT == null) {
-          mergedDeleteTime = remoteDT;
-          mergedDeleted = session.deleted;
-        } else if (remoteDT == null) {
-          mergedDeleteTime = localDT;
-          mergedDeleted = existing.deleted;
-        } else {
-          if (localDT.isAfter(remoteDT)) {
-            mergedDeleteTime = localDT;
-            mergedDeleted = existing.deleted;
-          } else {
-            mergedDeleteTime = remoteDT;
-            mergedDeleted = session.deleted;
-          }
-        }
-
-        final shouldUpdateData =
-            session.updateTime.isAfter(existing.updateTime);
+        final mergeResult = StoreMergeUtil.mergeDeleteState(
+          localDeleteTime: existing.deleteTime,
+          localDeleted: existing.deleted,
+          remoteDeleteTime: session.deleteTime,
+          remoteDeleted: session.deleted,
+        );
+        final shouldUpdateData = StoreMergeUtil.shouldUpdateData(
+            existing.updateTime, session.updateTime);
         final shouldUpdateDelete =
-            mergedDeleteTime != localDT || mergedDeleted != existing.deleted;
+            mergeResult.mergedDeleteTime != existing.deleteTime ||
+                mergeResult.mergedDeleted != existing.deleted;
 
         if (shouldUpdateData || shouldUpdateDelete) {
           final base = shouldUpdateData ? session : existing;
           await sessionManager.save(base.copyWith(
-            deleted: mergedDeleted,
-            deleteTime: mergedDeleteTime,
+            deleted: mergeResult.mergedDeleted,
+            deleteTime: mergeResult.mergedDeleteTime,
           ));
         }
       }
@@ -349,10 +324,100 @@ void registerHostRpcMethods({
     return {'count': count};
   });
 
+  // ===== Spec 同步方法 =====
+
+  // 获取指定员工的所有 spec 项（含已删除）
+  rpcServer.register(HostRpcConfig.methodGetSpecs, (params) async {
+    final employeeId = params['employeeId'] as String;
+    final specStore = SpecStore(deviceId: '');
+    final specs = specStore.findAllByEmployee(employeeId);
+    return {'specs': specs.map((s) => s.toMap()).toList()};
+  });
+
+  // 同步远程 spec 数据（接收远程 spec 列表，逐条 merge 写入本地）
+  rpcServer.register(HostRpcConfig.methodSyncSpecs, (params) async {
+    final specStore = SpecStore(deviceId: '');
+    final specs = (params['specs'] as List? ?? [])
+        .map((s) => SpecItemEntity.fromMap(s as Map<String, dynamic>))
+        .toList();
+    int count = 0;
+    for (final spec in specs) {
+      if (specStore.upsertFromRemote(spec)) {
+        count++;
+      }
+    }
+    return {'count': count};
+  });
+
+  // ===== Todo 同步方法 =====
+
+  // 获取指定员工的所有 todo 数据（含已删除）
+  rpcServer.register(HostRpcConfig.methodGetTodos, (params) async {
+    final employeeId = params['employeeId'] as String;
+    final todoStore = TodoStore(deviceId: '');
+    final topics = todoStore.findAllTopicsIncludingDeleted(employeeId);
+    final taskItems = <Map<String, dynamic>>[];
+    for (final topic in topics) {
+      final items = todoStore.findTaskItemsByTopic(topic.id);
+      taskItems.addAll(items.map((i) => i.toMap()).toList());
+    }
+    return {
+      'topics': topics.map((t) => t.toMap()).toList(),
+      'taskItems': taskItems,
+    };
+  });
+
+  // 同步远程 todo 数据（接收远程 todo 列表，逐条 merge 写入本地）
+  rpcServer.register(HostRpcConfig.methodSyncTodos, (params) async {
+    final todoStore = TodoStore(deviceId: '');
+    final topics = (params['topics'] as List? ?? [])
+        .map((t) => TodoTopicEntity.fromMap(t as Map<String, dynamic>))
+        .toList();
+    final taskItems = (params['taskItems'] as List? ?? [])
+        .map((i) => TodoTaskItemEntity.fromMap(i as Map<String, dynamic>))
+        .toList();
+    int count = 0;
+    for (final topic in topics) {
+      if (todoStore.upsertTopicFromRemote(topic)) {
+        count++;
+      }
+    }
+    for (final item in taskItems) {
+      if (todoStore.upsertTaskItemFromRemote(item)) {
+        count++;
+      }
+    }
+    return {'count': count};
+  });
+
   // 获取在线设备列表
   rpcServer.register(HostRpcConfig.methodGetOnlineDevices, (params) async {
     final devices = clientSessionManager.getOnlineDevicesInfo();
     return {'devices': devices};
+  });
+
+  // 获取设备配置（按 employeeId + deviceId 查询）
+  rpcServer.register(HostRpcConfig.methodGetDeviceConfig, (params) async {
+    final employeeId = params['employeeId'] as String;
+    final deviceId = params['deviceId'] as String?;
+
+    final session = await sessionManager.getSession(employeeId);
+    if (session == null) {
+      throw Exception('Session not found: $employeeId');
+    }
+
+    if (deviceId != null && deviceId.isNotEmpty) {
+      final config = session.config[deviceId];
+      if (config != null) {
+        return {'deviceConfig': config.toMap()};
+      }
+    }
+
+    // 返回所有设备配置
+    final allConfigs = session.config.map(
+      (key, value) => MapEntry(key, value.toMap()),
+    );
+    return {'configs': allConfigs};
   });
 
   // 获取设备信息

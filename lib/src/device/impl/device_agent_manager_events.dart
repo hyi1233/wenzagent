@@ -223,6 +223,9 @@ extension DeviceAgentManagerEvents on DeviceAgentManager {
       }
     }
 
+    // agentStatusChanged 事件已包含完整的 AgentStateSnapshot.toMap() 数据（由 AgentImpl._setStatus 触发），
+    // 包含 currentProcessingMessageId、queuedMessageIds 等字段，直接透传即可。
+
     final msg = LanMessage(
       type: msgType,
       fromId: _deviceId,

@@ -59,6 +59,15 @@ class TodoStore {
     return resultSet.map(_rowToTopic).toList();
   }
 
+  /// 查询所有待办主题（含已删除）
+  List<TodoTopicEntity> findAllTopicsIncludingDeleted(String employeeId) {
+    final resultSet = _db.select(
+      'SELECT * FROM todo_topics WHERE employee_id = ? ORDER BY sort_order ASC, create_time ASC',
+      [employeeId],
+    );
+    return resultSet.map(_rowToTopic).toList();
+  }
+
   /// 查询已完成主题
   List<TodoTopicEntity> findCompletedTopics(String employeeId, {int limit = 50}) {
     final resultSet = _db.select(
@@ -193,6 +202,30 @@ class TodoStore {
         [now, topicId],
       );
     }
+  }
+
+  /// 按 ID 查询单个主题（含已删除）
+  TodoTopicEntity? findTopicByIdIncludingDeleted(String id) {
+    final resultSet = _db.select(
+      'SELECT * FROM todo_topics WHERE id = ?',
+      [id],
+    );
+    for (final row in resultSet) {
+      return _rowToTopic(row);
+    }
+    return null;
+  }
+
+  /// 按 ID 查询单个任务子项（含已删除）
+  TodoTaskItemEntity? findTaskItemByIdIncludingDeleted(String id) {
+    final resultSet = _db.select(
+      'SELECT * FROM todo_task_items WHERE id = ?',
+      [id],
+    );
+    for (final row in resultSet) {
+      return _rowToTaskItem(row);
+    }
+    return null;
   }
 
   /// 按状态统计主题数量
@@ -352,6 +385,109 @@ class TodoStore {
       _db.execute('ROLLBACK');
       rethrow;
     }
+  }
+
+  // ===== 远程同步 merge 方法 =====
+
+  /// 从远程数据 merge 写入单个 TodoTopic
+  ///
+  /// 合并策略：
+  /// - 本地不存在 → INSERT
+  /// - 远程 updateTime > 本地 updateTime → UPDATE
+  /// - 软删除合并：取 deleted=1 的一方（双方都删除则保留较新的）
+  ///
+  /// 返回 true 表示数据有变化（新增或更新）
+  bool upsertTopicFromRemote(TodoTopicEntity remote) {
+    final existing = findTopicByIdIncludingDeleted(remote.id);
+    if (existing == null) {
+      // 本地不存在 → 直接插入
+      saveTopic(remote);
+      return true;
+    }
+
+    // 基于 updateTime 判断是否需要更新数据
+    final shouldUpdateData = remote.updateTime.isAfter(existing.updateTime);
+
+    // 软删除合并：deleted=1 优先，双方都为 1 则保留较新的
+    int mergedDeleted;
+    if (remote.deleted == 1 && existing.deleted == 0) {
+      mergedDeleted = 1;
+    } else if (existing.deleted == 1 && remote.deleted == 0) {
+      mergedDeleted = 1;
+    } else {
+      // 双方相同（都为 0 或都为 1）
+      mergedDeleted = remote.deleted;
+    }
+
+    final shouldUpdateDelete = mergedDeleted != existing.deleted;
+
+    if (shouldUpdateData || shouldUpdateDelete) {
+      final base = shouldUpdateData ? remote : existing;
+      saveTopic(base.copyWith(deleted: mergedDeleted));
+      return true;
+    }
+    return false;
+  }
+
+  /// 从远程数据 merge 写入单个 TodoTaskItem
+  ///
+  /// 合并策略同 [upsertTopicFromRemote]
+  bool upsertTaskItemFromRemote(TodoTaskItemEntity remote) {
+    final existing = findTaskItemByIdIncludingDeleted(remote.id);
+    if (existing == null) {
+      // 本地不存在 → 直接插入
+      saveTaskItem(remote);
+      return true;
+    }
+
+    // 基于 updateTime 判断是否需要更新数据
+    final shouldUpdateData = remote.updateTime.isAfter(existing.updateTime);
+
+    // 软删除合并：deleted=1 优先，双方都为 1 则保留较新的
+    int mergedDeleted;
+    if (remote.deleted == 1 && existing.deleted == 0) {
+      mergedDeleted = 1;
+    } else if (existing.deleted == 1 && remote.deleted == 0) {
+      mergedDeleted = 1;
+    } else {
+      // 双方相同（都为 0 或都为 1）
+      mergedDeleted = remote.deleted;
+    }
+
+    final shouldUpdateDelete = mergedDeleted != existing.deleted;
+
+    if (shouldUpdateData || shouldUpdateDelete) {
+      final base = shouldUpdateData ? remote : existing;
+      saveTaskItem(base.copyWith(deleted: mergedDeleted));
+      return true;
+    }
+    return false;
+  }
+
+  /// 从远程数据 merge 写入多个 TodoTopic（批量）
+  ///
+  /// 返回有变化的条数
+  int upsertAllTopicsFromRemote(List<TodoTopicEntity> items) {
+    int changedCount = 0;
+    for (final item in items) {
+      if (upsertTopicFromRemote(item)) {
+        changedCount++;
+      }
+    }
+    return changedCount;
+  }
+
+  /// 从远程数据 merge 写入多个 TodoTaskItem（批量）
+  ///
+  /// 返回有变化的条数
+  int upsertAllTaskItemsFromRemote(List<TodoTaskItemEntity> items) {
+    int changedCount = 0;
+    for (final item in items) {
+      if (upsertTaskItemFromRemote(item)) {
+        changedCount++;
+      }
+    }
+    return changedCount;
   }
 
   /// 批量更新任务子项排序（事务）

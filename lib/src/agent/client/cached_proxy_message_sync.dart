@@ -279,9 +279,101 @@ mixin _CachedProxyMessageSync on _CachedAgentProxyBase {
         _CachedAgentProxyBase._log.error('同步远程 MCP 配置失败', e);
       }
 
+      // 6. 同步远程 Spec 数据 → 写入本地 SpecStore
+      await _syncSpecsFromRemote();
+
+      // 7. 同步远程 Todo 数据 → 写入本地 TodoStore
+      await _syncTodosFromRemote();
+
       _CachedAgentProxyBase._log.info('远程状态同步完成');
     } catch (e) {
       _CachedAgentProxyBase._log.error('同步远程会话状态失败', e);
+    }
+  }
+
+  /// 从远程同步 Spec 数据并写入本地 SpecStore
+  ///
+  /// 通过 RPC 查询远程设备的所有 spec 数据（含已删除），
+  /// 调用 SpecStore.upsertFromRemote() merge 写入本地 DB。
+  Future<void> _syncSpecsFromRemote() async {
+    if (_isDisposed || _proxy.isLocalMode) return;
+    try {
+      final activeResult = await _proxy.getActiveSpecs();
+      final completedResult = await _proxy.getCompletedSpecs(limit: 9999);
+      final allSpecMaps = <Map<String, dynamic>>[
+        ...activeResult,
+        ...completedResult,
+      ];
+      if (allSpecMaps.isEmpty) return;
+
+      final specStore = SpecStore(deviceId: _deviceId);
+      final specItems = allSpecMaps
+          .map((s) => SpecItemEntity.fromMap(s))
+          .toList();
+      final count = specStore.upsertAllFromRemote(specItems);
+      if (count > 0) {
+        _CachedAgentProxyBase._log.info('远程 Spec 同步完成: merge 写入 $count 条');
+      }
+    } catch (e) {
+      _CachedAgentProxyBase._log.debug('同步远程 Spec 数据失败: $e');
+    }
+  }
+
+  /// 从远程同步 Todo 数据并写入本地 TodoStore
+  ///
+  /// 通过 RPC 查询远程设备的所有 todo 数据（topics + taskItems），
+  /// 调用 TodoStore.upsertTopicFromRemote()/upsertTaskItemFromRemote() merge 写入本地 DB。
+  Future<void> _syncTodosFromRemote() async {
+    if (_isDisposed || _proxy.isLocalMode) return;
+    try {
+      // 1. 获取所有 topic（current + pending + completed）
+      final currentTopics = await _proxy.getCurrentTopics();
+      final pendingTopics = await _proxy.getPendingTopics();
+      final completedTopics = await _proxy.getCompletedTopics(limit: 9999);
+      final allTopicMaps = <Map<String, dynamic>>[
+        ...currentTopics,
+        ...pendingTopics,
+        ...completedTopics,
+      ];
+      if (allTopicMaps.isEmpty) return;
+
+      // 去重（同一个 topic 可能出现在多个查询结果中）
+      final seenTopicIds = <String>{};
+      final uniqueTopicMaps = <Map<String, dynamic>>[];
+      for (final t in allTopicMaps) {
+        final id = t['id'] as String?;
+        if (id != null && seenTopicIds.add(id)) {
+          uniqueTopicMaps.add(t);
+        }
+      }
+
+      final todoStore = TodoStore(deviceId: _deviceId);
+      final topicItems = uniqueTopicMaps
+          .map((t) => TodoTopicEntity.fromMap(t))
+          .toList();
+      final topicCount = todoStore.upsertAllTopicsFromRemote(topicItems);
+
+      // 2. 对每个 topic 获取 taskItems
+      int taskItemCount = 0;
+      for (final topic in topicItems) {
+        try {
+          final taskItemMaps = await _proxy.getTaskItemsByTopic(topic.id);
+          if (taskItemMaps.isNotEmpty) {
+            final taskItems = taskItemMaps
+                .map((t) => TodoTaskItemEntity.fromMap(t))
+                .toList();
+            taskItemCount += todoStore.upsertAllTaskItemsFromRemote(taskItems);
+          }
+        } catch (e) {
+          _CachedAgentProxyBase._log.debug('同步远程 Todo TaskItems 失败 (topic=${topic.id}): $e');
+        }
+      }
+
+      if (topicCount > 0 || taskItemCount > 0) {
+        _CachedAgentProxyBase._log.info('远程 Todo 同步完成: topics=$topicCount, taskItems=$taskItemCount');
+      }
+    } catch (e) {
+      _CachedAgentProxyBase._log.debug('同步远程 Todo 数据失败: $e');
     }
   }
 

@@ -60,11 +60,14 @@ mixin _CachedProxyEventHandler on _CachedAgentProxyBase {
       case AgentEventType.messageReadStatusChanged:
         _handleMessageReadStatusChanged(data);
         break;
+      case AgentEventType.configChanged:
+        _handleConfigChanged(data);
+        break;
       case AgentEventType.todoTopicChanged:
       case AgentEventType.todoTaskItemChanged:
       case AgentEventType.specChanged:
-      case AgentEventType.configChanged:
-        // 数据变更事件：透传给上层，由 UI 决定是否刷新
+        // 数据变更事件：通知 UI 刷新数据列表
+        _notifyMessagesChanged();
         break;
       case AgentEventType.unknown:
         break;
@@ -92,6 +95,9 @@ mixin _CachedProxyEventHandler on _CachedAgentProxyBase {
     // 如果是完成或失败状态，立即同步远程消息（避免 500ms 去抖延迟）
     if (status == 'completed' || status == 'failed' ||
         status == 'interrupted') {
+      // 清除 callingToolIds 缓存（消息处理完成时所有工具调用已结束）
+      _callingToolIdsCache = [];
+
       // 本地模式：从内存缓存移除已完成的工具调用消息
       _inMemoryToolCallMessages.removeWhere((key, _) {
         // 移除所有以该 messageId 相关的工具调用（按 toolCallId 关联）
@@ -135,8 +141,18 @@ mixin _CachedProxyEventHandler on _CachedAgentProxyBase {
     final status = data['status'] as String?;
     _CachedAgentProxyBase._log.debug('Agent状态变更: $status');
 
+    // 更新状态缓存
+    if (data.containsKey('currentProcessingMessageId')) {
+      _currentProcessingMessageId = data['currentProcessingMessageId'] as String?;
+    }
+    if (data.containsKey('queuedMessageIds')) {
+      _queuedMessageIds = (data['queuedMessageIds'] as List?)?.cast<String>() ?? [];
+    }
+
     // 如果是空闲状态，可能意味着消息处理完成
     if (status == 'idle') {
+      _currentProcessingMessageId = null;
+      _queuedMessageIds = [];
       // 使用 debounce 避免与 completed/failed 状态的同步重复
       _debouncedSyncMessages();
     }
@@ -149,9 +165,19 @@ mixin _CachedProxyEventHandler on _CachedAgentProxyBase {
     if (eventType == 'toolCallStart') {
       // 工具调用开始：创建工具调用消息
       _createToolCallMessage(data);
+      // 更新 callingToolIds 缓存
+      final toolCallId = data['toolCallId'] as String?;
+      if (toolCallId != null) {
+        _callingToolIdsCache = [..._callingToolIdsCache, toolCallId];
+      }
     } else if (eventType == 'toolCallResult') {
       // 工具调用完成：更新工具消息
       _updateToolCallMessage(data);
+      // 更新 callingToolIds 缓存
+      final toolCallId = data['toolCallId'] as String?;
+      if (toolCallId != null) {
+        _callingToolIdsCache = _callingToolIdsCache.where((id) => id != toolCallId).toList();
+      }
 
       // 使用 debounce 同步消息，避免与 completed/idle 重复
       _debouncedSyncMessages();
@@ -363,6 +389,9 @@ mixin _CachedProxyEventHandler on _CachedAgentProxyBase {
 
     _CachedAgentProxyBase._log.debug('消息开始处理: $messageId');
 
+    // 更新状态缓存
+    _currentProcessingMessageId = messageId;
+
     // 更新消息状态为 processing
     _updateMessageStatus(messageId, 'processing');
   }
@@ -425,9 +454,67 @@ mixin _CachedProxyEventHandler on _CachedAgentProxyBase {
     _notifyMessagesChanged();
   }
 
+  /// 处理配置变更事件
+  ///
+  /// 收到 configChanged 事件后，解析配置数据并更新 AgentProxy 的远程缓存，
+  /// 确保 UI 通过 getProviderConfig()/getCurrentProjectUuid() 等方法获取最新配置。
+  void _handleConfigChanged(Map<String, dynamic> data) {
+    final configType = data['configType'] as String?;
+    final action = data['action'] as String?;
+    _CachedAgentProxyBase._log.debug('配置变更: type=$configType, action=$action');
+
+    switch (configType) {
+      case 'provider':
+        final providerConfigMap = data['providerConfig'] as Map<String, dynamic>?;
+        if (providerConfigMap != null) {
+          _proxy.updateRemoteCache(providerConfig: providerConfigMap);
+          _CachedAgentProxyBase._log.info('远程 Provider 配置已更新: ${providerConfigMap['provider']} · ${providerConfigMap['model']}');
+        } else if (action == 'cleared') {
+          _proxy.clearRemoteCacheConfig('provider');
+        }
+        break;
+      case 'project':
+        final projectData = data['projectData'] as Map<String, dynamic>?;
+        if (projectData != null) {
+          final projectUuid = projectData['projectUuid'] as String?;
+          _proxy.updateRemoteCache(projectUuid: projectUuid);
+          _CachedAgentProxyBase._log.info('远程项目已更新: $projectUuid');
+        } else if (action == 'cleared') {
+          _proxy.clearRemoteCacheConfig('project');
+        }
+        break;
+      case 'context':
+        final contextData = data['contextData'] as Map<String, dynamic>?;
+        if (contextData != null) {
+          _proxy.updateRemoteCache(contextData: contextData);
+        } else if (action == 'cleared') {
+          _proxy.clearRemoteCacheConfig('context');
+        }
+        break;
+      case 'skills':
+        // skills 变更事件不携带完整列表，仅标记变更类型
+        // 完整数据需通过 getSkillsConfigAsync() 主动拉取
+        _CachedAgentProxyBase._log.debug('远程技能配置变更: action=$action');
+        break;
+      case 'tools':
+        _CachedAgentProxyBase._log.debug('远程工具配置变更: action=$action');
+        break;
+      default:
+        _CachedAgentProxyBase._log.debug('未知配置变更类型: $configType');
+        break;
+    }
+
+    // 通知 UI 刷新配置显示
+    _notifyMessagesChanged();
+  }
+
   /// 处理状态变更
   void _handleStateChange(AgentStateSnapshot state) {
     _CachedAgentProxyBase._log.debug('状态变更: ${state.status}');
+
+    // 更新状态缓存（来自 onStateChanged 流的快照）
+    _currentProcessingMessageId = state.currentProcessingMessageId;
+    _queuedMessageIds = state.queuedMessageIds;
 
     // 会话清空保护期内，跳过消息同步
     if (_sessionClearPending) {

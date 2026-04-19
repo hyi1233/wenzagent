@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:uuid/uuid.dart';
 
@@ -9,6 +10,7 @@ import '../tool/agent_tool.dart';
 import '../../shared/chat_message.dart' show ToolCall;
 import '../../shared/shared.dart' as shared;
 import '../../service/message_store_service.dart';
+import '../../service/session_manager.dart';
 import '../../persistence/stores/mark_read_queue_store.dart';
 import '../../persistence/persistence.dart';
 import '../../utils/logger.dart';
@@ -84,6 +86,14 @@ abstract class _CachedAgentProxyBase {
   set _sessionClearPending(bool value);
   Timer? get _sessionClearGuardTimer;
   set _sessionClearGuardTimer(Timer? value);
+
+  // ===== 状态缓存 =====
+  String? get _currentProcessingMessageId;
+  set _currentProcessingMessageId(String? value);
+  List<String> get _queuedMessageIds;
+  set _queuedMessageIds(List<String> value);
+  List<String> get _callingToolIdsCache;
+  set _callingToolIdsCache(List<String> value);
 
   // ===== 抽象方法（由 CachedAgentProxy 或其他 mixin 实现） =====
   void _notifyMessagesChanged();
@@ -190,6 +200,21 @@ class CachedAgentProxy extends _CachedAgentProxyBase
   /// 内存中的工具调用消息（本地模式使用，DB不保存临时消息）
   @override
   final Map<String, AgentMessage> _inMemoryToolCallMessages = {};
+
+  // ===== 状态缓存（仅远程模式使用） =====
+  @override
+  String? _currentProcessingMessageId;
+  @override
+  List<String> _queuedMessageIds = [];
+  @override
+  List<String> _callingToolIdsCache = [];
+
+  /// 当前处理中的消息ID
+  String? get currentProcessingMessageId => _currentProcessingMessageId;
+  /// 排队中的消息ID列表
+  List<String> get queuedMessageIds => List.unmodifiable(_queuedMessageIds);
+  /// 正在调用的工具 callId 列表
+  List<String> get callingToolIds => List.unmodifiable(_callingToolIdsCache);
 
   /// 事件订阅
   @override
@@ -871,6 +896,47 @@ class CachedAgentProxy extends _CachedAgentProxyBase
   Future<List<String>> getCallingToolIdsAsync() =>
       _proxy.getCallingToolIdsAsync();
 
+  /// 更新远程状态缓存（由 DeviceMessageHandler 调用）
+  ///
+  /// 当收到远程 LAN 广播的 agentStatusChanged / toolCall 事件时，
+  /// 更新本地内存缓存，确保 UI 能实时显示远程 Agent 的处理状态。
+  void updateRemoteStateCache({
+    String? currentProcessingMessageId,
+    List<String>? queuedMessageIds,
+    List<String>? callingToolIds,
+    bool clearProcessing = false,
+    bool clearQueued = false,
+    bool clearCallingToolIds = false,
+  }) {
+    if (currentProcessingMessageId != null) {
+      _currentProcessingMessageId = currentProcessingMessageId;
+    } else if (clearProcessing) {
+      _currentProcessingMessageId = null;
+    }
+    if (queuedMessageIds != null) {
+      _queuedMessageIds = queuedMessageIds;
+    } else if (clearQueued) {
+      _queuedMessageIds = [];
+    }
+    if (callingToolIds != null) {
+      _callingToolIdsCache = callingToolIds;
+    } else if (clearCallingToolIds) {
+      _callingToolIdsCache = [];
+    }
+  }
+
+  /// 添加远程工具调用 ID（由 DeviceMessageHandler 调用）
+  void addRemoteCallingToolId(String toolCallId) {
+    if (!_callingToolIdsCache.contains(toolCallId)) {
+      _callingToolIdsCache = [..._callingToolIdsCache, toolCallId];
+    }
+  }
+
+  /// 移除远程工具调用 ID（由 DeviceMessageHandler 调用）
+  void removeRemoteCallingToolId(String toolCallId) {
+    _callingToolIdsCache = _callingToolIdsCache.where((id) => id != toolCallId).toList();
+  }
+
   // ===== Todo 管理 =====
 
   /// 获取当前待办主题
@@ -1170,6 +1236,11 @@ class CachedAgentProxy extends _CachedAgentProxyBase
 
     // 清除内存中的工具调用消息
     _inMemoryToolCallMessages.clear();
+
+    // 清除状态缓存
+    _callingToolIdsCache.clear();
+    _queuedMessageIds.clear();
+    _currentProcessingMessageId = null;
 
     if (!_proxy.isLocalMode) {
       await _cacheStateController.close();

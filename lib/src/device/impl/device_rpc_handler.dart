@@ -828,40 +828,23 @@ class DeviceRpcHandler {
           await _employeeManager.saveEmployee(employee);
         } else {
           // 合并：deleteTime 独立比较，数据按 updateTime 合并
-          final localDT = existing.deletedTime;
-          final remoteDT = employee.deletedTime;
-          DateTime? mergedDeleteTime;
-          int mergedDeleted;
-
-          if (localDT == null && remoteDT == null) {
-            mergedDeleteTime = null;
-            mergedDeleted = 0;
-          } else if (localDT == null) {
-            mergedDeleteTime = remoteDT;
-            mergedDeleted = employee.deleted;
-          } else if (remoteDT == null) {
-            mergedDeleteTime = localDT;
-            mergedDeleted = existing.deleted;
-          } else {
-            if (localDT.isAfter(remoteDT)) {
-              mergedDeleteTime = localDT;
-              mergedDeleted = existing.deleted;
-            } else {
-              mergedDeleteTime = remoteDT;
-              mergedDeleted = employee.deleted;
-            }
-          }
-
-          final shouldUpdateData =
-              employee.updateTime.isAfter(existing.updateTime);
+          final mergeResult = StoreMergeUtil.mergeDeleteState(
+            localDeleteTime: existing.deletedTime,
+            localDeleted: existing.deleted,
+            remoteDeleteTime: employee.deletedTime,
+            remoteDeleted: employee.deleted,
+          );
+          final shouldUpdateData = StoreMergeUtil.shouldUpdateData(
+              existing.updateTime, employee.updateTime);
           final shouldUpdateDelete =
-              mergedDeleteTime != localDT || mergedDeleted != existing.deleted;
+              mergeResult.mergedDeleteTime != existing.deletedTime ||
+                  mergeResult.mergedDeleted != existing.deleted;
 
           if (shouldUpdateData || shouldUpdateDelete) {
             final base = shouldUpdateData ? employee : existing;
             await _employeeManager.updateEmployee(base.copyWith(
-              deleted: mergedDeleted,
-              deletedTime: mergedDeleteTime,
+              deleted: mergeResult.mergedDeleted,
+              deletedTime: mergeResult.mergedDeleteTime,
             ));
           }
         }
@@ -886,20 +869,25 @@ class DeviceRpcHandler {
             await _sessionManager.save(session);
           }
         } else {
-          // 合并 deleteTime：取较大者决定 deleted 状态
-          final (dt, d) = _mergeDeleteTime(
-            existing.deleteTime, existing.deleted,
-            session.deleteTime, session.deleted,
+          // 合并：deleteTime 独立比较，数据按 updateTime 合并
+          final mergeResult = StoreMergeUtil.mergeDeleteState(
+            localDeleteTime: existing.deleteTime,
+            localDeleted: existing.deleted,
+            remoteDeleteTime: session.deleteTime,
+            remoteDeleted: session.deleted,
           );
-          final shouldUpdateData = session.updateTime.isAfter(existing.updateTime);
-          final shouldUpdateDelete = dt != existing.deleteTime || d != existing.deleted;
+          final shouldUpdateData = StoreMergeUtil.shouldUpdateData(
+              existing.updateTime, session.updateTime);
+          final shouldUpdateDelete =
+              mergeResult.mergedDeleteTime != existing.deleteTime ||
+                  mergeResult.mergedDeleted != existing.deleted;
+
           if (shouldUpdateData || shouldUpdateDelete) {
-            await _sessionManager.save(
-              (shouldUpdateData ? session : existing).copyWith(
-                deleted: d,
-                deleteTime: dt,
-              ),
-            );
+            final base = shouldUpdateData ? session : existing;
+            await _sessionManager.save(base.copyWith(
+              deleted: mergeResult.mergedDeleted,
+              deleteTime: mergeResult.mergedDeleteTime,
+            ));
           }
         }
       }
@@ -947,16 +935,4 @@ class DeviceRpcHandler {
     });
   }
 
-  /// 合并两端的 deleteTime：取较大者决定 deleted 状态
-  static (DateTime?, int) _mergeDeleteTime(
-    DateTime? localDT,
-    int localD,
-    DateTime? remoteDT,
-    int remoteD,
-  ) {
-    if (localDT == null && remoteDT == null) return (null, 0);
-    if (localDT == null) return (remoteDT, remoteD);
-    if (remoteDT == null) return (localDT, localD);
-    return localDT.isAfter(remoteDT) ? (localDT, localD) : (remoteDT, remoteD);
-  }
 }

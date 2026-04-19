@@ -1,5 +1,11 @@
 import '../../host/host_rpc_methods.dart';
 import '../../persistence/persistence.dart';
+import '../../persistence/store_merge_util.dart';
+import '../../persistence/stores/spec_store.dart';
+import '../../persistence/entities/spec_item_entity.dart';
+import '../../persistence/stores/todo_store.dart';
+import '../../persistence/entities/todo_topic_entity.dart';
+import '../../persistence/entities/todo_task_item_entity.dart';
 import '../../service/service.dart';
 import '../../utils/logger.dart';
 import '../app_context.dart';
@@ -79,13 +85,27 @@ class DataSyncManager {
     await _doSyncSessionSummariesFromDevices();
   }
 
-  /// 同步全部数据（员工+会话+会话摘要，并行执行）
+  /// 从其他设备同步 spec 数据
+  Future<void> syncSpecsFromDevices() async {
+    await _doSyncSpecsFromDevices();
+  }
+
+  /// 从其他设备同步 todo 数据
+  Future<void> syncTodosFromDevices() async {
+    await _doSyncTodosFromDevices();
+  }
+
+  /// 同步全部数据（员工+会话+会话摘要+spec，并行执行）
   Future<void> syncAllFromDevices() async {
     final (changedEmployeeIds, changedSessionIds, _) = await (
       _doSyncEmployeesFromDevices(),
       _doSyncSessionsFromDevices(),
       _doSyncSessionSummariesFromDevices(),
     ).wait;
+    // spec 同步不需要等待其他同步完成
+    _doSyncSpecsFromDevices();
+    // todo 同步不需要等待其他同步完成
+    _doSyncTodosFromDevices();
     if (changedEmployeeIds.isNotEmpty || changedSessionIds.isNotEmpty) {
       _stateHolder.notifyDataSynced(DataSyncEvent(
         changedEmployeeIds: changedEmployeeIds,
@@ -184,6 +204,66 @@ class DataSyncManager {
       }
     } catch (e) {
       _log.debug('broadcastSessionToAllDevices failed: $e');
+    }
+  }
+
+  /// 广播 spec 数据到所有在线设备（创建/更新后调用）
+  Future<void> broadcastSpecToAllDevices(String employeeId) async {
+    if (!_connectionManager.isConnected) return;
+    try {
+      final specStore = SpecStore(deviceId: _deviceId);
+      final specs = specStore.findAllByEmployee(employeeId);
+      if (specs.isEmpty) return;
+      final devices = await _deviceRegistry.getOnlineDevices();
+      for (final device in devices) {
+        if (device.id == _deviceId) continue;
+        try {
+          await _connectionManager.invokeRemote(
+            device.id,
+            HostRpcConfig.methodSyncSpecs,
+            {
+              'specs': specs.map((s) => s.toMap()).toList(),
+            },
+          );
+        } catch (e) {
+          _log.debug('broadcastSpec to device ${device.id} failed: $e');
+        }
+      }
+    } catch (e) {
+      _log.debug('broadcastSpecToAllDevices failed: $e');
+    }
+  }
+
+  /// 广播 todo 数据到所有在线设备（创建/更新后调用）
+  Future<void> broadcastTodoToAllDevices(String employeeId) async {
+    if (!_connectionManager.isConnected) return;
+    try {
+      final todoStore = TodoStore(deviceId: _deviceId);
+      final topics = todoStore.findAllTopics(employeeId);
+      if (topics.isEmpty) return;
+      final taskItems = <Map<String, dynamic>>[];
+      for (final topic in topics) {
+        final items = todoStore.findTaskItemsByTopic(topic.id);
+        taskItems.addAll(items.map((i) => i.toMap()).toList());
+      }
+      final devices = await _deviceRegistry.getOnlineDevices();
+      for (final device in devices) {
+        if (device.id == _deviceId) continue;
+        try {
+          await _connectionManager.invokeRemote(
+            device.id,
+            HostRpcConfig.methodSyncTodos,
+            {
+              'topics': topics.map((t) => t.toMap()).toList(),
+              'taskItems': taskItems,
+            },
+          );
+        } catch (e) {
+          _log.debug('broadcastTodo to device ${device.id} failed: $e');
+        }
+      }
+    } catch (e) {
+      _log.debug('broadcastTodoToAllDevices failed: $e');
     }
   }
 
@@ -342,6 +422,74 @@ class DataSyncManager {
     }
   }
 
+  Future<void> _doSyncSpecsFromDevices() async {
+    if (!_connectionManager.isConnected) return;
+    final devices = await _deviceRegistry.getOnlineDevices();
+    final specStore = SpecStore(deviceId: _deviceId);
+    for (final device in devices) {
+      if (device.id == _deviceId) continue;
+      try {
+        // 遍历所有员工，拉取各员工的 spec 数据
+        final employees = await _employeeManager.getEmployees();
+        for (final employee in employees) {
+          try {
+            final result = await _connectionManager.invokeRemote(
+              device.id,
+              HostRpcConfig.methodGetSpecs,
+              {'employeeId': employee.uuid},
+            );
+            final specs = (result['specs'] as List? ?? [])
+                .map((s) => SpecItemEntity.fromMap(s as Map<String, dynamic>))
+                .toList();
+            if (specs.isNotEmpty) {
+              specStore.upsertAllFromRemote(specs);
+            }
+          } catch (e) {
+            _log.debug('syncSpecs for employee ${employee.uuid} from device ${device.id} failed: $e');
+          }
+        }
+      } catch (e) {
+        _log.debug('syncSpecs from device ${device.id} failed: $e');
+      }
+    }
+  }
+
+  Future<void> _doSyncTodosFromDevices() async {
+    if (!_connectionManager.isConnected) return;
+    final devices = await _deviceRegistry.getOnlineDevices();
+    final todoStore = TodoStore(deviceId: _deviceId);
+    for (final device in devices) {
+      if (device.id == _deviceId) continue;
+      try {
+        // 遍历所有员工，拉取各员工的 todo 数据
+        final employees = await _employeeManager.getEmployees();
+        for (final employee in employees) {
+          try {
+            final result = await _connectionManager.invokeRemote(
+              device.id,
+              HostRpcConfig.methodGetTodos,
+              {'employeeId': employee.uuid},
+            );
+            final topics = (result['topics'] as List? ?? [])
+                .map((t) => TodoTopicEntity.fromMap(t as Map<String, dynamic>))
+                .toList();
+            final taskItems = (result['taskItems'] as List? ?? [])
+                .map((i) => TodoTaskItemEntity.fromMap(i as Map<String, dynamic>))
+                .toList();
+            if (topics.isNotEmpty || taskItems.isNotEmpty) {
+              todoStore.upsertAllTopicsFromRemote(topics);
+              todoStore.upsertAllTaskItemsFromRemote(taskItems);
+            }
+          } catch (e) {
+            _log.debug('syncTodos for employee ${employee.uuid} from device ${device.id} failed: $e');
+          }
+        }
+      } catch (e) {
+        _log.debug('syncTodos from device ${device.id} failed: $e');
+      }
+    }
+  }
+
   /// 将员工删除同步到所有在线设备
   void _syncEmployeeDeleteToDevices(AiEmployeeEntity employee) {
     Future(() async {
@@ -400,20 +548,22 @@ class DataSyncManager {
     AiEmployeeEntity existing,
     AiEmployeeEntity remote,
   ) async {
-    final (dt, d) = await _mergeDeleteTime(
-      existing.deletedTime,
-      existing.deleted,
-      remote.deletedTime,
-      remote.deleted,
+    final mergeResult = StoreMergeUtil.mergeDeleteState(
+      localDeleteTime: existing.deletedTime,
+      localDeleted: existing.deleted,
+      remoteDeleteTime: remote.deletedTime,
+      remoteDeleted: remote.deleted,
     );
-    final shouldUpdateData = remote.updateTime.isAfter(existing.updateTime);
+    final shouldUpdateData = StoreMergeUtil.shouldUpdateData(
+        existing.updateTime, remote.updateTime);
     final shouldUpdateDelete =
-        dt != existing.deletedTime || d != existing.deleted;
+        mergeResult.mergedDeleteTime != existing.deletedTime ||
+            mergeResult.mergedDeleted != existing.deleted;
     if (shouldUpdateData || shouldUpdateDelete) {
       await _employeeManager.updateEmployee(
         (shouldUpdateData ? remote : existing).copyWith(
-          deleted: d,
-          deletedTime: dt,
+          deleted: mergeResult.mergedDeleted,
+          deletedTime: mergeResult.mergedDeleteTime,
         ),
       );
       return true;
@@ -425,20 +575,22 @@ class DataSyncManager {
     AiEmployeeSessionEntity existing,
     AiEmployeeSessionEntity remote,
   ) async {
-    final (dt, d) = await _mergeDeleteTime(
-      existing.deleteTime,
-      existing.deleted,
-      remote.deleteTime,
-      remote.deleted,
+    final mergeResult = StoreMergeUtil.mergeDeleteState(
+      localDeleteTime: existing.deleteTime,
+      localDeleted: existing.deleted,
+      remoteDeleteTime: remote.deleteTime,
+      remoteDeleted: remote.deleted,
     );
-    final shouldUpdateData = remote.updateTime.isAfter(existing.updateTime);
+    final shouldUpdateData = StoreMergeUtil.shouldUpdateData(
+        existing.updateTime, remote.updateTime);
     final shouldUpdateDelete =
-        dt != existing.deleteTime || d != existing.deleted;
+        mergeResult.mergedDeleteTime != existing.deleteTime ||
+            mergeResult.mergedDeleted != existing.deleted;
     if (shouldUpdateData || shouldUpdateDelete) {
       await _sessionManager.save(
         (shouldUpdateData ? remote : existing).copyWith(
-          deleted: d,
-          deleteTime: dt,
+          deleted: mergeResult.mergedDeleted,
+          deleteTime: mergeResult.mergedDeleteTime,
         ),
       );
       return true;
@@ -446,15 +598,4 @@ class DataSyncManager {
     return false;
   }
 
-  static Future<(DateTime?, int)> _mergeDeleteTime(
-    DateTime? localDT,
-    int localD,
-    DateTime? remoteDT,
-    int remoteD,
-  ) async {
-    if (localDT == null && remoteDT == null) return (null, 0);
-    if (localDT == null) return (remoteDT, remoteD);
-    if (remoteDT == null) return (localDT, localD);
-    return localDT.isAfter(remoteDT) ? (localDT, localD) : (remoteDT, remoteD);
-  }
 }

@@ -190,6 +190,7 @@ class DeviceMessageHandler {
       final employeeId = content['employeeId'] as String?;
       final fromDeviceId = msg.fromId;
 
+      // 广播事件到本地 AgentEvent 流（本地和远程事件都需要广播）
       _stateHolder.eventController.add(AgentEvent(
         type: eventType,
         data: data,
@@ -198,13 +199,31 @@ class DeviceMessageHandler {
       ));
 
       if (employeeId != null && fromDeviceId != null) {
+        // 判断是否为远程设备发来的 LAN 广播事件
+        final isRemote = fromDeviceId != _deviceId;
+
+        // 更新远程 CachedAgentProxy 的工具调用 ID 缓存
+        if (eventType == AgentEventType.toolCallStart) {
+          final toolCallId = data['toolCallId'] as String?;
+          if (toolCallId != null) {
+            final proxy = _agentManager.getAgentProxy(employeeId);
+            proxy?.addRemoteCallingToolId(toolCallId);
+          }
+        }
+        if (eventType == AgentEventType.toolCallResult) {
+          final toolCallId = data['toolCallId'] as String?;
+          if (toolCallId != null) {
+            final proxy = _agentManager.getAgentProxy(employeeId);
+            proxy?.removeRemoteCallingToolId(toolCallId);
+          }
+        }
+
         if (eventType == AgentEventType.messageStatusChanged) {
           final status = data['status'] as String?;
           final messageId = data['messageId'] as String?;
 
           if (status == 'completed' && messageId != null) {
-            final isLocal = fromDeviceId == _deviceId;
-            if (!isLocal) {
+            if (isRemote) {
               final remoteMsg = AgentMessage(
                 id: messageId,
                 role: data['role'] as String? ?? 'assistant',
@@ -226,8 +245,7 @@ class DeviceMessageHandler {
 
           // 远程设备发送消息时，更新最新消息缓存，让会话列表实时显示
           if (status == 'queued' && messageId != null) {
-            final isLocal = fromDeviceId == _deviceId;
-            if (!isLocal) {
+            if (isRemote) {
               final content = data['content'] as String?;
               if (content != null && content.isNotEmpty) {
                 final remoteMsg = AgentMessage(
@@ -270,7 +288,23 @@ class DeviceMessageHandler {
               extra: extra.isNotEmpty ? extra : null,
             );
 
-            if (status == 'waitingPermission') {
+            // 更新远程 CachedAgentProxy 的状态缓存
+            final proxy = _agentManager.getAgentProxy(employeeId);
+            if (proxy != null) {
+              if (status == 'idle') {
+                proxy.updateRemoteStateCache(
+                  clearProcessing: true,
+                  clearQueued: true,
+                );
+              } else {
+                proxy.updateRemoteStateCache(
+                  currentProcessingMessageId: data['currentProcessingMessageId'] as String?,
+                  queuedMessageIds: (data['queuedMessageIds'] as List?)?.cast<String>(),
+                );
+              }
+            }
+
+            if (status == 'waitingPermission' && isRemote) {
               final requestId = data['requestId'] as String?;
               final permMessageId = requestId != null
                   ? 'perm_$requestId'
@@ -332,7 +366,7 @@ class DeviceMessageHandler {
           }
         }
 
-        if (eventType == AgentEventType.sessionSummaryChanged) {
+        if (eventType == AgentEventType.sessionSummaryChanged && isRemote) {
           final summaryData = data['summary'] as Map<String, dynamic>?;
           if (summaryData != null) {
             final summary = SessionSummaryEntity.fromMap(summaryData);
@@ -374,13 +408,31 @@ class DeviceMessageHandler {
         }
 
         // 会话清空事件：清除未读计数、最新消息缓存，并同步消息（清除本地消息）
-        if (eventType == AgentEventType.sessionCleared) {
+        if (eventType == AgentEventType.sessionCleared && isRemote) {
           _stateHolder.notificationHub.markAllAsRead(
             employeeId: employeeId,
           );
           _notificationManager.clearLatestMessageCache(employeeId);
           // 触发增量同步，清除本地消息并更新水位线
           _syncAfterSessionCleared(employeeId, fromDeviceId);
+        }
+
+        // 配置变更事件：将远程配置写入本地 SessionStore（仅远程）
+        if (eventType == AgentEventType.configChanged && isRemote) {
+          _handleConfigChangedEvent(employeeId, fromDeviceId, data);
+        }
+
+        // Spec 数据变更事件：将远程 spec 写入本地 SpecStore（仅远程）
+        if (eventType == AgentEventType.specChanged && isRemote) {
+          _handleSpecChangedEvent(employeeId, fromDeviceId, data);
+        }
+
+        // Todo 数据变更事件：将远程 todo 写入本地 TodoStore（仅远程）
+        if (eventType == AgentEventType.todoTopicChanged && isRemote) {
+          _handleTodoTopicChangedEvent(employeeId, fromDeviceId, data);
+        }
+        if (eventType == AgentEventType.todoTaskItemChanged && isRemote) {
+          _handleTodoTaskItemChangedEvent(employeeId, fromDeviceId, data);
         }
       }
     } catch (e) {
@@ -607,6 +659,144 @@ class DeviceMessageHandler {
       );
     } catch (e) {
       _log.debug('handleUnreceivedMessagesBatch failed: $e');
+    }
+  }
+
+  /// 处理远程配置变更事件，将配置写入本地 SessionStore
+  ///
+  /// 当 A 设备修改配置后，B 设备通过 LAN 广播收到 configChanged 事件，
+  /// 将 providerConfig 写入本地 SessionManager 的设备配置中。
+  ///
+  /// 注意：调用方已在 _handleAgentEvent 入口处过滤了本地事件，此处无需再检查 fromDeviceId。
+  void _handleConfigChangedEvent(
+    String employeeId,
+    String? fromDeviceId,
+    Map<String, dynamic> data,
+  ) {
+    final configType = data['configType'] as String?;
+    _log.debug('处理远程配置变更: employeeId=$employeeId, configType=$configType, fromDevice=$fromDeviceId');
+
+    try {
+      final sessionManager = SessionManager.getInstance(_deviceId);
+
+      switch (configType) {
+        case 'provider':
+          final providerConfigMap = data['providerConfig'] as Map<String, dynamic>?;
+          if (providerConfigMap != null) {
+            // 将 ProviderConfig 序列化为 JSON 字符串存储到 SessionStore
+            final providerConfigJson = jsonEncode(providerConfigMap);
+            sessionManager.updateDeviceConfig(
+              employeeId,
+              fromDeviceId ?? _deviceId,
+              providerConfig: providerConfigJson,
+            );
+            _log.info('远程 Provider 配置已写入本地 SessionStore: employeeId=$employeeId');
+          }
+          break;
+        case 'project':
+          // project 配置变更不需要写入 SessionStore（projectUuid 由 Agent 运行时维护）
+          _log.debug('远程项目配置变更，由 CachedAgentProxy 缓存处理');
+          break;
+        case 'context':
+          // context 配置变更不需要写入 SessionStore（由 Agent 运行时维护）
+          _log.debug('远程上下文配置变更，由 CachedAgentProxy 缓存处理');
+          break;
+        default:
+          _log.debug('远程配置变更类型 $configType 不需要写入 SessionStore');
+          break;
+      }
+    } catch (e) {
+      _log.debug('处理远程配置变更失败: $e');
+    }
+  }
+
+  /// 处理远程 Spec 数据变更事件，将 spec 数据写入本地 SpecStore
+  ///
+  /// 当 A 设备创建/修改/删除 spec 后，B 设备通过 LAN 广播收到 specChanged 事件，
+  /// 解析事件 data 中的 spec 数据，调用 SpecStore.upsertFromRemote() merge 写入本地 DB。
+  ///
+  /// 注意：调用方已在 _handleAgentEvent 入口处过滤了本地事件，此处无需再检查 fromDeviceId。
+  void _handleSpecChangedEvent(
+    String employeeId,
+    String? fromDeviceId,
+    Map<String, dynamic> data,
+  ) {
+    final action = data['action'] as String?;
+    _log.debug('处理远程 Spec 变更: employeeId=$employeeId, action=$action, fromDevice=$fromDeviceId');
+
+    try {
+      final specData = data['spec'] as Map<String, dynamic>?;
+      if (specData != null) {
+        final specItem = SpecItemEntity.fromMap(specData);
+        final specStore = SpecStore(deviceId: _deviceId);
+        specStore.upsertFromRemote(specItem);
+        _log.info('远程 Spec 数据已写入本地: specId=${specItem.id}, action=$action');
+      } else {
+        // 事件中无完整 spec 数据（如 cleared/reordered），仅记录日志
+        _log.debug('远程 Spec 变更事件无完整 spec 数据: action=$action');
+      }
+    } catch (e) {
+      _log.debug('处理远程 Spec 变更失败: $e');
+    }
+  }
+
+  /// 处理远程 TodoTopic 变更事件，将 todo topic 数据写入本地 TodoStore
+  ///
+  /// 当 A 设备创建/修改/删除 todo topic 后，B 设备通过 LAN 广播收到 todoTopicChanged 事件，
+  /// 解析事件 data 中的 topic 数据，调用 TodoStore.upsertTopicFromRemote() merge 写入本地 DB。
+  ///
+  /// 注意：调用方已在 _handleAgentEvent 入口处过滤了本地事件，此处无需再检查 fromDeviceId。
+  void _handleTodoTopicChangedEvent(
+    String employeeId,
+    String? fromDeviceId,
+    Map<String, dynamic> data,
+  ) {
+    final action = data['action'] as String?;
+    _log.debug('处理远程 TodoTopic 变更: employeeId=$employeeId, action=$action, fromDevice=$fromDeviceId');
+
+    try {
+      final topicData = data['topic'] as Map<String, dynamic>?;
+      if (topicData != null) {
+        final topic = TodoTopicEntity.fromMap(topicData);
+        final todoStore = TodoStore(deviceId: _deviceId);
+        todoStore.upsertTopicFromRemote(topic);
+        _log.info('远程 TodoTopic 数据已写入本地: topicId=${topic.id}, action=$action');
+      } else {
+        // 事件中无完整 topic 数据（如 cleared/reordered），仅记录日志
+        _log.debug('远程 TodoTopic 变更事件无完整 topic 数据: action=$action');
+      }
+    } catch (e) {
+      _log.debug('处理远程 TodoTopic 变更失败: $e');
+    }
+  }
+
+  /// 处理远程 TodoTaskItem 变更事件，将 todo task item 数据写入本地 TodoStore
+  ///
+  /// 当 A 设备创建/修改/删除 todo task item 后，B 设备通过 LAN 广播收到 todoTaskItemChanged 事件，
+  /// 解析事件 data 中的 task item 数据，调用 TodoStore.upsertTaskItemFromRemote() merge 写入本地 DB。
+  ///
+  /// 注意：调用方已在 _handleAgentEvent 入口处过滤了本地事件，此处无需再检查 fromDeviceId。
+  void _handleTodoTaskItemChangedEvent(
+    String employeeId,
+    String? fromDeviceId,
+    Map<String, dynamic> data,
+  ) {
+    final action = data['action'] as String?;
+    _log.debug('处理远程 TodoTaskItem 变更: employeeId=$employeeId, action=$action, fromDevice=$fromDeviceId');
+
+    try {
+      final taskItemData = data['taskItem'] as Map<String, dynamic>?;
+      if (taskItemData != null) {
+        final taskItem = TodoTaskItemEntity.fromMap(taskItemData);
+        final todoStore = TodoStore(deviceId: _deviceId);
+        todoStore.upsertTaskItemFromRemote(taskItem);
+        _log.info('远程 TodoTaskItem 数据已写入本地: taskId=${taskItem.id}, action=$action');
+      } else {
+        // 事件中无完整 task item 数据（如 reordered），仅记录日志
+        _log.debug('远程 TodoTaskItem 变更事件无完整 task item 数据: action=$action');
+      }
+    } catch (e) {
+      _log.debug('处理远程 TodoTaskItem 变更失败: $e');
     }
   }
 }

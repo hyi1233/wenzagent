@@ -51,6 +51,37 @@ class AgentProxy {
   /// 远程状态缓存
   final _RemoteStateCache _remoteCache = _RemoteStateCache();
 
+  /// 更新远程缓存中的配置数据（供 CachedAgentProxy 事件处理调用）
+  void updateRemoteCache({
+    Map<String, dynamic>? providerConfig,
+    String? projectUuid,
+    Map<String, dynamic>? contextData,
+  }) {
+    if (providerConfig != null) {
+      _remoteCache.providerConfig = providerConfig;
+    } else if (providerConfig == null && _remoteCache.providerConfig != null) {
+      // null 表示清除（仅在调用方显式传 null 时清除）
+    }
+    if (projectUuid != null) {
+      _remoteCache.projectUuid = projectUuid;
+    }
+    if (contextData != null) {
+      _remoteCache.contextData = contextData;
+    }
+  }
+
+  /// 清除远程缓存中的指定配置项
+  void clearRemoteCacheConfig(String configType) {
+    switch (configType) {
+      case 'provider':
+        _remoteCache.providerConfig = null;
+      case 'project':
+        _remoteCache.projectUuid = null;
+      case 'context':
+        _remoteCache.contextData = null;
+    }
+  }
+
   /// 状态变更通知
   final StreamController<AgentStateSnapshot> _stateController =
       StreamController<AgentStateSnapshot>.broadcast();

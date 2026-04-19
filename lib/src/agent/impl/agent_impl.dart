@@ -497,7 +497,7 @@ class AgentImpl extends _AgentImplBase
     _chatAdapter.setContext(contextData);
     _eventController.add(AgentEvent(
       type: AgentEventType.configChanged,
-      data: {'configType': 'context', 'action': 'updated'},
+      data: {'configType': 'context', 'action': 'updated', 'contextData': contextData},
       employeeId: employeeId,
     ));
   }
@@ -528,7 +528,7 @@ class AgentImpl extends _AgentImplBase
     });
     _eventController.add(AgentEvent(
       type: AgentEventType.configChanged,
-      data: {'configType': 'provider', 'action': 'updated'},
+      data: {'configType': 'provider', 'action': 'updated', 'providerConfig': providerConfig.toMap()},
       employeeId: employeeId,
     ));
   }
@@ -547,7 +547,11 @@ class AgentImpl extends _AgentImplBase
     await _chatAdapter.updateProjectContext(projectData?.toMap());
     _eventController.add(AgentEvent(
       type: AgentEventType.configChanged,
-      data: {'configType': 'project', 'action': projectData != null ? 'updated' : 'cleared'},
+      data: {
+        'configType': 'project',
+        'action': projectData != null ? 'updated' : 'cleared',
+        if (projectData != null) 'projectData': projectData.toMap(),
+      },
       employeeId: employeeId,
     ));
   }
@@ -959,9 +963,15 @@ class AgentImpl extends _AgentImplBase
   Future<void> updateSpecStatus(String specId, String status) async {
     final store = SpecStore(deviceId: deviceId);
     store.updateStatus(specId, status);
+    final spec = store.findByIdIncludingDeleted(specId);
     _eventController.add(AgentEvent(
       type: AgentEventType.specChanged,
-      data: {'action': 'updated', 'specId': specId, 'status': status},
+      data: {
+        'action': 'updated',
+        'specId': specId,
+        'status': status,
+        if (spec != null) 'spec': spec.toMap(),
+      },
       employeeId: employeeId,
     ));
   }
@@ -970,9 +980,14 @@ class AgentImpl extends _AgentImplBase
   Future<void> updateSpecContent(String specId, String content) async {
     final store = SpecStore(deviceId: deviceId);
     store.updateContent(specId, content: content);
+    final spec = store.findByIdIncludingDeleted(specId);
     _eventController.add(AgentEvent(
       type: AgentEventType.specChanged,
-      data: {'action': 'updated', 'specId': specId},
+      data: {
+        'action': 'updated',
+        'specId': specId,
+        if (spec != null) 'spec': spec.toMap(),
+      },
       employeeId: employeeId,
     ));
   }
@@ -981,9 +996,14 @@ class AgentImpl extends _AgentImplBase
   Future<void> deleteSpec(String specId) async {
     final store = SpecStore(deviceId: deviceId);
     store.softDelete(specId);
+    final spec = store.findByIdIncludingDeleted(specId);
     _eventController.add(AgentEvent(
       type: AgentEventType.specChanged,
-      data: {'action': 'removed', 'specId': specId},
+      data: {
+        'action': 'deleted',
+        'specId': specId,
+        if (spec != null) 'spec': spec.toMap(),
+      },
       employeeId: employeeId,
     ));
   }
@@ -994,7 +1014,7 @@ class AgentImpl extends _AgentImplBase
     store.deleteCompletedByEmployee(employeeId);
     _eventController.add(AgentEvent(
       type: AgentEventType.specChanged,
-      data: {'action': 'cleared'},
+      data: {'action': 'cleared', 'employeeId': employeeId},
       employeeId: employeeId,
     ));
   }
@@ -1005,7 +1025,7 @@ class AgentImpl extends _AgentImplBase
     store.reorderSpecs(specIds);
     _eventController.add(AgentEvent(
       type: AgentEventType.specChanged,
-      data: {'action': 'reordered', 'specIds': specIds},
+      data: {'action': 'reordered', 'specIds': specIds, 'employeeId': employeeId},
       employeeId: employeeId,
     ));
   }
