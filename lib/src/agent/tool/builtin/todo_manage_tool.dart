@@ -1,3 +1,5 @@
+import 'package:uuid/uuid.dart';
+
 import '../../../persistence/entities/todo_topic_entity.dart';
 import '../../../persistence/entities/todo_task_item_entity.dart';
 import '../agent_tool.dart';
@@ -174,7 +176,7 @@ class TodoManageTool extends AgentTool {
 
     final description = arguments['content'] as String? ?? '';
     final now = DateTime.now();
-    final id = 'topic_${now.millisecondsSinceEpoch}';
+    final id = 'topic_${const Uuid().v4()}';
 
     final topic = TodoTopicEntity(
       id: id,
@@ -210,7 +212,7 @@ class TodoManageTool extends AgentTool {
 
     final taskContent = arguments['task_content'] as String? ?? '';
     final now = DateTime.now();
-    final id = 'task_${now.millisecondsSinceEpoch}';
+    final id = 'task_${const Uuid().v4()}';
 
     final taskItem = TodoTaskItemEntity(
       id: id,
