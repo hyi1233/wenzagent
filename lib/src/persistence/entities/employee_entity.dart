@@ -230,7 +230,7 @@ class AiEmployeeEntity {
     int? sortOrder,
     int? isPinned,
     int? deleted,
-    DateTime? deletedTime,
+    Object? deletedTime = _sentinel,
     DateTime? createTime,
     DateTime? updateTime,
   }) {
@@ -261,11 +261,16 @@ class AiEmployeeEntity {
       sortOrder: sortOrder ?? this.sortOrder,
       isPinned: isPinned ?? this.isPinned,
       deleted: deleted ?? this.deleted,
-      deletedTime: deletedTime ?? this.deletedTime,
+      deletedTime: identical(deletedTime, _sentinel)
+          ? this.deletedTime
+          : deletedTime as DateTime?,
       createTime: createTime ?? this.createTime,
       updateTime: updateTime ?? this.updateTime,
     );
   }
+
+  /// 哨兵值，用于 copyWith 区分"未传参"和"显式传 null"
+  static const _sentinel = Object();
 
   /// 获取MCP服务器配置列表
   ///

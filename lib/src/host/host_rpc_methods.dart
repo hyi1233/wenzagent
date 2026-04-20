@@ -221,6 +221,8 @@ void registerHostRpcMethods({
           localDeleted: existing.deleted,
           remoteDeleteTime: employee.deletedTime,
           remoteDeleted: employee.deleted,
+          localUpdateTime: existing.updateTime,
+          remoteUpdateTime: employee.updateTime,
         );
         final shouldUpdateData = StoreMergeUtil.shouldUpdateData(
             existing.updateTime, employee.updateTime);
@@ -261,6 +263,8 @@ void registerHostRpcMethods({
           localDeleted: existing.deleted,
           remoteDeleteTime: session.deleteTime,
           remoteDeleted: session.deleted,
+          localUpdateTime: existing.updateTime,
+          remoteUpdateTime: session.updateTime,
         );
         final shouldUpdateData = StoreMergeUtil.shouldUpdateData(
             existing.updateTime, session.updateTime);

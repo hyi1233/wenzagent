@@ -24,15 +24,43 @@ class StoreMergeUtil {
   /// - 双方都无 deleteTime → 未删除
   /// - 单侧有 deleteTime → 采用有 deleteTime 的一方
   /// - 双方都有 deleteTime → 取 deleteTime 更大的一方决定 deleted 状态
+  /// - [新增] 远程明确复活（deleted=0, deleteTime=null）且 updateTime 更新 → 允许复活
   static MergeDeleteResult mergeDeleteState({
     required DateTime? localDeleteTime,
     required int localDeleted,
     required DateTime? remoteDeleteTime,
     required int remoteDeleted,
+    DateTime? localUpdateTime,
+    DateTime? remoteUpdateTime,
   }) {
+    // 双方都未删除
     if (localDeleteTime == null && remoteDeleteTime == null) {
       return const MergeDeleteResult(mergedDeleteTime: null, mergedDeleted: 0);
     }
+
+    // [新增] 远程明确复活（deleted=0, deleteTime=null）且远程数据更新
+    // 当远程 updateTime > 本地 updateTime 时，远程的复活操作应该覆盖本地的删除
+    if (remoteDeleteTime == null &&
+        remoteDeleted == 0 &&
+        localDeleteTime != null &&
+        localDeleted == 1 &&
+        localUpdateTime != null &&
+        remoteUpdateTime != null &&
+        remoteUpdateTime.isAfter(localUpdateTime)) {
+      return const MergeDeleteResult(mergedDeleteTime: null, mergedDeleted: 0);
+    }
+
+    // [新增] 对称：本地明确复活且本地数据更新 → 保持本地复活
+    if (localDeleteTime == null &&
+        localDeleted == 0 &&
+        remoteDeleteTime != null &&
+        remoteDeleted == 1 &&
+        localUpdateTime != null &&
+        remoteUpdateTime != null &&
+        localUpdateTime.isAfter(remoteUpdateTime)) {
+      return const MergeDeleteResult(mergedDeleteTime: null, mergedDeleted: 0);
+    }
+
     if (localDeleteTime == null) {
       return MergeDeleteResult(
           mergedDeleteTime: remoteDeleteTime, mergedDeleted: remoteDeleted);

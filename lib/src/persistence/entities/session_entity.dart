@@ -263,6 +263,9 @@ class AiEmployeeSessionEntity {
   }
 
   /// 复制并修改
+  ///
+  /// [修复] deleteTime 参数使用 Object? 哨兵值，允许通过 `deleteTime: null` 清除删除时间。
+  /// 不传 deleteTime 时保留原值（向后兼容）。
   AiEmployeeSessionEntity copyWith({
     String? employeeId,
     Map<String, DeviceSessionConfig>? config,
@@ -270,7 +273,7 @@ class AiEmployeeSessionEntity {
     int? isArchived,
     int? isPinned,
     int? deleted,
-    DateTime? deleteTime,
+    Object? deleteTime = _sentinel,
     DateTime? createTime,
     DateTime? updateTime,
   }) {
@@ -281,11 +284,16 @@ class AiEmployeeSessionEntity {
       isArchived: isArchived ?? this.isArchived,
       isPinned: isPinned ?? this.isPinned,
       deleted: deleted ?? this.deleted,
-      deleteTime: deleteTime ?? this.deleteTime,
+      deleteTime: identical(deleteTime, _sentinel)
+          ? this.deleteTime
+          : deleteTime as DateTime?,
       createTime: createTime ?? this.createTime,
       updateTime: updateTime ?? this.updateTime,
     );
   }
+
+  /// 哨兵值，用于 copyWith 区分"未传参"和"显式传 null"
+  static const _sentinel = Object();
 
   @override
   String toString() {

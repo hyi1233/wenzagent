@@ -366,6 +366,9 @@ class DataSyncManager {
     final changedIds = <String>{};
     if (!_connectionManager.isConnected) return changedIds;
     final devices = await _deviceRegistry.getOnlineDevices();
+
+    // 第一阶段：收集所有设备的会话数据，同一 employeeId 取 updateTime 最大的版本
+    final allRemoteSessions = <String, AiEmployeeSessionEntity>{};
     for (final device in devices) {
       if (device.id == _deviceId) continue;
       try {
@@ -379,19 +382,29 @@ class DataSyncManager {
           final session = AiEmployeeSessionEntity.fromMap(
             data as Map<String, dynamic>,
           );
-          final existing = await _sessionManager.getSession(session.employeeId);
-          if (existing == null) {
-            if (session.deleted != 1) {
-              await _sessionManager.save(session);
-              changedIds.add(session.employeeId);
-            }
-          } else {
-            final changed = await _mergeAndSaveSession(existing, session);
-            if (changed) changedIds.add(session.employeeId);
+          final existing = allRemoteSessions[session.employeeId];
+          // 取 updateTime 最大的版本
+          if (existing == null ||
+              session.updateTime.isAfter(existing.updateTime)) {
+            allRemoteSessions[session.employeeId] = session;
           }
         }
       } catch (e) {
         _log.debug('syncSessions from device ${device.id} failed: $e');
+      }
+    }
+
+    // 第二阶段：对每个会话只取最新版本进行合并
+    for (final session in allRemoteSessions.values) {
+      final existing = await _sessionManager.getSession(session.employeeId);
+      if (existing == null) {
+        if (session.deleted != 1) {
+          await _sessionManager.save(session);
+          changedIds.add(session.employeeId);
+        }
+      } else {
+        final changed = await _mergeAndSaveSession(existing, session);
+        if (changed) changedIds.add(session.employeeId);
       }
     }
     return changedIds;
@@ -553,6 +566,8 @@ class DataSyncManager {
       localDeleted: existing.deleted,
       remoteDeleteTime: remote.deletedTime,
       remoteDeleted: remote.deleted,
+      localUpdateTime: existing.updateTime,
+      remoteUpdateTime: remote.updateTime,
     );
     final shouldUpdateData = StoreMergeUtil.shouldUpdateData(
         existing.updateTime, remote.updateTime);
@@ -580,6 +595,8 @@ class DataSyncManager {
       localDeleted: existing.deleted,
       remoteDeleteTime: remote.deleteTime,
       remoteDeleted: remote.deleted,
+      localUpdateTime: existing.updateTime,
+      remoteUpdateTime: remote.updateTime,
     );
     final shouldUpdateData = StoreMergeUtil.shouldUpdateData(
         existing.updateTime, remote.updateTime);
