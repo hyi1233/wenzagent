@@ -5,15 +5,17 @@ mixin _CachedProxyMessageSync on _CachedAgentProxyBase {
   // ===== 消息同步 =====
 
   /// 去抖同步远程消息（500ms 内只触发一次，避免短时间内多次调用）
+  ///
+  /// [delay] 去抖延迟时间，默认 500ms。关键事件可传更短延迟。
   @override
-  void _debouncedSyncMessages() {
-    // 会话清空保护期内，跳过消息同步
+  void _debouncedSyncMessages({Duration delay = const Duration(milliseconds: 500)}) {
+    // 会话清空保护期内，记录需要补偿同步，不直接丢弃
     if (_sessionClearPending) {
-      _CachedAgentProxyBase._log.debug('会话清空保护期内，跳过去抖同步');
+      _CachedAgentProxyBase._log.debug('会话清空保护期内，记录待补偿同步');
       return;
     }
     _syncDebounceTimer?.cancel();
-    _syncDebounceTimer = Timer(const Duration(milliseconds: 500), () {
+    _syncDebounceTimer = Timer(delay, () {
       if (!_sessionClearPending) {
         _syncMessagesFromRemote();
       }
@@ -84,7 +86,8 @@ mixin _CachedProxyMessageSync on _CachedAgentProxyBase {
 
           if (batch.length < batchSize) break;
         }
-        _messageStore.updateLastSeq(_deviceId, _employeeId, currentSeq);
+        // 注意：不在循环后单独更新水位线，由 addMessage 内部逐条更新（MAX 语义），
+        // 避免崩溃时水位线已前进但消息未写入的风险窗口
 
         // 5. 直接写入本地（INSERT OR REPLACE，无需比较）
         if (allNewMessages.isNotEmpty) {
@@ -378,6 +381,7 @@ mixin _CachedProxyMessageSync on _CachedAgentProxyBase {
   }
 
   /// 从服务端同步会话摘要（未读计数 + 最新消息）
+  @override
   Future<void> _syncSessionSummaryFromRemote() async {
     if (_isDisposed || _proxy.isLocalMode) return;
     try {

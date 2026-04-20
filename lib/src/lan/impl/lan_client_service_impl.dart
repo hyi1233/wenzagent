@@ -80,6 +80,10 @@ class LanClientServiceImpl implements LanClientService {
   final LanChunkService _chunkService = LanChunkService();
   final _uuid = const Uuid();
 
+  // 待发送消息队列：断线时缓存，重连后自动重发
+  final List<LanMessage> _pendingMessages = [];
+  static const int _maxPendingMessages = 100;
+
   @override
   bool get isConnected => _isConnected;
 
@@ -180,6 +184,7 @@ class LanClientServiceImpl implements LanClientService {
 
     _sendClientInfo();
     _startPingTimer();
+    _flushPendingMessages();
   }
 
   @override
@@ -220,9 +225,28 @@ class LanClientServiceImpl implements LanClientService {
   }
 
   @override
-  void sendLanMessage(LanMessage message) {
-    if (!_isConnected) return;
-    _channel?.sink.add(jsonEncode(message.toJson()));
+  Future<bool> sendLanMessage(LanMessage message) async {
+    if (!_isConnected) {
+      // 断线时缓存消息，等待重连后重发
+      if (_pendingMessages.length < _maxPendingMessages) {
+        _pendingMessages.add(message);
+        _log.debug('LAN未连接，消息已缓存待重发 (队列: ${_pendingMessages.length})');
+        return true;
+      } else {
+        _log.warn('LAN消息缓存队列已满($_maxPendingMessages)，丢弃消息: ${message.type}');
+        return false;
+      }
+    }
+    try {
+      _channel?.sink.add(jsonEncode(message.toJson()));
+      return true;
+    } catch (e) {
+      _log.warn('LAN消息发送失败，缓存待重发: $e');
+      if (_pendingMessages.length < _maxPendingMessages) {
+        _pendingMessages.add(message);
+      }
+      return false;
+    }
   }
 
   /// 直接发送原始 JSON 字符串到 WebSocket
@@ -284,6 +308,23 @@ class LanClientServiceImpl implements LanClientService {
   }
 
   // ==================== Private ====================
+
+  /// 重连成功后重发缓存的消息队列
+  void _flushPendingMessages() {
+    if (_pendingMessages.isEmpty) return;
+    final count = _pendingMessages.length;
+    _log.info('开始重发 $count 条缓存消息...');
+    for (final msg in List.from(_pendingMessages)) {
+      try {
+        _channel?.sink.add(jsonEncode(msg.toJson()));
+      } catch (e) {
+        _log.warn('重发缓存消息失败: $e');
+        break; // 发送失败停止重发，保留未发送的消息
+      }
+    }
+    _pendingMessages.clear();
+    _log.info('缓存消息重发完成');
+  }
 
   void _scheduleReconnect() {
     _reconnectTimer = Timer(const Duration(seconds: _reconnectDelay), () async {

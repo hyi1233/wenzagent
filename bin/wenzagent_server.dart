@@ -209,13 +209,14 @@ class _HostLanClientServiceAdapter implements LanClientService {
   }
 
   @override
-  void sendLanMessage(LanMessage message) {
+  Future<bool> sendLanMessage(LanMessage message) async {
     final toDeviceId = message.toDeviceId;
     if (toDeviceId != null && toDeviceId.isNotEmpty) {
       _hostService.sendToDeviceId(toDeviceId, message);
     } else {
       _hostService.broadcast(message);
     }
+    return true;
   }
 
   @override

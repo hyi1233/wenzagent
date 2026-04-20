@@ -154,7 +154,7 @@ mixin _CachedProxyEventHandler on _CachedAgentProxyBase {
       _currentProcessingMessageId = null;
       _queuedMessageIds = [];
       // 使用 debounce 避免与 completed/failed 状态的同步重复
-      _debouncedSyncMessages();
+      _debouncedSyncMessages(delay: const Duration(milliseconds: 200));
     }
   }
 
@@ -180,7 +180,7 @@ mixin _CachedProxyEventHandler on _CachedAgentProxyBase {
       }
 
       // 使用 debounce 同步消息，避免与 completed/idle 重复
-      _debouncedSyncMessages();
+      _debouncedSyncMessages(delay: const Duration(milliseconds: 300));
     }
   }
 
@@ -407,9 +407,12 @@ mixin _CachedProxyEventHandler on _CachedAgentProxyBase {
     // 设置清空保护标志，防止 idle 状态触发的 _debouncedSyncMessages 重新同步消息
     _sessionClearPending = true;
     _sessionClearGuardTimer?.cancel();
-    _sessionClearGuardTimer = Timer(const Duration(seconds: 2), () {
+    _sessionClearGuardTimer = Timer(const Duration(milliseconds: 500), () {
       _sessionClearPending = false;
       _sessionClearGuardTimer = null;
+      // 保护期结束后，主动触发一次补偿同步，确保保护期内收到的消息事件被处理
+      _CachedAgentProxyBase._log.debug('会话清空保护期结束，触发补偿同步');
+      _syncMessagesFromRemote();
     });
 
     _pendingPermissionRequests.clear();
@@ -524,8 +527,8 @@ mixin _CachedProxyEventHandler on _CachedAgentProxyBase {
 
     // 根据状态决定是否触发消息同步
     if (state.status == AgentStatus.idle) {
-      // Agent空闲时，使用 debounce 同步消息（避免与 agentStatusChanged 重复）
-      _debouncedSyncMessages();
+      // Agent空闲时，使用较短去抖同步消息（避免与 agentStatusChanged 重复）
+      _debouncedSyncMessages(delay: const Duration(milliseconds: 200));
     } else if (state.status == AgentStatus.waitingPermission) {
       // Agent等待权限时，查询权限请求和确认请求
       _queryPendingPermission();

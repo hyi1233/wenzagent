@@ -75,8 +75,9 @@ class _FakeLanClientService implements LanClientService {
   void sendMessage(String content) {}
 
   @override
-  void sendLanMessage(LanMessage message) {
+  Future<bool> sendLanMessage(LanMessage message) async {
     sentMessages.add(message);
+    return true;
   }
 
   @override

@@ -67,6 +67,8 @@ abstract class _CachedAgentProxyBase {
   set _syncDebounceTimer(Timer? value);
   Timer? get _notifyDebounceTimer;
   set _notifyDebounceTimer(Timer? value);
+  int get _syncVersion;
+  set _syncVersion(int value);
 
   // ===== 权限与内存缓存 =====
   Map<String, AgentPermissionRequest> get _pendingPermissionRequests;
@@ -109,7 +111,7 @@ abstract class _CachedAgentProxyBase {
   Future<void> _updateToolCallMessageInDb(AgentMessage message);
   Future<void> _queryPendingPermission();
   Future<void> _queryPendingConfirm();
-  void _debouncedSyncMessages();
+  void _debouncedSyncMessages({Duration delay = const Duration(milliseconds: 500)});
   Future<void> _syncMessagesFromRemote();
   Future<void> _syncSessionSummaryFromRemote();
   Future<void> _cleanupSupersededLocalToolCalls(List<AgentMessage> syncedMessages);
@@ -188,6 +190,10 @@ class CachedAgentProxy extends _CachedAgentProxyBase
   /// 消息变更通知去抖定时器（避免高频事件下短时间内多次通知 UI）
   @override
   Timer? _notifyDebounceTimer;
+
+  /// 同步版本号（用于检测并发同步请求，确保不丢失）
+  @override
+  int _syncVersion = 0;
 
   /// 权限请求缓存（远程模式使用）
   @override
@@ -293,14 +299,19 @@ class CachedAgentProxy extends _CachedAgentProxyBase
   ///
   /// 在 [initialize] 之后调用，同步远程未接收消息、远程会话状态和权限请求。
   /// 同步完成后自动通过 [_notifyMessagesChanged] 通知 UI 刷新。
-  /// 双重锁：防止并发同步，重复调用直接复用首次的 Future。
+  /// 使用版本号机制：并发请求会等待当前同步完成，然后检查是否需要重新同步。
   Future<void> syncFromRemote() async {
     if (_isDisposed || _proxy.isLocalMode) return;
 
-    // 双重锁：快速判断 + Completer 复用
-    if (_syncCompleter != null) return _syncCompleter!.future;
+    // 如果已有同步正在进行，递增版本号并等待
+    if (_syncCompleter != null) {
+      _syncVersion++;
+      _CachedAgentProxyBase._log.debug('syncFromRemote: 同步进行中，递增版本号至 $_syncVersion');
+      return _syncCompleter!.future;
+    }
 
     _syncCompleter = Completer<void>();
+    final myVersion = ++_syncVersion;
 
     try {
       try {
@@ -320,11 +331,24 @@ class CachedAgentProxy extends _CachedAgentProxyBase
 
       // 同步完成后，重发待处理的标记已读队列
       await _flushMarkAsReadQueue();
+
+      // 检查是否有更新的同步请求
+      if (_syncVersion > myVersion) {
+        _CachedAgentProxyBase._log.debug('syncFromRemote: 检测到新请求(v$_syncVersion > v$myVersion)，重新同步');
+        _syncCompleter!.complete();
+        _syncCompleter = null;
+        // 递归重新同步（最多3次，防止无限递归）
+        if (myVersion <= 3) {
+          return syncFromRemote();
+        }
+        return;
+      }
+
       _syncCompleter!.complete();
       _syncCompleter = null;
     } catch (e, st) {
       _CachedAgentProxyBase._log.error('unknown error', e);
-      _syncCompleter!.completeError(e, st);
+      _syncCompleter?.completeError(e, st);
       _syncCompleter = null;
     }
   }
@@ -618,20 +642,23 @@ class CachedAgentProxy extends _CachedAgentProxyBase
 
   /// 主动同步远程消息（供外部调用）
   ///
-  /// 与 [syncFromRemote] 不同，此方法使用独立的 Completer，
-  /// 不会被 [syncFromRemote] 的锁阻塞。
+  /// 与 [syncFromRemote] 不同，此方法更轻量，仅同步消息不同步状态。
+  /// 使用版本号机制：并发请求会等待当前同步完成，然后检查是否需要重新同步。
   Future<void> syncWithRemote() async {
     if (_proxy.isLocalMode) {
       return;
     }
 
-    // 防止并发同步
+    // 如果已有同步正在进行，递增版本号并等待
     if (_syncCompleter != null) {
+      _syncVersion++;
+      _CachedAgentProxyBase._log.debug('syncWithRemote: 同步进行中，递增版本号至 $_syncVersion');
       return _syncCompleter!.future;
     }
 
     _syncCompleter = Completer<void>();
     _updateCacheState(CacheState.syncing);
+    final myVersion = ++_syncVersion;
 
     try {
       // 调用统一的同步逻辑
@@ -639,6 +666,18 @@ class CachedAgentProxy extends _CachedAgentProxyBase
 
       _lastSyncTime = DateTime.now();
       _updateCacheState(CacheState.idle);
+
+      // 检查是否有更新的同步请求
+      if (_syncVersion > myVersion) {
+        _CachedAgentProxyBase._log.debug('syncWithRemote: 检测到新请求(v$_syncVersion > v$myVersion)，重新同步');
+        _syncCompleter!.complete();
+        _syncCompleter = null;
+        // 递归重新同步（最多3次，防止无限递归）
+        if (myVersion <= 3) {
+          return syncWithRemote();
+        }
+        return;
+      }
 
       _syncCompleter!.complete();
     } catch (e) {

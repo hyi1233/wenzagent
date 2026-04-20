@@ -40,7 +40,10 @@ abstract class LanClientService {
   void sendMessage(String content);
 
   /// 发送 LanMessage 对象
-  void sendLanMessage(LanMessage message);
+  ///
+  /// 返回 true 表示发送成功或已缓存待重发，false 表示发送失败且无法缓存。
+  /// 断线时消息会自动缓存，重连后自动重发。
+  Future<bool> sendLanMessage(LanMessage message);
 
   /// 上传文件到 Host（返回 fileId）
   Future<String> uploadFile(String filePath);

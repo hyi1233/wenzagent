@@ -601,9 +601,8 @@ class DeviceClient {
   void setLanMessageHandler(LanMessageHandler? handler) =>
       _stateHolder.lanMessageHandler = handler;
 
-  Future<void> sendLanMessage(LanMessage message) {
-    _connectionManager.sendLanMessage(message);
-    return Future.value();
+  Future<bool> sendLanMessage(LanMessage message) {
+    return _connectionManager.sendLanMessage(message);
   }
 
   Future<void> sendLanMessageTo(String toDeviceId, LanMessage message) {

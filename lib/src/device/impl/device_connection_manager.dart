@@ -193,9 +193,9 @@ class DeviceConnectionManager {
   }
 
   /// 发送 LAN 消息
-  void sendLanMessage(LanMessage message) {
+  Future<bool> sendLanMessage(LanMessage message) {
     _requireConnected();
-    _lanClient!.sendLanMessage(message);
+    return _lanClient!.sendLanMessage(message);
   }
 
   /// 上传文件
