@@ -1,0 +1,6 @@
+# WenzAgent Server 配置示例
+port: 9090                    # 服务端口
+deviceId: ""                  # 设备ID（留空自动生成UUID）
+hostName: "WenzAgent Server"  # 设备显示名称
+storagePath: "./data"         # 数据存储目录
+logLevel: "info"              # 日志级别: debug|info|warn|error|none

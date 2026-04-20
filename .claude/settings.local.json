@@ -13,7 +13,13 @@
       "Bash(pushd:*)",
       "WebSearch",
       "Bash(del:*)",
-      "mcp__wenzflow__create_task"
+      "mcp__wenzflow__create_task",
+      "Bash(dart run:*)",
+      "Bash(echo:*)",
+      "Bash(dart compile exe:*)",
+      "Bash(D:/wenzbot/wenzagent_server.exe:*)",
+      "Bash(D:/wenzbot/wenzagent_client.exe:*)",
+      "Bash(D:/wenzbot/wenzagent_client.exe --help)"
     ]
   }
 }
