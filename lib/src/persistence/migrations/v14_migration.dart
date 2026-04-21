@@ -1,5 +1,6 @@
 import 'package:sqlite3/sqlite3.dart';
 
+import '../schemas/session_summary_schema.dart';
 import 'migration.dart';
 
 /// 版本 14: session_summary 表增加 pending 字段
@@ -15,18 +16,33 @@ class V14Migration extends Migration {
 
   @override
   void onUpgrade(Database db) {
-    db.execute(
-      'ALTER TABLE session_summary ADD COLUMN pending_permission TEXT',
-    );
-    db.execute(
-      'ALTER TABLE session_summary ADD COLUMN pending_confirm TEXT',
-    );
-    db.execute(
-      'ALTER TABLE session_summary ADD COLUMN pending_permission_time INTEGER',
-    );
-    db.execute(
-      'ALTER TABLE session_summary ADD COLUMN pending_confirm_time INTEGER',
-    );
+    // 先确保 session_summary 表存在（V9 创建，但此迁移可能在测试环境独立运行）
+    SessionSummarySchema.create(db);
+
+    // 检查列是否已存在，避免重复 ALTER TABLE 报错
+    final columns = db.select('PRAGMA table_info(session_summary)');
+    final columnNames = columns.map((row) => row['name'] as String).toSet();
+
+    if (!columnNames.contains('pending_permission')) {
+      db.execute(
+        'ALTER TABLE session_summary ADD COLUMN pending_permission TEXT',
+      );
+    }
+    if (!columnNames.contains('pending_confirm')) {
+      db.execute(
+        'ALTER TABLE session_summary ADD COLUMN pending_confirm TEXT',
+      );
+    }
+    if (!columnNames.contains('pending_permission_time')) {
+      db.execute(
+        'ALTER TABLE session_summary ADD COLUMN pending_permission_time INTEGER',
+      );
+    }
+    if (!columnNames.contains('pending_confirm_time')) {
+      db.execute(
+        'ALTER TABLE session_summary ADD COLUMN pending_confirm_time INTEGER',
+      );
+    }
 
     // 查询有 pending 请求的摘要优化索引
     db.execute('''

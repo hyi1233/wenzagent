@@ -285,25 +285,49 @@ class SessionSummaryStore {
     String permissionJson,
   ) {
     final now = DateTime.now().millisecondsSinceEpoch;
-    _db.execute('''
-      UPDATE session_summary SET
-        pending_permission = ?,
-        pending_permission_time = ?,
-        update_time = ?
-      WHERE employee_id = ? AND device_id = ?
-    ''', [permissionJson, now, now, employeeId, deviceId]);
+    try {
+      _db.execute('''
+        UPDATE session_summary SET
+          pending_permission = ?,
+          pending_permission_time = ?,
+          update_time = ?
+        WHERE employee_id = ? AND device_id = ?
+      ''', [permissionJson, now, now, employeeId, deviceId]);
+    } catch (e) {
+      _log.warn('setPendingPermission failed, trying ensurePendingColumns: $e');
+      SessionSummarySchema.ensurePendingColumns(_db);
+      _db.execute('''
+        UPDATE session_summary SET
+          pending_permission = ?,
+          pending_permission_time = ?,
+          update_time = ?
+        WHERE employee_id = ? AND device_id = ?
+      ''', [permissionJson, now, now, employeeId, deviceId]);
+    }
   }
 
   /// 清除待处理的权限请求
   void clearPendingPermission(String employeeId, String deviceId) {
     final now = DateTime.now().millisecondsSinceEpoch;
-    _db.execute('''
-      UPDATE session_summary SET
-        pending_permission = NULL,
-        pending_permission_time = NULL,
-        update_time = ?
-      WHERE employee_id = ? AND device_id = ?
-    ''', [now, employeeId, deviceId]);
+    try {
+      _db.execute('''
+        UPDATE session_summary SET
+          pending_permission = NULL,
+          pending_permission_time = NULL,
+          update_time = ?
+        WHERE employee_id = ? AND device_id = ?
+      ''', [now, employeeId, deviceId]);
+    } catch (e) {
+      _log.warn('clearPendingPermission failed, trying ensurePendingColumns: $e');
+      SessionSummarySchema.ensurePendingColumns(_db);
+      _db.execute('''
+        UPDATE session_summary SET
+          pending_permission = NULL,
+          pending_permission_time = NULL,
+          update_time = ?
+        WHERE employee_id = ? AND device_id = ?
+      ''', [now, employeeId, deviceId]);
+    }
   }
 
   /// 设置待处理的确认请求
@@ -313,25 +337,49 @@ class SessionSummaryStore {
     String confirmJson,
   ) {
     final now = DateTime.now().millisecondsSinceEpoch;
-    _db.execute('''
-      UPDATE session_summary SET
-        pending_confirm = ?,
-        pending_confirm_time = ?,
-        update_time = ?
-      WHERE employee_id = ? AND device_id = ?
-    ''', [confirmJson, now, now, employeeId, deviceId]);
+    try {
+      _db.execute('''
+        UPDATE session_summary SET
+          pending_confirm = ?,
+          pending_confirm_time = ?,
+          update_time = ?
+        WHERE employee_id = ? AND device_id = ?
+      ''', [confirmJson, now, now, employeeId, deviceId]);
+    } catch (e) {
+      _log.warn('setPendingConfirm failed, trying ensurePendingColumns: $e');
+      SessionSummarySchema.ensurePendingColumns(_db);
+      _db.execute('''
+        UPDATE session_summary SET
+          pending_confirm = ?,
+          pending_confirm_time = ?,
+          update_time = ?
+        WHERE employee_id = ? AND device_id = ?
+      ''', [confirmJson, now, now, employeeId, deviceId]);
+    }
   }
 
   /// 清除待处理的确认请求
   void clearPendingConfirm(String employeeId, String deviceId) {
     final now = DateTime.now().millisecondsSinceEpoch;
-    _db.execute('''
-      UPDATE session_summary SET
-        pending_confirm = NULL,
-        pending_confirm_time = NULL,
-        update_time = ?
-      WHERE employee_id = ? AND device_id = ?
-    ''', [now, employeeId, deviceId]);
+    try {
+      _db.execute('''
+        UPDATE session_summary SET
+          pending_confirm = NULL,
+          pending_confirm_time = NULL,
+          update_time = ?
+        WHERE employee_id = ? AND device_id = ?
+      ''', [now, employeeId, deviceId]);
+    } catch (e) {
+      _log.warn('clearPendingConfirm failed, trying ensurePendingColumns: $e');
+      SessionSummarySchema.ensurePendingColumns(_db);
+      _db.execute('''
+        UPDATE session_summary SET
+          pending_confirm = NULL,
+          pending_confirm_time = NULL,
+          update_time = ?
+        WHERE employee_id = ? AND device_id = ?
+      ''', [now, employeeId, deviceId]);
+    }
   }
 
   /// 获取所有有 pending 请求的摘要（权限或确认）

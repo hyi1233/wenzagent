@@ -76,7 +76,7 @@ class DatabaseManager {
   bool _initialized = false;
 
   /// 当前 schema 版本号
-  static const int currentVersion = 13;
+  static const int currentVersion = 14;
 
   /// 版本迁移注册表
   ///
