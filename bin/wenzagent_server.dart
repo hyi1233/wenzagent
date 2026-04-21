@@ -51,20 +51,27 @@ _ServerConfig _parseArgs(List<String> args) {
     switch (arg) {
       case '--config':
         if (i + 1 < args.length) configPath = args[++i];
+        break;
       case '--port':
         if (i + 1 < args.length) cliPort = int.tryParse(args[++i]);
+        break;
       case '--device-id':
         if (i + 1 < args.length) cliDeviceId = args[++i];
+        break;
       case '--host-name':
         if (i + 1 < args.length) cliHostName = args[++i];
+        break;
       case '--storage-path':
         if (i + 1 < args.length) cliStoragePath = args[++i];
+        break;
       case '--log-level':
         if (i + 1 < args.length) cliLogLevel = args[++i];
+        break;
       case '--version':
         _printVersion();
         exit(0);
-      case '--help' || '-h':
+      case '--help':
+      case '-h':
         _printHelp();
         exit(0);
     }

@@ -466,6 +466,24 @@ mixin _AgentImplMessaging on _AgentImplBase {
       }
 
       await _chatAdapter.clearCurrentSession();
+
+      // 取消所有待处理的权限请求
+      for (final completer in _pendingPermissions.values) {
+        if (!completer.isCompleted) {
+          completer.complete(PermissionDecision.deny);
+        }
+      }
+      _pendingPermissions.clear();
+      _pendingPermissionRequests.clear();
+
+      // 取消所有待处理的确认请求
+      for (final completer in _pendingConfirms.values) {
+        if (!completer.isCompleted) {
+          completer.completeError('Session cleared');
+        }
+      }
+      _pendingConfirms.clear();
+      _pendingConfirmRequests.clear();
     });
 
     // 广播会话清空事件，通知所有客户端
