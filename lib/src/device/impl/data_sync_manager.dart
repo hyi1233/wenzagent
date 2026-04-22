@@ -141,10 +141,14 @@ class DataSyncManager {
           final existing = await _employeeManager.getEmployeeIncludingDeleted(remote.uuid);
           if (existing == null) {
             await _employeeManager.saveEmployee(remote);
+            return remote;
           } else {
             await _mergeAndSaveEmployee(existing, remote);
+            // 返回合并后的本地最新数据，而不是远程原始数据
+            // 避免远程缺少本地已有的字段（如 permissionConfig）导致数据丢失
+            final merged = await _employeeManager.getEmployeeIncludingDeleted(remote.uuid);
+            return merged ?? remote;
           }
-          return remote;
         } catch (e) {
           _log.debug('syncEmployeeFromDevice failed for device ${device.id}: $e');
         }
