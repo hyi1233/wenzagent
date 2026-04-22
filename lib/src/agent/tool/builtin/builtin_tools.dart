@@ -18,7 +18,6 @@ import 'schedule_task_tool.dart';
 import 'spawn_sub_agent_tool.dart';
 import 'todo_manage_tool.dart';
 import 'spec_manage_tool.dart';
-import 'task_complexity_tool.dart';
 import 'web_fetch_tool.dart';
 import 'web_search_tool.dart';
 
@@ -32,7 +31,6 @@ class BuiltinTools {
   ///
   /// 这些工具仅用于任务分析、规划和委派，不包含任何文件/命令执行工具。
   static const Set<String> plannerToolNames = {
-    'task_complexity', // 任务复杂度分析
     'todo_manage', // 待办管理
     'spec_manage', // 规格管理
     'spawn_sub_agent', // 委派子 Agent 执行
@@ -88,7 +86,6 @@ class BuiltinTools {
       CodeSymbolsTool(),
       TodoManageTool(),
       SpecManageTool(),
-      TaskComplexityTool(),
     ];
   }
 

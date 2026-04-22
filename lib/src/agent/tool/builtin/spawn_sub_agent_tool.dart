@@ -18,11 +18,10 @@ class SpawnSubAgentTool extends AgentTool {
 
   /// 默认允许子 Agent 使用的工具列表
   ///
-  /// 包含除 todo_manage、spec_manage、schedule_task、spawn_sub_agent、task_complexity 外的所有工具。
+  /// 包含除 todo_manage、spec_manage、schedule_task、spawn_sub_agent 外的所有工具。
   /// - todo_manage/spec_manage: 这些是主 Agent 的任务管理工具，子 Agent 不应操作。
   /// - schedule_task: 定时任务由主 Agent 管理。
   /// - spawn_sub_agent: 禁止递归生成子 Agent。
-  /// - task_complexity: 任务复杂度分析由主 Agent 在接收到用户任务时调用，子 Agent 不需要。
   static const List<String> _defaultToolNames = [
     'end',
     'file_read',
@@ -169,7 +168,6 @@ class SpawnSubAgentTool extends AgentTool {
       'todo_manage', // 任务管理由主 Agent 负责
       'spec_manage', // 规格管理由主 Agent 负责
       'schedule_task', // 定时任务由主 Agent 负责
-      'task_complexity', // 任务复杂度分析由主 Agent 负责
     };
     final safeToolNames = requestedToolNames
         .where((name) => !restrictedTools.contains(name))

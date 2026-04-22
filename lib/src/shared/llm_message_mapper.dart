@@ -110,8 +110,28 @@ class LlmMessageMapper {
   }
 
   /// 批量转换 ChatMessage → llm_dart
+  ///
+  /// 会自动过滤掉空内容的 assistant 消息（既无 content 也无 tool_calls），
+  /// 避免触发 API 错误 "assistant message must not be empty"。
   static List<llm.ChatMessage> toLlmDartList(List<ChatMessage> messages) {
-    return messages.map(toLlmDart).toList();
+    final result = <llm.ChatMessage>[];
+    for (final msg in messages) {
+      // 跳过空内容的 assistant 消息（既无文本也无工具调用）
+      if (msg.role == MessageRole.assistant) {
+        final hasContent =
+            msg.content != null && msg.content!.trim().isNotEmpty;
+        final hasToolCalls =
+            msg.toolCalls != null && msg.toolCalls!.isNotEmpty;
+        final hasLegacyToolCall =
+            msg.toolCallId != null && msg.toolName != null;
+        if (!hasContent && !hasToolCalls && !hasLegacyToolCall) {
+          _log.warn('toLlmDartList: 跳过空 assistant 消息 (id=${msg.id})');
+          continue;
+        }
+      }
+      result.add(toLlmDart(msg));
+    }
+    return result;
   }
 
   // ── llm_dart → ChatMessage ──
@@ -492,15 +512,23 @@ class LlmMessageMapper {
 
   /// 从 result 列表中找到最后一条含 toolCalls 的 assistant 消息，
   /// 用 copyWith(clearToolCalls: true, type: 'text') 去掉其 toolCalls
+  ///
+  /// 如果清除 toolCalls 后 content 为空，填充占位文本以避免 API 报错
+  /// （OpenAI 等要求 assistant 消息不能为空：必须有 content 或 tool_calls）
   static void _stripLastAssistantToolCalls(List<ChatMessage> result) {
     for (var i = result.length - 1; i >= 0; i--) {
       final msg = result[i];
       if (msg.role == MessageRole.assistant &&
           msg.toolCalls != null &&
           msg.toolCalls!.isNotEmpty) {
+        final content = msg.content;
         result[i] = msg.copyWith(
           clearToolCalls: true,
           type: 'text',
+          // 清除 toolCalls 后如果 content 为空，填充占位文本
+          content: (content == null || content.trim().isEmpty)
+              ? '[tool calls removed]'
+              : null,
         );
         return;
       }

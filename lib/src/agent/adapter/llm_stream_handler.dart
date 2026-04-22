@@ -107,47 +107,27 @@ extension _StreamHandler on LlmChatAdapter {
 
     final aiContentBuffer = StringBuffer();
     final thinkingContentBuffer = StringBuffer();
-    final toolCallAggregator = llm.ToolCallAggregator();
-    llm.ChatResponse? finalResponse;
+    llm.ChatResponse response;
 
     try {
-      final stream = _chatCapability!.chatStream(
+      response = await _chatCapability!.chatWithTools(
         llmMessages,
-        tools: llmTools,
+        llmTools,
         cancelToken: _dioCancelToken,
       );
 
-      await for (final event in stream) {
-        if (streamCancelled || cancellationToken?.isCancelled == true) {
-          return _LlmStreamResult.cancelled();
-        }
-        switch (event) {
-          case llm.TextDeltaEvent():
-            final chunk = event.delta;
-            if (chunk.isNotEmpty) {
-              aiContentBuffer.write(chunk);
-              onChunk?.call(chunk);
-              onStreamDelta?.call(chunk);
-            }
-            break;
-          case llm.ToolCallDeltaEvent():
-            toolCallAggregator.addDelta(event.toolCall);
-            break;
-          case llm.ThinkingDeltaEvent():
-            if (event.delta.isNotEmpty) {
-              thinkingContentBuffer.write(event.delta);
-              onThinkingDelta?.call(event.delta);
-            }
-            break;
-          case llm.CompletionEvent():
-            finalResponse = event.response;
-            LlmChatAdapter._log.debug('finalResponse:${finalResponse.text},${finalResponse.usage.toString()},${finalResponse.toolCalls}');
-            break;
-          case llm.ErrorEvent():
-            LlmChatAdapter._log.warn('LLM stream error event: ${event.error}');
-            return _LlmStreamResult.error('LLM 调用异常: ${event.error.message}');
-        }
+      if (response.text != null && response.text!.isNotEmpty) {
+        aiContentBuffer.write(response.text);
+        onChunk?.call(response.text!);
+        onStreamDelta?.call(response.text!);
       }
+
+      if (response.thinking != null && response.thinking!.isNotEmpty) {
+        thinkingContentBuffer.write(response.thinking);
+        onThinkingDelta?.call(response.thinking!);
+      }
+
+      LlmChatAdapter._log.debug('finalResponse:${response.text},${response.usage?.toString()},${response.toolCalls}');
     } catch (e) {
       LlmChatAdapter._log.error('LLM stream error', e);
       return _LlmStreamResult.error('LLM 调用异常: $e');
@@ -157,16 +137,11 @@ extension _StreamHandler on LlmChatAdapter {
       return _LlmStreamResult.cancelled();
     }
 
-    var aToolCalls = toolCallAggregator.completedCalls;
-    var toolCalls = finalResponse?.toolCalls ?? <llm.ToolCall>[];
-    if (toolCalls.isEmpty) {
-      toolCalls = aToolCalls;
-    }
     return _LlmStreamResult(
       aiContentBuffer: aiContentBuffer,
       aiThinkingBuffer: thinkingContentBuffer,
       isDone: aiContentBuffer.toString().trim().isNotEmpty,
-      toolCalls: toolCalls,
+      toolCalls: response.toolCalls ?? <llm.ToolCall>[],
     );
   }
 }

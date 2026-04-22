@@ -9,7 +9,6 @@ import '../../utils/logger.dart';
 import '../tool/builtin/bg_command_tool.dart';
 import '../tool/builtin/command_session_pool.dart';
 import '../tool/builtin/spec_manage_tool.dart';
-import '../tool/builtin/task_complexity_tool.dart';
 
 part 'agent_impl_messaging.dart';
 part 'agent_impl_skill.dart';
@@ -253,9 +252,6 @@ class AgentImpl extends _AgentImplBase
     // 创建后台命令会话池并注入到 BgCommandTool
     _commandSessionPool = CommandSessionPool();
     _injectBgCommandCallbacks();
-
-    // 注入 TaskComplexityTool 的 LLM 回调
-    _injectTaskComplexityCallbacks();
 
     // 注入 ConfirmTool 回调
     _injectConfirmToolCallbacks();
@@ -1140,64 +1136,6 @@ class AgentImpl extends _AgentImplBase
 
     _AgentImplBase._log.info(
       'BgCommandTool injected (pool + monitor LLM) for $employeeId',
-    );
-  }
-
-  /// 注入 TaskComplexityTool 的 SubAgentExecutor 回调
-  ///
-  /// 创建独立的 SubAgentExecutor，复用主 Agent 的 provider 配置、
-  /// 权限转发和文件读取回调，与 SpawnSubAgentTool 注入模式一致。
-  /// 子 Agent 仅使用只读工具（file_list, file_read, content_search 等），
-  /// 用于探索代码库以做出准确的复杂度评估。
-  void _injectTaskComplexityCallbacks() {
-    final tool = _toolRegistry.getTool('task_complexity');
-    if (tool is! TaskComplexityTool) {
-      _AgentImplBase._log.warn(
-        'TaskComplexityTool not found in registry for injection. '
-        'Available tools: ${_toolRegistry.toolNames}',
-      );
-      return;
-    }
-
-    final agentEmployeeId = employeeId;
-
-    // 工具注册器引用：供 TaskComplexityTool 筛选只读工具实例
-    tool.getAvailableTools = () => _toolRegistry.tools;
-
-    // 创建 SubAgentExecutor 并注入所有回调
-    final executor = SubAgentExecutor();
-
-    // Provider 配置：直接从 _chatAdapter 获取
-    executor.getAgentConfig = (eid) async {
-      return _buildAgentRuntimeConfig();
-    };
-
-    // 权限请求转发：通过 _permissionManager 转发
-    executor.requestPermission = (request) async {
-      if (_permissionManager.onPermissionRequest == null) {
-        return PermissionDecision.deny;
-      }
-      return _permissionManager.onPermissionRequest!(request);
-    };
-
-    // 继承主 Agent 的权限配置
-    executor.getParentPermissionConfig = () => _permissionManager.config;
-
-    // 文件读取
-    executor.readFileContent = (filePath) async {
-      try {
-        return await File(filePath).readAsString();
-      } catch (e) {
-        return null;
-      }
-    };
-
-    tool.executor = executor;
-    tool.employeeId = agentEmployeeId;
-    tool.readFileContent = executor.readFileContent;
-
-    _AgentImplBase._log.info(
-      'TaskComplexityTool fully injected (SubAgentExecutor + read-only tools) for $agentEmployeeId',
     );
   }
 

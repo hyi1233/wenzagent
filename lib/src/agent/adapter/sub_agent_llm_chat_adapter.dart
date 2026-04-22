@@ -638,7 +638,7 @@ class SubAgentLlmChatAdapter implements IChatAdapter {
     return llmMessages;
   }
 
-  /// LLM 流式调用
+  /// LLM 调用（非流式，使用 chatWithTools）
   Future<_LlmStreamResult> _callLlmStream({
     required List<llm.ChatMessage> llmMessages,
     required List<llm.Tool>? llmTools,
@@ -648,45 +648,29 @@ class SubAgentLlmChatAdapter implements IChatAdapter {
   }) async {
     final aiContentBuffer = StringBuffer();
     final thinkingContentBuffer = StringBuffer();
-    final toolCallAggregator = llm.ToolCallAggregator();
-    llm.ChatResponse? finalResponse;
+    llm.ChatResponse response;
 
     try {
-      final stream = _chatCapability!.chatStream(
+      response = await _chatCapability!.chatWithTools(
         llmMessages,
-        tools: llmTools,
+        llmTools,
         cancelToken: _dioCancelToken,
       );
 
-      await for (final event in stream) {
-        if (streamCancelled || cancellationToken?.isCancelled == true) {
-          return _LlmStreamResult.cancelled();
-        }
-        switch (event) {
-          case llm.TextDeltaEvent():
-            final chunk = event.delta;
-            if (chunk.isNotEmpty) {
-              aiContentBuffer.write(chunk);
-              onChunk?.call(chunk);
-              onStreamDelta?.call(chunk);
-            }
-          case llm.ToolCallDeltaEvent():
-            toolCallAggregator.addDelta(event.toolCall);
-          case llm.ThinkingDeltaEvent():
-            if (event.delta.isNotEmpty) {
-              thinkingContentBuffer.write(event.delta);
-              onThinkingDelta?.call(event.delta);
-            }
-          case llm.CompletionEvent():
-            finalResponse = event.response;
-            _log.debug(
-              'finalResponse: ${finalResponse.text}, ${finalResponse.usage}, ${finalResponse.toolCalls}',
-            );
-          case llm.ErrorEvent():
-            _log.warn('LLM stream error event: ${event.error}');
-            return _LlmStreamResult.error('LLM 调用异常: ${event.error.message}');
-        }
+      if (response.text != null && response.text!.isNotEmpty) {
+        aiContentBuffer.write(response.text);
+        onChunk?.call(response.text!);
+        onStreamDelta?.call(response.text!);
       }
+
+      if (response.thinking != null && response.thinking!.isNotEmpty) {
+        thinkingContentBuffer.write(response.thinking);
+        onThinkingDelta?.call(response.thinking!);
+      }
+
+      _log.debug(
+        'finalResponse: ${response.text}, ${response.usage}, ${response.toolCalls}',
+      );
     } catch (e) {
       _log.error('LLM stream error', e);
       return _LlmStreamResult.error('LLM 调用异常: $e');
@@ -696,17 +680,11 @@ class SubAgentLlmChatAdapter implements IChatAdapter {
       return _LlmStreamResult.cancelled();
     }
 
-    var aggregatedCalls = toolCallAggregator.completedCalls;
-    var toolCalls = finalResponse?.toolCalls ?? <llm.ToolCall>[];
-    if (toolCalls.isEmpty) {
-      toolCalls = aggregatedCalls;
-    }
-
     return _LlmStreamResult(
       aiContentBuffer: aiContentBuffer,
       aiThinkingBuffer: thinkingContentBuffer,
       isDone: aiContentBuffer.toString().trim().isNotEmpty,
-      toolCalls: toolCalls,
+      toolCalls: response.toolCalls ?? <llm.ToolCall>[],
     );
   }
 
