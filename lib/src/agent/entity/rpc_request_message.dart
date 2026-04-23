@@ -320,6 +320,41 @@ class MarkMessagesAsReadRequest {
   }
 }
 
+/// 标记所有消息为已读请求
+///
+/// 将指定员工的所有未读消息标记为已读，并同步更新 DB 和内存状态
+class MarkAllMessagesAsReadRequest {
+  final String employeeId;
+
+  /// 已读设备ID
+  final String readerDeviceId;
+
+  /// 消息所在设备ID（远程会话时为消息源设备ID）
+  final String? fromDeviceId;
+
+  const MarkAllMessagesAsReadRequest({
+    required this.employeeId,
+    required this.readerDeviceId,
+    this.fromDeviceId,
+  });
+
+  Map<String, dynamic> toMap() {
+    return {
+      'employeeId': employeeId,
+      'readerDeviceId': readerDeviceId,
+      if (fromDeviceId != null) 'fromDeviceId': fromDeviceId,
+    };
+  }
+
+  factory MarkAllMessagesAsReadRequest.fromMap(Map<String, dynamic> map) {
+    return MarkAllMessagesAsReadRequest(
+      employeeId: map['employeeId'] as String,
+      readerDeviceId: map['readerDeviceId'] as String,
+      fromDeviceId: map['fromDeviceId'] as String?,
+    );
+  }
+}
+
 /// 基于 seq 批量标记消息为已读请求
 ///
 /// 将 seq <= readSeq 的所有 assistant 未读消息批量标记为已读

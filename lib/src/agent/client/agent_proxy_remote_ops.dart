@@ -186,6 +186,19 @@ class _RemoteOps {
     await _rpcUtil.markMessagesAsRead(request);
   }
 
+  /// 标记所有消息为已读
+  Future<void> markAllMessagesAsRead({
+    required String readerDeviceId,
+    String? fromDeviceId,
+  }) async {
+    final request = MarkAllMessagesAsReadRequest(
+      employeeId: _employeeId,
+      readerDeviceId: readerDeviceId,
+      fromDeviceId: fromDeviceId,
+    );
+    await _rpcUtil.markAllMessagesAsRead(request);
+  }
+
   /// 基于 seq 批量标记消息为已读
   Future<void> markMessagesAsReadBySeq({
     required String readerDeviceId,

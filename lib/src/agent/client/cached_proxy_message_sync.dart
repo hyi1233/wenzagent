@@ -309,7 +309,7 @@ mixin _CachedProxyMessageSync on _CachedAgentProxyBase {
       ];
       if (allSpecMaps.isEmpty) return;
 
-      final specStore = SpecStore(deviceId: _deviceId);
+      final specStore = SpecStore(dbManager: _messageStore.dbManager);
       final specItems = allSpecMaps
           .map((s) => SpecItemEntity.fromMap(s))
           .toList();
@@ -338,7 +338,7 @@ mixin _CachedProxyMessageSync on _CachedAgentProxyBase {
       ];
       if (allTopicMaps.isEmpty) return;
 
-      final todoStore = TodoStore(deviceId: _deviceId);
+      final todoStore = TodoStore(dbManager: _messageStore.dbManager);
       final topicItems = allTopicMaps
           .map((t) => TodoTopicEntity.fromMap(t))
           .toList();

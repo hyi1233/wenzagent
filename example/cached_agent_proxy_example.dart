@@ -307,7 +307,7 @@ void main() async {
 
   // --- 5.8 标记已读 ---
   void markAllAsRead() {
-    cachedProxy.clearAllUnread();
+    cachedProxy.markAllMessagesAsRead(deviceId);
     print('已标记所有消息为已读');
   }
 

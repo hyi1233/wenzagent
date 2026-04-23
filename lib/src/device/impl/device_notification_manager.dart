@@ -507,7 +507,7 @@ class DeviceNotificationManager {
     final agent = _agentManager.getLocalAgent(employeeId);
     if (agent == null) return;
     agent.markMessagesAsRead(
-      readerDeviceId: _deviceId,
+      deviceId: _deviceId,
       employeeId: employeeId,
     ).catchError((e) {
       _log.debug('notifyAgentReadStatus failed: $e');

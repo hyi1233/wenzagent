@@ -175,7 +175,7 @@ abstract class IAgent {
   /// [employeeId] 员工ID
   /// [messageIds] 指定消息ID列表，为 null 则标记该员工所有消息
   Future<void> markMessagesAsRead({
-    required String readerDeviceId,
+    required String deviceId,
     required String employeeId,
     List<String>? messageIds,
   });
@@ -394,7 +394,8 @@ abstract class IAgent {
   /// 删除任务子项
   Future<void> deleteTaskItem(String taskId);
 
-  /// 更新主题状态  Future<void> updateTopicStatus(String topicId, String status);
+  /// 更新主题状态
+  Future<void> updateTopicStatus(String topicId, String status);
 
   /// 批量更新主题排序
   Future<void> reorderTopics(List<String> topicIds);

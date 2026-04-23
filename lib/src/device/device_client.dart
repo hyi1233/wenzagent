@@ -60,9 +60,9 @@ class OpenSessionState {
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-          other is OpenSessionState &&
-              employeeId == other.employeeId &&
-              fromDeviceId == other.fromDeviceId;
+      other is OpenSessionState &&
+          employeeId == other.employeeId &&
+          fromDeviceId == other.fromDeviceId;
 
   @override
   int get hashCode => Object.hash(employeeId, fromDeviceId);
@@ -148,7 +148,8 @@ class DeviceClient {
       _ctx?.agentManager ?? DeviceAgentManager.getInstance(_deviceId);
 
   DeviceNotificationManager get _notificationManager =>
-      _ctx?.notificationManager ?? DeviceNotificationManager.getInstance(_deviceId);
+      _ctx?.notificationManager ??
+      DeviceNotificationManager.getInstance(_deviceId);
 
   DeviceMessageHandler get _messageHandler =>
       _ctx?.messageHandler ?? DeviceMessageHandler.getInstance(_deviceId);
@@ -171,7 +172,8 @@ class DeviceClient {
       _ctx?.skillManager ?? SkillManager.getInstance(_deviceId);
 
   EmployeeConfigService get _configService =>
-      _ctx?.employeeConfigService ?? EmployeeConfigService.getInstance(_deviceId);
+      _ctx?.employeeConfigService ??
+      EmployeeConfigService.getInstance(_deviceId);
 
   DeviceClient._({required String deviceId}) : _deviceId = deviceId;
 
@@ -184,7 +186,7 @@ class DeviceClient {
   static DeviceClient getInstance(String deviceId) {
     return _instances.putIfAbsent(
       deviceId,
-          () => DeviceClient._(deviceId: deviceId),
+      () => DeviceClient._(deviceId: deviceId),
     );
   }
 
@@ -202,8 +204,9 @@ class DeviceClient {
       if (_initialized) return;
 
       // 1. 初始化数据库
-      await DatabaseManager.getInstance(_deviceId)
-          .initialize(storagePath: config.dbPath);
+      await DatabaseManager.getInstance(
+        _deviceId,
+      ).initialize(storagePath: config.dbPath);
 
       // 2. 创建 AppContext 依赖容器
       AppContext.create(deviceId: _deviceId, dbPath: config.dbPath);
@@ -226,11 +229,7 @@ class DeviceClient {
       }
 
       // 4. 初始化子模块
-      _connectionManager.initialize(
-        host: _host,
-        port: _port,
-        topic: _topic,
-      );
+      _connectionManager.initialize(host: _host, port: _port, topic: _topic);
       _deviceRegistry.initialize(
         deviceName: _deviceName,
         host: _host,
@@ -239,10 +238,7 @@ class DeviceClient {
       );
       _notificationManager.initialize(topic: _topic);
       _agentManager.initialize(topic: _topic);
-      _messageHandler.initialize(
-        deviceName: _deviceName,
-        topic: _topic,
-      );
+      _messageHandler.initialize(deviceName: _deviceName, topic: _topic);
 
       // 5. 初始化完成
       _initialized = true;
@@ -267,15 +263,14 @@ class DeviceClient {
   }
 
   /// 获取当前配置
-  DeviceClientConfig getConfig() =>
-      DeviceClientConfig(
-        dbPath: '',
-        // dbPath 仅在 initialize 时设置，运行时不可变
-        host: _host,
-        port: _port,
-        topic: _topic,
-        deviceName: _deviceName,
-      );
+  DeviceClientConfig getConfig() => DeviceClientConfig(
+    dbPath: '',
+    // dbPath 仅在 initialize 时设置，运行时不可变
+    host: _host,
+    port: _port,
+    topic: _topic,
+    deviceName: _deviceName,
+  );
 
   /// 更新运行时配置
   ///
@@ -377,8 +372,7 @@ class DeviceClient {
       _stateHolder.onEmployeeEvent;
 
   /// 会话数据变更通知（新增/更新/删除），由底层 SessionManager 触发
-  Stream<SessionChangeEvent> get onSessionEvent =>
-      _stateHolder.onSessionEvent;
+  Stream<SessionChangeEvent> get onSessionEvent => _stateHolder.onSessionEvent;
 
   /// 跨设备数据同步完成事件（同步后如有数据变更则发射）
   Stream<DataSyncEvent> get onSyncEvent => _stateHolder.onSyncEvent;
@@ -401,7 +395,8 @@ class DeviceClient {
 
   // ===== 连接管理 =====
 
-  Future<bool> pingEmployee(String employeeId, {
+  Future<bool> pingEmployee(
+    String employeeId, {
     Duration timeout = const Duration(seconds: 2),
   }) async {
     final localAgent = _agentManager.getLocalAgent(employeeId);
@@ -423,14 +418,10 @@ class DeviceClient {
   /// 必须先调用 [initialize] 完成初始化。
   Future<void> connect() async {
     if (!_initialized) {
-      throw StateError(
-        'DeviceClient 未初始化，请先调用 initialize() 方法',
-      );
+      throw StateError('DeviceClient 未初始化，请先调用 initialize() 方法');
     }
     if (_host.isEmpty) {
-      throw StateError(
-        '未配置服务器地址(host)，请先通过 initialize() 或 updateConfig() 配置',
-      );
+      throw StateError('未配置服务器地址(host)，请先通过 initialize() 或 updateConfig() 配置');
     }
     await _connectionManager.connect();
   }
@@ -453,24 +444,22 @@ class DeviceClient {
     String? deviceId,
     AiEmployeeEntity? employee,
     bool autoCreateSession = true,
-  }) =>
-      _agentManager.getOrCreateAgentProxy(
-        employeeId: employeeId,
-        deviceId: deviceId,
-        employee: employee,
-        autoCreateSession: autoCreateSession,
-      );
+  }) => _agentManager.getOrCreateAgentProxy(
+    employeeId: employeeId,
+    deviceId: deviceId,
+    employee: employee,
+    autoCreateSession: autoCreateSession,
+  );
 
   Future<void> destroyAgentProxy(
     String employeeId, {
     String? targetDeviceId,
     bool keepLocalAgent = false,
-  }) =>
-      _agentManager.destroyAgentProxy(
-        employeeId,
-        targetDeviceId: targetDeviceId,
-        keepLocalAgent: keepLocalAgent,
-      );
+  }) => _agentManager.destroyAgentProxy(
+    employeeId,
+    targetDeviceId: targetDeviceId,
+    keepLocalAgent: keepLocalAgent,
+  );
 
   CachedAgentProxy? getAgentProxy(String employeeId) =>
       _agentManager.getAgentProxy(employeeId);
@@ -572,11 +561,10 @@ class DeviceClient {
   Future<AiEmployeeEntity?> syncEmployeeFromDevice({
     required String employeeId,
     String? targetDeviceId,
-  }) =>
-      _dataSyncManager.syncEmployeeFromDevice(
-        employeeId: employeeId,
-        targetDeviceId: targetDeviceId,
-      );
+  }) => _dataSyncManager.syncEmployeeFromDevice(
+    employeeId: employeeId,
+    targetDeviceId: targetDeviceId,
+  );
 
   /// 广播员工到所有在线设备（创建/更新后调用）
   Future<void> broadcastEmployeeToAllDevices(String employeeId) =>
@@ -590,11 +578,10 @@ class DeviceClient {
   Future<bool> syncEmployeeToDevice({
     required String employeeId,
     required String targetDeviceId,
-  }) =>
-      _dataSyncManager.syncEmployeeToDevice(
-        employeeId: employeeId,
-        targetDeviceId: targetDeviceId,
-      );
+  }) => _dataSyncManager.syncEmployeeToDevice(
+    employeeId: employeeId,
+    targetDeviceId: targetDeviceId,
+  );
 
   // ===== LAN消息扩展 =====
 
@@ -624,17 +611,19 @@ class DeviceClient {
 
   // ===== 文件传输 =====
 
-  Future<String> uploadFile(String filePath, {
+  Future<String> uploadFile(
+    String filePath, {
     void Function(double)? onProgress,
   }) async {
     final fileId = await _connectionManager.uploadFile(filePath);
     return fileId;
   }
 
-  Future<void> downloadFile(String fileId,
-      String savePath, {
-        void Function(double)? onProgress,
-      }) async {
+  Future<void> downloadFile(
+    String fileId,
+    String savePath, {
+    void Function(double)? onProgress,
+  }) async {
     await _connectionManager.downloadFile(fileId, savePath);
   }
 
@@ -646,11 +635,10 @@ class DeviceClient {
   Future<void> setCurrentOpenSession({
     required String employeeId,
     String? fromDeviceId,
-  }) =>
-      _notificationManager.setCurrentOpenSession(
-        employeeId: employeeId,
-        fromDeviceId: fromDeviceId,
-      );
+  }) => _notificationManager.setCurrentOpenSession(
+    employeeId: employeeId,
+    fromDeviceId: fromDeviceId,
+  );
 
   void clearCurrentOpenSession() =>
       _notificationManager.clearCurrentOpenSession();
@@ -687,7 +675,9 @@ class DeviceClient {
   /// 获取有未读消息的会话列表
   List<SessionSummaryEntity> getUnreadSessions({String? deviceId}) {
     final summaryStore = SessionSummaryStore(deviceId: _deviceId);
-    final ids = summaryStore.getUnreadEmployeeIds(deviceId: deviceId ?? _deviceId);
+    final ids = summaryStore.getUnreadEmployeeIds(
+      deviceId: deviceId ?? _deviceId,
+    );
     if (ids.isEmpty) return [];
     final summaries = <SessionSummaryEntity>[];
     for (final id in ids) {
@@ -710,14 +700,25 @@ class DeviceClient {
 
   int getTotalUnreadCount() => _notificationManager.getTotalUnreadCount();
 
-  void markAllMessagesAsRead({
+  Future<void> markAllMessagesAsRead({
     required String employeeId,
     String? fromDeviceId,
-  }) =>
+  }) async {
+    final targetDeviceId = fromDeviceId ?? _deviceId;
+    if (targetDeviceId == _deviceId) {
+      // 本地设备：直接通过 notificationManager 标记已读
       _notificationManager.markAllMessagesAsRead(
         employeeId: employeeId,
         fromDeviceId: fromDeviceId,
       );
+    } else {
+      // 远程设备：通过 RPC 调用远程设备的 markAllMessagesAsRead
+      final proxy = _agentManager.getAgentProxy(employeeId);
+      if (proxy != null) {
+        await proxy.markAllMessagesAsRead(targetDeviceId);
+      }
+    }
+  }
 
   void markAllMessagesAsReadGlobal() =>
       _notificationManager.markAllMessagesAsReadGlobal();
@@ -736,21 +737,19 @@ class DeviceClient {
     required String employeeId,
     required String deviceId,
     int limit = 2,
-  }) =>
-      _notificationManager.getLatestMessages(
-        employeeId: employeeId,
-        deviceId: deviceId,
-        limit: limit,
-      );
+  }) => _notificationManager.getLatestMessages(
+    employeeId: employeeId,
+    deviceId: deviceId,
+    limit: limit,
+  );
 
   AgentMessage? getCachedLatestMessage({
     required String employeeId,
     required String deviceId,
-  }) =>
-      _notificationManager.getCachedLatestMessage(
-        employeeId: employeeId,
-        deviceId: deviceId,
-      );
+  }) => _notificationManager.getCachedLatestMessage(
+    employeeId: employeeId,
+    deviceId: deviceId,
+  );
 }
 
 /// 员工在线状态变化事件
@@ -787,14 +786,13 @@ class DeviceWithEmployeesInfo {
     required this.employees,
   });
 
-  Map<String, dynamic> toMap() =>
-      {
-        'deviceId': deviceId,
-        'deviceName': deviceName,
-        'ip': ip,
-        'connectedAt': connectedAt?.millisecondsSinceEpoch,
-        'employees': employees.map((e) => e.toMap()).toList(),
-      };
+  Map<String, dynamic> toMap() => {
+    'deviceId': deviceId,
+    'deviceName': deviceName,
+    'ip': ip,
+    'connectedAt': connectedAt?.millisecondsSinceEpoch,
+    'employees': employees.map((e) => e.toMap()).toList(),
+  };
 }
 
 /// 员工简要信息
@@ -811,11 +809,10 @@ class EmployeeBriefInfo {
     this.deviceId,
   });
 
-  Map<String, dynamic> toMap() =>
-      {
-        'uuid': uuid,
-        'name': name,
-        'status': status,
-        'deviceId': deviceId,
-      };
+  Map<String, dynamic> toMap() => {
+    'uuid': uuid,
+    'name': name,
+    'status': status,
+    'deviceId': deviceId,
+  };
 }

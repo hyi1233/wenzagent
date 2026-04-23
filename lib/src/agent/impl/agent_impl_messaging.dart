@@ -277,7 +277,7 @@ mixin _AgentImplMessaging on _AgentImplBase {
 
   @override
   Future<void> markMessagesAsRead({
-    required String readerDeviceId,
+    required String deviceId,
     required String employeeId,
     List<String>? messageIds,
   }) async {
@@ -291,9 +291,9 @@ mixin _AgentImplMessaging on _AgentImplBase {
       for (final messageId in ids) {
         store.markAsReadByUuid(messageId);
         _messageReadStatus[messageId] ??= {};
-        _messageReadStatus[messageId]![readerDeviceId] = DateTime.now();
+        _messageReadStatus[messageId]![deviceId??''] = DateTime.now();
       }
-      _AgentImplBase._log.info('已标记设备 $readerDeviceId 对 ${ids.length} 条消息的已读状态');
+      _AgentImplBase._log.info('已标记设备 $deviceId 对 ${ids.length} 条消息的已读状态');
     } else {
       // 持久化到 DB：批量标记该员工所有消息为已读
       final store = MessageStore(deviceId: deviceId);
@@ -303,9 +303,9 @@ mixin _AgentImplMessaging on _AgentImplBase {
       final allMessages = await _chatAdapter.getSessionMessages(employeeId);
       for (final message in allMessages) {
         _messageReadStatus[message.id] ??= {};
-        _messageReadStatus[message.id]![readerDeviceId] = DateTime.now();
+        _messageReadStatus[message.id]![deviceId] = DateTime.now();
       }
-      _AgentImplBase._log.info('已标记设备 $readerDeviceId 对员工 $employeeId 所有消息的已读状态');
+      _AgentImplBase._log.info('已标记设备 $deviceId 对员工 $employeeId 所有消息的已读状态');
     }
 
     // 广播已读状态变更事件
@@ -314,7 +314,7 @@ mixin _AgentImplMessaging on _AgentImplBase {
         type: AgentEventType.messageReadStatusChanged,
         data: {
           'employeeId': employeeId,
-          'readerDeviceId': readerDeviceId,
+          'readerDeviceId': deviceId,
           'messageIds': ids,
         },
         employeeId: employeeId,

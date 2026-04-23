@@ -174,6 +174,9 @@ abstract class MessageStoreService {
 
   /// 从远程数据合并本地摘要（智能合并：仅当远程数据更新时覆盖，未读数取最大值）
   void upsertSummaryFromRemote(SessionSummaryEntity remote);
+
+  /// 获取底层 DatabaseManager 实例，供关联 Store（如 SpecStore、TodoStore）复用
+  DatabaseManager get dbManager;
 }
 
 /// 消息存储服务实现
@@ -490,6 +493,9 @@ class MessageStoreServiceImpl implements MessageStoreService {
     final store = SyncWatermarkStore(dbManager: _store.dbManager);
     store.resetLastSeq(employeeId, lastSeq, deviceId: deviceId);
   }
+
+  @override
+  DatabaseManager get dbManager => _store.dbManager;
 
   void _notifyChange(MessageChangeType type, ChatMessage message) {
     _changeController.add(

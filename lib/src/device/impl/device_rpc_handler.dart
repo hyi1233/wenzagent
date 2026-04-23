@@ -171,10 +171,28 @@ class DeviceRpcHandler {
       final request = MarkMessagesAsReadRequest.fromMap(params);
       final agent = await _agentManager.ensureLocalAgentForRpc(request.employeeId);
       await agent.markMessagesAsRead(
-        readerDeviceId: request.readerDeviceId,
+        deviceId: request.readerDeviceId,
         employeeId: request.employeeId,
         messageIds: request.messageIds,
       );
+      return {'success': true};
+    });
+
+    // 标记所有消息为已读
+    rpcServer.register(AgentRpcConfig.methodMarkAllMessagesAsRead, (params) async {
+      final request = MarkAllMessagesAsReadRequest.fromMap(params);
+      final agent = await _agentManager.ensureLocalAgentForRpc(request.employeeId);
+
+      // 1. Agent 内存记录已读状态 + 广播事件
+      await agent.markMessagesAsRead(
+        deviceId: request.readerDeviceId,
+        employeeId: request.employeeId,
+      );
+
+      // 2. 更新本地 DB（messages + session_summary）
+      final targetDeviceId = request.fromDeviceId ?? _deviceId;
+      _messageStoreService.markAsReadInDb(targetDeviceId, request.employeeId);
+
       return {'success': true};
     });
 

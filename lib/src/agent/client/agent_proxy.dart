@@ -488,7 +488,7 @@ class AgentProxy {
   }) async {
     if (isLocalMode && _localAgent != null) {
       return _localAgent.markMessagesAsRead(
-        readerDeviceId: readerDeviceId,
+        deviceId: readerDeviceId,
         employeeId: employeeId,
         messageIds: messageIds,
       );
@@ -496,6 +496,20 @@ class AgentProxy {
     return _remoteOps!.markMessagesAsRead(
       readerDeviceId: readerDeviceId,
       messageIds: messageIds,
+    );
+  }
+
+  /// 标记所有消息为已读
+  Future<void> markAllMessagesAsRead(String deviceId) async {
+    if (isLocalMode && _localAgent != null) {
+      return _localAgent.markMessagesAsRead(
+        deviceId: deviceId,
+        employeeId: employeeId,
+      );
+    }
+    return _remoteOps!.markAllMessagesAsRead(
+      readerDeviceId: deviceId,
+      fromDeviceId: deviceId,
     );
   }
 
