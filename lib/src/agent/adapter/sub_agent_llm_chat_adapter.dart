@@ -258,6 +258,9 @@ class SubAgentLlmChatAdapter implements IChatAdapter {
             employeeId: _sessionId!,
             content: llmResult.aiContentBuffer.toString(),
             toolCalls: chatToolCalls,
+            thinking: llmResult.aiThinkingBuffer.isNotEmpty
+                ? llmResult.aiThinkingBuffer.toString()
+                : null,
           );
 
           // 重复工具调用检测

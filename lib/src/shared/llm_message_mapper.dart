@@ -37,7 +37,7 @@ class LlmMessageMapper {
               .where((tc) => tc.name.trim().isNotEmpty)
               .toList();
           if (validToolCalls.isNotEmpty) {
-            return llm.ChatMessage.toolUse(
+            final toolUseMsg = llm.ChatMessage.toolUse(
               toolCalls: validToolCalls.map((tc) => llm.ToolCall(
                     id: tc.id,
                     callType: 'function',
@@ -48,9 +48,18 @@ class LlmMessageMapper {
                   )).toList(),
               content: msg.content ?? '',
             );
+            // 回传 thinking 内容（Anthropic Extended Thinking 要求）
+            if (msg.thinking != null && msg.thinking!.isNotEmpty) {
+              return toolUseMsg.withExtension('anthropic', {
+                'contentBlocks': [
+                  {'type': 'thinking', 'thinking': msg.thinking},
+                ],
+              });
+            }
+            return toolUseMsg;
           } else {
             _log.warn('toLlmDart: assistant 消息的所有 toolCall name 为空，降级为纯文本 (id=${msg.id})');
-            return llm.ChatMessage.assistant(msg.content ?? '');
+            return _buildAssistantMessageWithThinking(msg);
           }
         }
         // 包含单工具调用（向后兼容）
@@ -58,12 +67,12 @@ class LlmMessageMapper {
           // 防御性校验：name 为空时降级为纯文本
           if (msg.toolName!.trim().isEmpty) {
             _log.warn('toLlmDart: 单工具调用的 toolName 为空，降级为纯文本 (id=${msg.id})');
-            return llm.ChatMessage.assistant(msg.content ?? '');
+            return _buildAssistantMessageWithThinking(msg);
           }
           final argsJson = msg.toolArguments != null
               ? jsonEncode(msg.toolArguments)
               : '{}';
-          return llm.ChatMessage.toolUse(
+          final toolUseMsg = llm.ChatMessage.toolUse(
             toolCalls: [
               llm.ToolCall(
                 id: msg.toolCallId!,
@@ -76,8 +85,17 @@ class LlmMessageMapper {
             ],
             content: msg.content ?? '',
           );
+          // 回传 thinking 内容
+          if (msg.thinking != null && msg.thinking!.isNotEmpty) {
+            return toolUseMsg.withExtension('anthropic', {
+              'contentBlocks': [
+                {'type': 'thinking', 'thinking': msg.thinking},
+              ],
+            });
+          }
+          return toolUseMsg;
         }
-        return llm.ChatMessage.assistant(msg.content ?? '');
+        return _buildAssistantMessageWithThinking(msg);
 
       case MessageRole.system:
         return llm.ChatMessage.system(msg.content ?? '');
@@ -533,6 +551,23 @@ class LlmMessageMapper {
   static String _truncate(String s, int maxLen) {
     if (s.length <= maxLen) return s;
     return '${s.substring(0, maxLen)}...';
+  }
+
+  /// 构建 assistant 消息，并在有 thinking 内容时通过 anthropic extension 回传
+  ///
+  /// Anthropic Extended Thinking 模式要求：如果上一轮 assistant 回复包含 thinking 内容，
+  /// 下一次请求必须原样回传。此方法将 thinking 作为 anthropic extension 的 contentBlocks
+  /// 附加到 llm.ChatMessage 中，确保 Anthropic provider 在序列化时能正确包含 thinking block。
+  static llm.ChatMessage _buildAssistantMessageWithThinking(ChatMessage msg) {
+    final assistantMsg = llm.ChatMessage.assistant(msg.content ?? '');
+    if (msg.thinking != null && msg.thinking!.isNotEmpty) {
+      return assistantMsg.withExtension('anthropic', {
+        'contentBlocks': [
+          {'type': 'thinking', 'thinking': msg.thinking},
+        ],
+      });
+    }
+    return assistantMsg;
   }
 
   /// 从 result 列表中找到最后一条含 toolCalls 的 assistant 消息，

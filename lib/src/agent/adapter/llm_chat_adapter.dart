@@ -368,6 +368,9 @@ class LlmChatAdapter implements IChatAdapter {
             employeeId: currentEmployeeUuid!,
             content: llmResult.aiContentBuffer.toString(),
             toolCalls: chatToolCalls,
+            thinking: llmResult.aiThinkingBuffer.isNotEmpty
+                ? llmResult.aiThinkingBuffer.toString()
+                : null,
           );
 
           // 重复工具调用检测

@@ -227,6 +227,15 @@ class ChatMessage {
   /// 消息文本内容
   final String? content;
 
+  // ── Extended Thinking 字段 ──
+
+  /// LLM 扩展思考内容（Anthropic Extended Thinking 模式下返回的 thinking）
+  ///
+  /// 当 assistant 回复包含 thinking 内容时，Anthropic API 要求在下一次请求中
+  /// 将完整的 thinking 内容原样回传，否则会报错。
+  /// 此字段用于持久化 thinking 内容，确保 tool calling 循环中不丢失。
+  final String? thinking;
+
   // ── 时间字段 ──
 
   /// 创建时间
@@ -311,6 +320,7 @@ class ChatMessage {
     this.outputTokens,
     this.deviceId,
     this.metadata,
+    this.thinking,
   });
 
   // ── 便捷构造函数 ──
@@ -342,6 +352,7 @@ class ChatMessage {
     List<ToolCall>? toolCalls,
     String? deviceId,
     Map<String, dynamic>? metadata,
+    String? thinking,
   }) {
     return ChatMessage(
       id: id,
@@ -353,6 +364,7 @@ class ChatMessage {
       toolCalls: toolCalls,
       deviceId: deviceId,
       metadata: metadata,
+      thinking: thinking,
     );
   }
 
@@ -460,6 +472,9 @@ class ChatMessage {
     if (deviceId != null) map['deviceId'] = deviceId;
     if (metadata != null && metadata!.isNotEmpty) map['metadata'] = metadata;
 
+    // Extended Thinking 字段
+    if (thinking != null && thinking!.isNotEmpty) map['thinking'] = thinking;
+
     return map;
   }
 
@@ -535,6 +550,7 @@ class ChatMessage {
       outputTokens: json['outputTokens'] as int?,
       deviceId: json['deviceId'] as String?,
       metadata: metadata,
+      thinking: json['thinking'] as String?,
     );
   }
 
@@ -562,6 +578,7 @@ class ChatMessage {
     int? outputTokens,
     String? deviceId,
     Map<String, dynamic>? metadata,
+    String? thinking,
     // 清除 nullable 字段用
     bool clearUpdatedAt = false,
     bool clearToolCallId = false,
@@ -575,6 +592,7 @@ class ChatMessage {
     bool clearOutputTokens = false,
     bool clearDeviceId = false,
     bool clearMetadata = false,
+    bool clearThinking = false,
   }) {
     return ChatMessage(
       id: id ?? this.id,
@@ -603,6 +621,7 @@ class ChatMessage {
           clearOutputTokens ? null : (outputTokens ?? this.outputTokens),
       deviceId: clearDeviceId ? null : (deviceId ?? this.deviceId),
       metadata: clearMetadata ? null : (metadata ?? this.metadata),
+      thinking: clearThinking ? null : (thinking ?? this.thinking),
     );
   }
 
