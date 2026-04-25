@@ -513,6 +513,8 @@ class SubAgentLlmChatAdapter implements IChatAdapter {
         builder.google();
       case LLMProvider.ollama:
         builder.ollama();
+      case LLMProvider.deepseek:
+        builder.deepseek();
     }
 
     builder.model(config.model);
@@ -636,10 +638,14 @@ class SubAgentLlmChatAdapter implements IChatAdapter {
 
   /// 构建 LLM 消息列表
   List<llm.ChatMessage> _buildLlmMessages(String? systemPrompt) {
+    // Anthropic 等提供商要求 tool_result 必须匹配紧邻前一条 assistant 消息的 tool_use blocks，
+    // 因此需要启用 strictMode 禁用跨轮次匹配，避免 "unexpected tool_use_id" 错误。
+    final isStrictProvider = _providerConfig?.provider == LLMProvider.anthropic;
     final sanitized = shared.LlmMessageMapper.sanitizeForLlm(
       shared.LlmMessageMapper.mergeConsecutiveToolResults(_messages),
+      strictMode: isStrictProvider,
     );
-    final llmMessages = shared.LlmMessageMapper.toLlmDartList(sanitized);
+    final llmMessages = shared.LlmMessageMapper.toLlmDartList(sanitized, provider: _providerConfig?.provider);
 
     if (systemPrompt != null && systemPrompt.isNotEmpty) {
       llmMessages.insert(0, llm.ChatMessage.system(systemPrompt));

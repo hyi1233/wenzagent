@@ -178,6 +178,7 @@ class LlmChatAdapter implements IChatAdapter {
     required MessageStoreService messageStore,
     required String deviceId,
   }) {
+    this.deviceId = deviceId;
     memoryManager.configurePersistence(
       messageStore: messageStore,
       deviceId: deviceId,
@@ -498,10 +499,10 @@ class LlmChatAdapter implements IChatAdapter {
 
         controller.add(StreamResponse.done());
         _log.debug('stream done');
-      } catch (e) {
+      } catch (e, st) {
         controller.add(StreamResponse.error('LLM 请求失败: $e'));
 
-        _log.error('stream error', e);
+        _log.error('stream error: $e\n$st');
         hadError = true;
       } finally {
         cancelSubscription?.cancel();
@@ -687,6 +688,8 @@ class LlmChatAdapter implements IChatAdapter {
         builder.google();
       case LLMProvider.ollama:
         builder.ollama();
+      case LLMProvider.deepseek:
+        builder.deepseek();
     }
 
     builder.model(config.model);

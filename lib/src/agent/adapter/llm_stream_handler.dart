@@ -21,21 +21,14 @@ extension _StreamHandler on LlmChatAdapter {
   }
 
   /// 添加用户消息到会话历史
-  ///
-  /// 如果消息已被 AgentImpl.sendMessage 提前持久化（存在于内存中），
-  /// 则先从内存移除，再用当前时间重新创建并持久化，
-  /// 确保 createdAt 和 seq 反映实际发送顺序而非排队顺序。
   Future<void> addUserMessage(MessageInput message) async {
     final id = message.id ?? const Uuid().v4();
-    // 如果消息已存在于内存中（被 AgentImpl.sendMessage 提前持久化），
-    // 先从内存中移除，避免 streamMessage 时上下文混乱
     final session = memoryManager.getSession(currentEmployeeUuid!);
     if (session != null && session.allMessages.any((m) => m.id == id)) {
       session.removeMessage(id);
       LlmChatAdapter._log.debug('用户消息已从内存移除，准备重新持久化: $id');
     }
 
-    // 用当前时间创建消息，确保 createdAt 和 seq 反映实际发送顺序
     final userMessage = shared.ChatMessage.user(
       id: id,
       employeeId: currentEmployeeUuid!,
@@ -64,10 +57,6 @@ extension _StreamHandler on LlmChatAdapter {
   }
 
   /// LLM 流式调用，返回 AI 文本、工具调用列表等
-  ///
-  /// 通过 [onChunk] 回调逐块推送文本给调用方。
-  /// [allSentToolCallIds] 当前会话已发送给 LLM 的所有 tool_call_id 集合（跨轮次累积），
-  /// 用于 sanitizeForLlm 时确保 tool_result 能匹配到正确的 tool_call。
   Future<_LlmStreamResult> callLlmStream({
     required String? systemPrompt,
     required bool hasTools,
@@ -93,11 +82,29 @@ extension _StreamHandler on LlmChatAdapter {
       );
     }
 
+    // 处理顺序：merge → sanitize → toLlmDartList
+    // Anthropic 等提供商要求 tool_result 必须匹配紧邻前一条 assistant 消息的 tool_use blocks，
+    // 因此需要启用 strictMode；DeepSeek/OpenAI 等兼容提供商不需要。
+    final isStrictProvider = _providerConfig?.provider == LLMProvider.anthropic;
+    final merged = shared.LlmMessageMapper.mergeConsecutiveToolResults(chatMsgs);
     final sanitized = shared.LlmMessageMapper.sanitizeForLlm(
-      chatMsgs,
+      merged,
       knownToolCallIds: allSentToolCallIds,
+      strictMode: isStrictProvider,
     );
-    final llmMessages = shared.LlmMessageMapper.toLlmDartList(sanitized);
+    final llmMessages = shared.LlmMessageMapper.toLlmDartList(sanitized, provider: _providerConfig?.provider);
+
+    // 诊断日志
+    _logDiagnosticSequence(llmMessages);
+
+    // 验证序列合规性
+    final validationErrors = _validateLlmMessageSequence(llmMessages);
+    if (validationErrors.isNotEmpty) {
+      final errorDetail = validationErrors.join('\n  ');
+      final errorMsg = 'LLM 消息序列不合规：tool_result 与 assistant(toolUse) 不匹配。\n$errorDetail';
+      LlmChatAdapter._log.error(errorMsg);
+      return _LlmStreamResult.error(errorMsg);
+    }
 
     // 构建工具列表
     final List<llm.Tool>? llmTools;
@@ -134,8 +141,14 @@ extension _StreamHandler on LlmChatAdapter {
       }
 
       LlmChatAdapter._log.debug('finalResponse:${response.text},${response.usage?.toString()},${response.toolCalls}');
-    } catch (e) {
-      LlmChatAdapter._log.error('LLM stream error', e);
+    } on StateError catch (e, st) {
+      LlmChatAdapter._log.error('LLM stream error (StateError): $e\n$st');
+      return _LlmStreamResult.error('LLM 调用异常: $e');
+    } on TypeError catch (e, st) {
+      LlmChatAdapter._log.error('LLM stream error (TypeError): $e\n$st');
+      return _LlmStreamResult.error('LLM 调用异常: $e');
+    } catch (e, st) {
+      LlmChatAdapter._log.error('LLM stream error: $e\n$st');
       return _LlmStreamResult.error('LLM 调用异常: $e');
     }
 
@@ -149,5 +162,92 @@ extension _StreamHandler on LlmChatAdapter {
       isDone: aiContentBuffer.toString().trim().isNotEmpty,
       toolCalls: response.toolCalls ?? <llm.ToolCall>[],
     );
+  }
+
+  /// 诊断日志：输出最终发送给 LLM 的消息序列
+  static void _logDiagnosticSequence(List<llm.ChatMessage> messages) {
+    if (messages.isEmpty) return;
+    final buf = StringBuffer('=== LLM Message Sequence (diagnostic) ===\n');
+    for (var i = 0; i < messages.length; i++) {
+      final msg = messages[i];
+      final roleStr = msg.role.name;
+      final typeStr = msg.messageType.runtimeType.toString();
+
+      String detail = '';
+      if (msg.messageType is llm.ToolUseMessage) {
+        final toolUse = msg.messageType as llm.ToolUseMessage;
+        final ids = toolUse.toolCalls.map((tc) => tc.id).toList();
+        detail = ' tool_use_ids=$ids';
+      } else if (msg.messageType is llm.ToolResultMessage) {
+        final toolResult = msg.messageType as llm.ToolResultMessage;
+        final ids = toolResult.results.map((r) => r.id).toList();
+        detail = ' tool_result_ids=$ids';
+      }
+
+      final contentLen = msg.content.length;
+      final contentPreview = contentLen > 60
+          ? '${msg.content.substring(0, 60)}...'
+          : msg.content;
+      buf.writeln('  [$i] $roleStr ($typeStr)$detail content="$contentPreview"');
+    }
+    buf.write('=== End Sequence (${messages.length} messages) ===');
+    LlmChatAdapter._log.debug(buf.toString());
+  }
+
+  /// 验证最终 llm_dart 消息序列的合规性
+  static List<String> _validateLlmMessageSequence(List<llm.ChatMessage> messages) {
+    final errors = <String>[];
+    if (messages.isEmpty) return errors;
+
+    Set<String>? prevToolUseIds;
+    int? prevAssistantIndex;
+
+    for (var i = 0; i < messages.length; i++) {
+      final msg = messages[i];
+
+      if (msg.messageType is llm.ToolUseMessage) {
+        final toolUse = msg.messageType as llm.ToolUseMessage;
+        if (prevToolUseIds != null && prevAssistantIndex != null && prevToolUseIds.isNotEmpty) {
+          final err = '_validateLlmMessageSequence: assistant[$prevAssistantIndex] 有未匹配的 tool_use_ids=$prevToolUseIds '
+              '（紧随其后应为 tool_result，但遇到了新的 assistant[toolUse]）';
+          errors.add(err);
+          LlmChatAdapter._log.error(err);
+        }
+        prevToolUseIds = toolUse.toolCalls.map((tc) => tc.id).toSet();
+        prevAssistantIndex = i;
+      } else if (msg.messageType is llm.ToolResultMessage) {
+        final toolResult = msg.messageType as llm.ToolResultMessage;
+        final resultIds = toolResult.results.map((r) => r.id).toList();
+
+        if (prevToolUseIds == null || prevToolUseIds.isEmpty) {
+          final err = '_validateLlmMessageSequence: tool_result[$i] ids=$resultIds '
+              '没有前序 assistant(toolUse) 消息！';
+          errors.add(err);
+          LlmChatAdapter._log.error(err);
+          continue;
+        }
+
+        for (final rid in resultIds) {
+          if (!prevToolUseIds.contains(rid)) {
+            final err = '_validateLlmMessageSequence: tool_result[$i] id=$rid '
+                '不在紧邻前一条 assistant[$prevAssistantIndex] 的 tool_use_ids=$prevToolUseIds 中！';
+            errors.add(err);
+            LlmChatAdapter._log.error(err);
+          }
+        }
+        for (final rid in resultIds) {
+          prevToolUseIds.remove(rid);
+        }
+      } else {
+        if (prevToolUseIds != null && prevToolUseIds.isNotEmpty) {
+          final err = '_validateLlmMessageSequence: ${msg.role.name}[$i] 出现在 assistant[$prevAssistantIndex] '
+              '和其 tool_result 之间！未匹配的 tool_use_ids=$prevToolUseIds';
+          errors.add(err);
+          LlmChatAdapter._log.error(err);
+        }
+      }
+    }
+
+    return errors;
   }
 }

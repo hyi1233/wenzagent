@@ -1,7 +1,7 @@
 import 'context_compression_config.dart';
 
 /// LLM 提供商类型
-enum LLMProvider { openai, anthropic, google, ollama }
+enum LLMProvider { openai, anthropic, google, ollama, deepseek }
 
 /// LLM 提供商配置
 class ProviderConfig {
@@ -101,6 +101,7 @@ class ProviderConfig {
       case LLMProvider.openai:
       case LLMProvider.anthropic:
       case LLMProvider.google:
+      case LLMProvider.deepseek:
         if (apiKey == null || apiKey!.isEmpty) {
           throw ArgumentError('${provider.name} 需要 apiKey');
         }

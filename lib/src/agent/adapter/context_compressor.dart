@@ -233,7 +233,184 @@ class ContextCompressor {
       result.addAll(turns[i].messages);
     }
 
-    return result;
+    // 6. 合并连续的 tool result 消息（与非压缩路径 buildMessages 保持一致）
+    //
+    // 非压缩路径 SessionMemoryManager.buildMessages 会调用 mergeConsecutiveToolResults，
+    // 压缩路径也必须调用，否则连续的单条 tool result 不会被合并为分组消息，
+    // 导致 Anthropic 等严格提供商收到多个独立的 tool_result 消息，
+    // 可能触发 "unexpected tool_use_id" 错误。
+    final merged = LlmMessageMapper.mergeConsecutiveToolResults(result);
+
+    // 7. 修复压缩边界处的 tool_call/tool_result 配对问题
+    //
+    // 当摘要覆盖了旧轮次的部分消息时，可能导致 tool_call 和 tool_result
+    // 被拆分到摘要内外的不同区域，破坏 Anthropic 等严格提供商的消息序列要求。
+    // 例如：assistant(toolCalls) 被保留但对应的 tool_result 被摘要覆盖，
+    // 或者 tool_result 被保留但其对应的 assistant(toolCalls) 被摘要覆盖。
+    _ensureToolCallResultPairs(merged);
+
+    return merged;
+  }
+
+  /// 确保 tool_call / tool_result 严格配对
+  ///
+  /// 压缩边界可能将 assistant(toolCalls) 和对应的 tool_result 拆到不同区域，
+  /// 导致 Anthropic 等 API 报 "unexpected tool_use_id" 错误。
+  ///
+  /// 策略：单次前向遍历，收集需要删除/strip 的索引，最后统一处理。
+  static void _ensureToolCallResultPairs(List<ChatMessage> result) {
+    if (result.length < 2) return;
+
+    // 需要删除的消息索引
+    final toRemove = <int>{};
+    // 需要移除 toolCalls 的 assistant 消息索引
+    final toStrip = <int>{};
+
+    // 前一条 assistant(toolCalls) 的 tool_call_id 集合
+    Set<String>? prevToolCallIds;
+    int? prevAssistantIdx;
+
+    for (var i = 0; i < result.length; i++) {
+      final msg = result[i];
+
+      if (msg.role == MessageRole.assistant &&
+          msg.toolCalls != null &&
+          msg.toolCalls!.isNotEmpty) {
+        // ── 遇到新的 assistant(toolCalls) ──
+        // 先处理前一条未配对的 assistant
+        if (prevToolCallIds != null &&
+            prevToolCallIds.isNotEmpty &&
+            prevAssistantIdx != null &&
+            !toStrip.contains(prevAssistantIdx)) {
+          _log.warn(
+            '_ensureToolCallResultPairs: assistant at [$prevAssistantIdx] 无匹配 tool_result, '
+            'strip toolCalls (ids=$prevToolCallIds)',
+          );
+          toStrip.add(prevAssistantIdx);
+        }
+        prevToolCallIds = msg.toolCalls!.map((tc) => tc.id).toSet();
+        prevAssistantIdx = i;
+      } else if (msg.role == MessageRole.tool) {
+        // ── 遇到 tool_result ──
+        if (prevToolCallIds == null || prevToolCallIds.isEmpty) {
+          // 前面没有未配对的 assistant(toolCalls) → 孤立 tool_result
+          _log.warn(
+            '_ensureToolCallResultPairs: 丢弃孤立 tool_result at [$i] '
+            '(前面无未配对的 assistant)',
+          );
+          toRemove.add(i);
+        } else {
+          // 此分支已通过上面的 null/isEmpty 检查，prevToolCallIds 必定非空
+          final ids = prevToolCallIds;
+          // 检查 tool_result 的 toolCallId 是否匹配
+          final matchIds = msg.isToolResultGroup
+              ? msg.toolResults!
+                    .where((r) => ids.contains(r.toolCallId))
+                    .map((r) => r.toolCallId)
+                    .toSet()
+              : (ids.contains(msg.toolCallId ?? '')
+                  ? {msg.toolCallId ?? ''}
+                  : <String>{});
+
+          if (matchIds.isEmpty) {
+            _log.warn(
+              '_ensureToolCallResultPairs: 丢弃不匹配 tool_result at [$i] '
+              '(expected=$prevToolCallIds)',
+            );
+            toRemove.add(i);
+          } else {
+            for (final id in matchIds) {
+              prevToolCallIds.remove(id);
+            }
+          }
+        }
+      } else {
+        // ── 遇到 user/system 等非 tool 消息 ──
+        // 如果前面有未配对的 assistant(toolCalls)，strip 之
+        if (prevToolCallIds != null &&
+            prevToolCallIds.isNotEmpty &&
+            prevAssistantIdx != null &&
+            !toStrip.contains(prevAssistantIdx)) {
+          _log.warn(
+            '_ensureToolCallResultPairs: ${msg.role.name} at [$i] 打断了 tool_call 配对, '
+            'strip assistant at [$prevAssistantIdx] (ids=$prevToolCallIds)',
+          );
+          toStrip.add(prevAssistantIdx);
+        }
+        prevToolCallIds = null;
+        prevAssistantIdx = null;
+      }
+    }
+
+    // 序列末尾：strip 未配对的 assistant(toolCalls)
+    if (prevToolCallIds != null &&
+        prevToolCallIds.isNotEmpty &&
+        prevAssistantIdx != null &&
+        !toStrip.contains(prevAssistantIdx)) {
+      _log.warn(
+        '_ensureToolCallResultPairs: 序列末尾 assistant at [$prevAssistantIdx] 无匹配 tool_result, '
+        'strip toolCalls (ids=$prevToolCallIds)',
+      );
+      toStrip.add(prevAssistantIdx);
+    }
+
+    // 统一处理：先 strip，再删除（倒序）
+    for (final idx in toStrip) {
+      _stripAssistantToolCallsInList(result, idx);
+    }
+    if (toRemove.isNotEmpty) {
+      final sorted = toRemove.toList()..sort((a, b) => b.compareTo(a));
+      for (final idx in sorted) {
+        if (idx >= 0 && idx < result.length) {
+          result.removeAt(idx);
+        }
+      }
+    }
+  }
+
+  /// 在消息列表中 strip 指定索引处 assistant 消息的 toolCalls，
+  /// 转为内联文本描述，确保 LLM 能感知历史工具调用。
+  static void _stripAssistantToolCallsInList(
+    List<ChatMessage> result,
+    int index,
+  ) {
+    if (index < 0 || index >= result.length) return;
+    final msg = result[index];
+    if (msg.role != MessageRole.assistant ||
+        msg.toolCalls == null ||
+        msg.toolCalls!.isEmpty) {
+      return;
+    }
+    final content = msg.content;
+    final toolSummary = msg.toolCalls!
+        .map((tc) {
+          final args = tc.arguments;
+          String argsPreview;
+          if (args.length <= 3) {
+            argsPreview = args.entries
+                .map((e) => '${e.key}=${e.value}')
+                .join(', ');
+          } else {
+            argsPreview = args.entries.take(3)
+                .map((e) => '${e.key}=${e.value}')
+                .join(', ');
+            argsPreview += ', ...(共${args.length}个参数)';
+          }
+          return '${tc.name}($argsPreview)';
+        })
+        .join('; ');
+    final inlineNote =
+        '[已调用工具: $toolSummary，但结果因上下文压缩被移除，请勿重复调用]';
+
+    final newContent = (content == null || content.trim().isEmpty)
+        ? inlineNote
+        : '$content\n$inlineNote';
+
+    result[index] = msg.copyWith(
+      clearToolCalls: true,
+      type: 'text',
+      content: newContent,
+    );
   }
 
   /// 清除指定会话的压缩缓存

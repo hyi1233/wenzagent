@@ -185,9 +185,9 @@ class MessageStoreServiceImpl implements MessageStoreService {
   final SessionSummaryStore _summaryStore;
   final _changeController = StreamController<MessageChangeEvent>.broadcast();
 
-  MessageStoreServiceImpl({MessageStore? store, String? deviceId})
+  MessageStoreServiceImpl({MessageStore? store, SessionSummaryStore? summaryStore, String? deviceId})
       : _store = store ?? MessageStore(deviceId: deviceId),
-        _summaryStore = SessionSummaryStore(deviceId: deviceId);
+        _summaryStore = summaryStore ?? SessionSummaryStore(deviceId: deviceId);
 
   @override
   Future<List<ChatMessage>> getMessages(

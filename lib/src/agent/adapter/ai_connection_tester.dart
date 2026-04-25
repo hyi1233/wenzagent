@@ -151,6 +151,8 @@ class AiConnectionTester {
         builder.google();
       case LLMProvider.ollama:
         builder.ollama();
+      case LLMProvider.deepseek:
+        builder.deepseek();
     }
 
     builder.model(config.model);
