@@ -18,6 +18,8 @@ import '../../service/message_store_service.dart';
 import '../../shared/shared.dart' as shared;
 import '../../utils/logger.dart';
 import 'context_compressor.dart';
+import 'retry_config.dart';
+import 'retry_util.dart';
 import 'session_memory_manager.dart';
 
 part 'llm_stream_handler.dart';

@@ -1,5 +1,14 @@
 part of 'llm_chat_adapter.dart';
 
+/// 重试过程中用户取消操作的异常（内部使用）
+///
+/// 当用户在重试过程中取消了 LLM 请求时抛出此异常，
+/// 用于在重试循环中区分取消和普通错误。
+class _RetryCancelledException implements Exception {
+  @override
+  String toString() => 'Retry cancelled by user';
+}
+
 // ===== streamMessage 及其子方法 =====
 
 extension _StreamHandler on LlmChatAdapter {
@@ -122,11 +131,40 @@ extension _StreamHandler on LlmChatAdapter {
     final thinkingContentBuffer = StringBuffer();
     llm.ChatResponse response;
 
+    // 获取重试配置（未配置时使用默认值）
+    final retryConfig = _providerConfig?.retryConfig ?? const RetryConfig();
+
     try {
-      response = await _chatCapability!.chatWithTools(
-        llmMessages,
-        llmTools,
-        cancelToken: _dioCancelToken,
+      // 使用重试机制包装 chatWithTools 调用
+      response = await RetryUtil.executeWithRetry<llm.ChatResponse>(
+        () async {
+          // 每次重试前检查取消状态
+          if (streamCancelled || cancellationToken?.isCancelled == true) {
+            throw _RetryCancelledException();
+          }
+          return await _chatCapability!.chatWithTools(
+            llmMessages,
+            llmTools,
+            cancelToken: _dioCancelToken,
+          );
+        },
+        config: retryConfig,
+        shouldRetry: (error) {
+          // StateError 和 TypeError 表示程序逻辑问题，不重试
+          if (error is StateError || error is TypeError) {
+            return false;
+          }
+          // _RetryCancelledException 表示取消，不重试
+          if (error is _RetryCancelledException) {
+            return false;
+          }
+          return RetryUtil.isRetryableError(error);
+        },
+        onRetry: (attempt, error, delay) async {
+          LlmChatAdapter._log.warn(
+            'LLM 调用失败，${delay.inMilliseconds}ms 后重试第 $attempt 次: $error',
+          );
+        },
       );
 
       if (response.text != null && response.text!.isNotEmpty) {
@@ -147,6 +185,18 @@ extension _StreamHandler on LlmChatAdapter {
     } on TypeError catch (e, st) {
       LlmChatAdapter._log.error('LLM stream error (TypeError): $e\n$st');
       return _LlmStreamResult.error('LLM 调用异常: $e');
+    } on AggregateException catch (e) {
+      LlmChatAdapter._log.error(
+        'LLM 调用在 ${e.errors.length} 次尝试后全部失败',
+      );
+      final lastError = e.errors.isNotEmpty ? e.errors.last : '';
+      // 如果最终错误是取消异常，返回取消状态
+      if (lastError is _RetryCancelledException) {
+        return _LlmStreamResult.cancelled();
+      }
+      return _LlmStreamResult.error(
+        'LLM 请求在 ${e.errors.length} 次尝试后仍然失败。最后错误: $lastError',
+      );
     } catch (e, st) {
       LlmChatAdapter._log.error('LLM stream error: $e\n$st');
       return _LlmStreamResult.error('LLM 调用异常: $e');

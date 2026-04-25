@@ -1,4 +1,5 @@
 import 'context_compression_config.dart';
+import 'retry_config.dart';
 
 /// LLM 提供商类型
 enum LLMProvider { openai, anthropic, google, ollama, deepseek }
@@ -28,6 +29,12 @@ class ProviderConfig {
   /// 设置后启用上下文压缩，控制发送给 LLM 的消息总 token 数。
   final ContextCompressionConfig? compressionConfig;
 
+  /// 重试配置（可选）
+  ///
+  /// 设置后启用 LLM 调用的自动重试机制，应对频率限制（429）和临时服务端错误（5xx）。
+  /// 使用指数退避策略。未设置时使用 [RetryConfig.defaultConfig]。
+  final RetryConfig? retryConfig;
+
   const ProviderConfig({
     required this.provider,
     required this.model,
@@ -36,6 +43,7 @@ class ProviderConfig {
     this.options = const LLMOptions(),
     this.organization,
     this.compressionConfig,
+    this.retryConfig,
   });
 
   /// 从 Map 创建配置
@@ -52,6 +60,11 @@ class ProviderConfig {
     final compressionMap = map['compression'] as Map<String, dynamic>?;
     final compressionConfig = compressionMap != null
         ? ContextCompressionConfig.fromMap(compressionMap)
+        : null;
+
+    final retryMap = map['retry'] as Map<String, dynamic>?;
+    final retryConfig = retryMap != null
+        ? RetryConfig.fromMap(retryMap)
         : null;
 
     // Ollama 专用默认值
@@ -77,6 +90,7 @@ class ProviderConfig {
       options: options,
       organization: map['organization'] as String?,
       compressionConfig: compressionConfig,
+      retryConfig: retryConfig,
     );
   }
 
@@ -89,6 +103,7 @@ class ProviderConfig {
     'options': options.toMap(),
     'organization': organization,
     if (compressionConfig != null) 'compression': compressionConfig!.toMap(),
+    if (retryConfig != null) 'retry': retryConfig!.toMap(),
   };
 
   /// 验证配置

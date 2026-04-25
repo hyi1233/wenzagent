@@ -680,6 +680,7 @@ class LlmMessageMapper {
     result[index] = msg.copyWith(
       toolCalls: remainingToolCalls,
       content: newContent,
+      clearThinking: true,
     );
   }
 
@@ -718,6 +719,7 @@ class LlmMessageMapper {
 
     result[index] = msg.copyWith(
       clearToolCalls: true,
+      clearThinking: true,
       type: 'text',
       content: newContent,
     );
@@ -961,6 +963,7 @@ class LlmMessageMapper {
 
         result[i] = msg.copyWith(
           clearToolCalls: true,
+          clearThinking: true,
           type: 'text',
           content: newContent,
         );

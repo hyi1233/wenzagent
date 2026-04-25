@@ -85,6 +85,8 @@ void main() {
           builder.google();
         case LLMProvider.ollama:
           builder.ollama();
+        case LLMProvider.deepseek:
+          builder.deepseek();
       }
       builder.model(apiModel);
       builder.apiKey(apiKey);

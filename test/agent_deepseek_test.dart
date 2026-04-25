@@ -40,7 +40,7 @@ void main() {
     if (apiKey.isEmpty) {
       throw Exception('请设置环境变量 deepseek_api_key 或 anthropic_api_key');
     }
-
+    apiModel = 'deepseek-v4-flash';
     print('\n=== 测试配置 ===');
     print('API URL: $apiUrl');
     print('API Model: $apiModel');

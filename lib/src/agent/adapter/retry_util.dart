@@ -1,0 +1,131 @@
+import 'package:dio/dio.dart';
+
+import '../../utils/logger.dart';
+import 'retry_config.dart';
+
+/// 聚合异常，包含多次重试中收集到的所有错误
+class AggregateException implements Exception {
+  /// 所有抛出的错误列表
+  final List<Object> errors;
+
+  /// 最终的操作（如获取最后一条错误消息）
+  String get lastErrorMessage =>
+      errors.isNotEmpty ? errors.last.toString() : '未知错误';
+
+  /// 所有错误的完整描述
+  String get allMessages =>
+      errors.asMap().entries.map((e) => '  [${e.key}] ${e.value}').join('\n');
+
+  const AggregateException(this.errors);
+
+  @override
+  String toString() {
+    if (errors.isEmpty) return 'AggregateException: 无错误信息';
+    if (errors.length == 1) return 'AggregateException: ${errors.first}';
+    return 'AggregateException (${errors.length} errors):\n$allMessages';
+  }
+}
+
+/// 重试工具函数
+///
+/// 提供泛型重试方法 [executeWithRetry]，以及错误判断工具 [isRetryableError]。
+class RetryUtil {
+  static final _log = Logger('RetryUtil');
+
+  /// 使用指数退避策略执行异步函数，支持自动重试
+  ///
+  /// [fn] 要执行的异步函数
+  /// [config] 重试配置，默认为 [RetryConfig.defaultConfig]
+  /// [shouldRetry] 可选的自定义重试判断函数，返回 true 表示需要重试
+  /// [onRetry] 每次重试前的回调，可用于日志记录
+  ///
+  /// 返回 [fn] 的成功结果。
+  /// 如果所有重试都失败，抛出 [AggregateException]。
+  static Future<T> executeWithRetry<T>(
+    Future<T> Function() fn, {
+    RetryConfig config = const RetryConfig(),
+    bool Function(Object error)? shouldRetry,
+    Future<void> Function(int attempt, Object error, Duration delay)?
+    onRetry,
+  }) async {
+    final errors = <Object>[];
+
+    for (var attempt = 0; attempt <= config.maxRetries; attempt++) {
+      try {
+        if (attempt > 0) {
+          // 计算重试延迟
+          final delayMs = config.nextDelay(attempt - 1);
+          final delay = Duration(milliseconds: delayMs);
+          _log.warn(
+            'LLM 调用重试第 $attempt/$config.maxRetries 次，'
+            '延迟 ${delayMs}ms，上一错误: ${errors.last}',
+          );
+
+          // 调用重试回调
+          if (onRetry != null) {
+            await onRetry(attempt, errors.last, delay);
+          }
+
+          await Future.delayed(delay);
+        }
+
+        return await fn();
+      } catch (e) {
+        // 记录错误
+        errors.add(e);
+
+        // 如果是最后一次尝试，不再判断可重试性
+        if (attempt >= config.maxRetries) {
+          break;
+        }
+
+        // 判断是否可重试
+        final retryable = shouldRetry?.call(e) ?? isRetryableError(e);
+        if (!retryable) {
+          // 不可重试的错误，立即抛出聚合异常
+          break;
+        }
+      }
+    }
+
+    throw AggregateException(errors);
+  }
+
+  /// 判断错误是否可重试
+  ///
+  /// 以下错误可重试：
+  /// - [DioException] 类型为 connectionError, connectionTimeout, sendTimeout, receiveTimeout
+  /// - [DioException] 类型为 badResponse 且状态码在可重试列表中（429, 5xx）
+  /// - 其他非 [StateError]、[TypeError]、[ArgumentError] 的异常
+  static bool isRetryableError(Object error) {
+    if (error is DioException) {
+      switch (error.type) {
+        case DioExceptionType.connectionError:
+        case DioExceptionType.connectionTimeout:
+        case DioExceptionType.sendTimeout:
+        case DioExceptionType.receiveTimeout:
+          return true;
+        case DioExceptionType.badResponse:
+          final statusCode = error.response?.statusCode;
+          if (statusCode != null) {
+            // 429 频率限制，5xx 服务端错误
+            return statusCode == 429 ||
+                (statusCode >= 500 && statusCode < 600);
+          }
+          return false;
+        case DioExceptionType.cancel:
+        case DioExceptionType.badCertificate:
+        case DioExceptionType.unknown:
+          return false;
+      }
+    }
+
+    // StateError 和 TypeError 通常表示程序逻辑问题，不重试
+    if (error is StateError || error is TypeError || error is ArgumentError) {
+      return false;
+    }
+
+    // 其他未知异常，尝试重试
+    return true;
+  }
+}

@@ -15,6 +15,13 @@ import '../tool/permission_manager.dart';
 import '../tool/tool_registry.dart';
 import '../../shared/shared.dart' as shared;
 import '../../utils/logger.dart';
+import 'retry_config.dart';
+import 'retry_util.dart';
+
+/// 重试过程中如果检测到取消操作，抛出此异常以终止重试
+class _SubRetryCancelledException implements Exception {
+  const _SubRetryCancelledException();
+}
 
 /// 子 Agent 专用 LLM 聊天适配器
 ///
@@ -667,10 +674,30 @@ class SubAgentLlmChatAdapter implements IChatAdapter {
     llm.ChatResponse response;
 
     try {
-      response = await _chatCapability!.chatWithTools(
-        llmMessages,
-        llmTools,
-        cancelToken: _dioCancelToken,
+      response = await RetryUtil.executeWithRetry<llm.ChatResponse>(
+        () async {
+          // 每次重试前检查取消状态
+          if (cancellationToken?.isCancelled == true || streamCancelled) {
+            throw _SubRetryCancelledException();
+          }
+          return await _chatCapability!.chatWithTools(
+            llmMessages,
+            llmTools,
+            cancelToken: _dioCancelToken,
+          );
+        },
+        config: _providerConfig?.retryConfig ?? const RetryConfig(),
+        shouldRetry: (error) {
+          if (error is StateError ||
+              error is TypeError ||
+              error is _SubRetryCancelledException) {
+            return false;
+          }
+          return RetryUtil.isRetryableError(error);
+        },
+        onRetry: (attempt, error, delay) async {
+          _log.warn('LLM 调用重试第 $attempt 次，错误: $error');
+        },
       );
 
       if (response.text != null && response.text!.isNotEmpty) {
@@ -687,6 +714,13 @@ class SubAgentLlmChatAdapter implements IChatAdapter {
       _log.debug(
         'finalResponse: ${response.text}, ${response.usage}, ${response.toolCalls}',
       );
+    } on AggregateException catch (e) {
+      // AggregateException 中的最终错误如果是取消异常，返回取消结果
+      if (e.errors.isNotEmpty && e.errors.last is _SubRetryCancelledException) {
+        return _LlmStreamResult.cancelled();
+      }
+      _log.error('LLM stream error after retries', e);
+      return _LlmStreamResult.error('LLM 调用异常: $e');
     } catch (e) {
       _log.error('LLM stream error', e);
       return _LlmStreamResult.error('LLM 调用异常: $e');
