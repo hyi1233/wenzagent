@@ -7,6 +7,7 @@ import 'interrupt_judge.dart';
 import 'message_queue.dart';
 import 'message_tracker.dart';
 import '../../utils/logger.dart';
+import 'package:llm_dart/llm_dart.dart' as llm;
 
 /// 流式响应
 ///
@@ -177,6 +178,11 @@ abstract class IChatAdapter {
   /// 回调参数为当前思考增量文本。
   void Function(String delta)? onThinkingDelta;
 
+  /// Token 用量回调
+  ///
+  /// 由 [AgentImpl] 注入，每次 LLM 调用后触发，用于统计 token 消耗。
+  void Function(llm.UsageInfo usage)? onTokenUsage;
+
   /// 更新消息状态（用于持久化）
   void updateMessageStatus(
     String messageId,
@@ -261,6 +267,9 @@ class MessageProcessor {
 
   /// 当前处理中的消息ID
   String? get currentProcessingMessageId => _currentProcessingMessageId;
+
+  /// 当前处理中的消息ID（非空版本，用于类型提升）
+  String get currentMessageId => _currentProcessingMessageId!;
 
   /// 排队中的消息ID列表
   List<String> get queuedMessageIds => _queue.messageIds;

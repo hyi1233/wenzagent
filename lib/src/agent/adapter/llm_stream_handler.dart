@@ -179,6 +179,12 @@ extension _StreamHandler on LlmChatAdapter {
       }
 
       LlmChatAdapter._log.debug('finalResponse:${response.text},${response.usage?.toString()},${response.toolCalls}');
+
+      // 采集 token 用量
+      final usage = response.usage;
+      if (usage != null) {
+        onTokenUsage?.call(usage);
+      }
     } on StateError catch (e, st) {
       LlmChatAdapter._log.error('LLM stream error (StateError): $e\n$st');
       return _LlmStreamResult.error('LLM 调用异常: $e');

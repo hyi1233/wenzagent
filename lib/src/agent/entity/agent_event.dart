@@ -54,6 +54,9 @@ enum AgentEventType {
   /// 配置变更（provider/context/skills/mcp/project 等）
   configChanged,
 
+  /// Token 用量更新（每次 LLM 调用后触发）
+  tokenUsageUpdated,
+
   /// 未知类型（兼容旧数据或外部扩展）
   unknown;
 

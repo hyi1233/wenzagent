@@ -99,6 +99,7 @@ class DeviceMessageHandler {
       case LanMessageType.agentTodoChanged:
       case LanMessageType.agentSpecChanged:
       case LanMessageType.agentConfigChanged:
+      case LanMessageType.agentTokenUsageUpdated:
         _handleAgentEvent(msg);
       case LanMessageType.agentMessageReadStatus:
       case LanMessageType.agentSessionSummaryChanged:

@@ -164,6 +164,9 @@ class LlmChatAdapter implements IChatAdapter {
   @override
   void Function(String delta)? onThinkingDelta;
 
+  /// Token 用量回调（由 AgentImpl 注入，每次 LLM 调用后触发）
+  void Function(llm.UsageInfo usage)? onTokenUsage;
+
   /// 当前正在并行执行的工具列表（用于取消）
   final List<AgentTool> _runningTools = [];
 

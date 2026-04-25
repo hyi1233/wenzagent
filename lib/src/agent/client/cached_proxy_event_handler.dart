@@ -69,6 +69,9 @@ mixin _CachedProxyEventHandler on _CachedAgentProxyBase {
         // 数据变更事件：通知 UI 刷新数据列表
         _notifyMessagesChanged();
         break;
+      case AgentEventType.tokenUsageUpdated:
+        // Token 用量更新事件：直接透传给前端
+        break;
       case AgentEventType.unknown:
         break;
     }

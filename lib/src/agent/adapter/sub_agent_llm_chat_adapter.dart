@@ -72,6 +72,9 @@ class SubAgentLlmChatAdapter implements IChatAdapter {
   @override
   void Function(String delta)? onThinkingDelta;
 
+  /// Token 用量回调（由 AgentImpl 注入，每次 LLM 调用后触发）
+  void Function(llm.UsageInfo usage)? onTokenUsage;
+
   /// 当前正在并行执行的工具列表（用于取消）
   final List<AgentTool> _runningTools = [];
 
@@ -714,6 +717,12 @@ class SubAgentLlmChatAdapter implements IChatAdapter {
       _log.debug(
         'finalResponse: ${response.text}, ${response.usage}, ${response.toolCalls}',
       );
+
+      // 采集 token 用量
+      final usage = response.usage;
+      if (usage != null) {
+        onTokenUsage?.call(usage);
+      }
     } on AggregateException catch (e) {
       // AggregateException 中的最终错误如果是取消异常，返回取消结果
       if (e.errors.isNotEmpty && e.errors.last is _SubRetryCancelledException) {

@@ -17,7 +17,9 @@ part 'agent_impl_skill.dart';
 abstract class _AgentImplBase implements IAgent {
   String get employeeId;
   String get deviceId;
+  // ignore: unused_element
   IChatAdapter get _chatAdapter;
+  // ignore: unused_element
   MessageProcessor? get _processor;
   set _processor(MessageProcessor? value);
   ToolRegistry get _toolRegistry;
@@ -47,6 +49,8 @@ abstract class _AgentImplBase implements IAgent {
   StreamController<AgentEvent> get _eventController;
   FileOperationTracker? get _fileOperationTracker;
   set _fileOperationTracker(FileOperationTracker? value);
+  TokenUsageTracker? get _tokenUsageTracker;
+  set _tokenUsageTracker(TokenUsageTracker? value);
   Map<String, Map<String, dynamic>> get _toolCallArguments;
   static Logger get _log => Logger('AgentImpl');
 
@@ -154,6 +158,10 @@ class AgentImpl extends _AgentImplBase
   @override
   FileOperationTracker? _fileOperationTracker;
 
+  /// Token 用量统计器
+  @override
+  TokenUsageTracker? _tokenUsageTracker;
+
   /// 工具调用参数缓存（toolCallStart 时缓存，toolCallResult 时消费）
   @override
   final Map<String, Map<String, dynamic>> _toolCallArguments = {};
@@ -249,6 +257,9 @@ class AgentImpl extends _AgentImplBase
       store: FileOperationStore(deviceId: deviceId),
     );
 
+    // 创建 Token 用量统计器
+    _tokenUsageTracker = TokenUsageTracker();
+
     // 创建后台命令会话池并注入到 BgCommandTool
     _commandSessionPool = CommandSessionPool();
     _injectBgCommandCallbacks();
@@ -279,6 +290,27 @@ class AgentImpl extends _AgentImplBase
         type: AgentEventType.thinkingDelta,
         data: {'content': delta},
         employeeId: employeeId,
+      ));
+    };
+
+    // 注入 Token 用量回调：累加统计并广播 tokenUsageUpdated AgentEvent
+    _chatAdapter.onTokenUsage = (usage) {
+      if (_status == AgentStatus.disposed) return;
+      final processor = _processor;
+      if (processor == null) return;
+      final currentMsgId = processor.currentMessageId;
+      if (currentMsgId == null) return;
+      final msgId = currentMsgId;
+      final eid = this.employeeId;
+      _tokenUsageTracker?.accumulate(eid, msgId, usage);
+      _eventController.add(AgentEvent(
+        type: AgentEventType.tokenUsageUpdated,
+        data: {
+          'sessionUsage': _tokenUsageTracker?.getSessionUsage(eid).toMap(),
+          'messageUsage': _tokenUsageTracker?.getMessageUsage(msgId)?.toMap(),
+          'messageId': msgId,
+        },
+        employeeId: eid,
       ));
     };
 
@@ -364,9 +396,9 @@ class AgentImpl extends _AgentImplBase
       _syncProcessorStatus(processorStatus);
     };
 
-    // 消息完成前回调：消息已通过 memoryManager.addMessage 同步持久化，无需等待
+    // 消息完成前回调：将 Token 用量持久化到 MessageStore
     _processor!.onBeforeMessageCompleted = () async {
-      // no-op: addMessage 已同步写 DB
+      await _persistTokenUsageToStore();
     };
 
     // 消息开始处理回调：发射 messageStarted AgentEvent
@@ -469,6 +501,8 @@ class AgentImpl extends _AgentImplBase
     await _eventController.close();
 
     _callingToolIds.clear();
+    _tokenUsageTracker?.dispose();
+    _tokenUsageTracker = null;
   }
 
   // ===== IAgent: 引用计数 =====
@@ -1047,6 +1081,62 @@ class AgentImpl extends _AgentImplBase
   @override
   Future<void> clearFileOperations() async {
     _fileOperationTracker?.clear();
+  }
+
+  /// 将当前消息的 Token 用量持久化到 MessageStore
+  ///
+  /// 在消息处理完成时调用（onBeforeMessageCompleted），一次性写入，
+  /// 避免高频 DB 写入。
+  Future<void> _persistTokenUsageToStore() async {
+    final processor = _processor;
+    if (processor == null) return;
+    final currentMsgId = processor.currentMessageId;
+    if (currentMsgId == null) return;
+
+    final messageUsage = _tokenUsageTracker?.getMessageUsage(currentMsgId);
+    if (messageUsage == null || messageUsage.isEmpty) return;
+
+    // 更新 MessageStore 中对应消息的 input_tokens / output_tokens
+    final store = MessageStore(deviceId: deviceId);
+    final existing = await store.find(deviceId, currentMsgId);
+    if (existing != null) {
+      final updated = existing.copyWith(
+        inputTokens: messageUsage.promptTokens,
+        outputTokens: messageUsage.completionTokens,
+        updatedAt: DateTime.now(),
+      );
+      await store.updateWithDeviceId(deviceId, updated);
+    }
+  }
+
+  // ===== IAgent: Token 用量统计 =====
+
+  @override
+  TokenUsageRecord getSessionTokenUsage() {
+    return _tokenUsageTracker?.getSessionUsage(employeeId) ?? const TokenUsageRecord();
+  }
+
+  @override
+  TokenUsageRecord? getMessageTokenUsage(String messageId) {
+    return _tokenUsageTracker?.getMessageUsage(messageId);
+  }
+
+  @override
+  Future<TokenUsageRecord> getSessionTokenUsageAsync() async {
+    // 优先读内存
+    final memoryUsage = getSessionTokenUsage();
+    if (memoryUsage.isNotEmpty) return memoryUsage;
+    // 降级读 Store
+    return getTokenUsageFromStore(employeeId);
+  }
+
+  @override
+  Future<TokenUsageRecord?> getMessageTokenUsageAsync(String messageId) async {
+    // 优先读内存
+    final memoryUsage = getMessageTokenUsage(messageId);
+    if (memoryUsage != null && memoryUsage.isNotEmpty) return memoryUsage;
+    // 降级读 Store
+    return getMessageTokenUsageFromStore(employeeId, messageId);
   }
 
   /// 注入 SpawnSubAgentTool 回调

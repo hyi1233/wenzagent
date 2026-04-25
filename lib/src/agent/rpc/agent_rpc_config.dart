@@ -90,6 +90,7 @@ class AgentRpcConfig {
   static const String methodGetState = 'agentGetState';
   static const String methodGetCallingToolIds = 'agentGetCallingToolIds';
   static const String methodSubscribeState = 'agentSubscribeState';
+  static const String methodGetTokenUsage = 'agentGetTokenUsage';
 
   // ===== Agent Todo Topic 管理 =====
 

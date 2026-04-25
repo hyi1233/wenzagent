@@ -3,6 +3,7 @@ import 'dart:async';
 import 'agent_state.dart';
 import 'entity/entity.dart';
 import 'tool/agent_tool.dart';
+import 'tracker/token_usage_tracker.dart';
 
 /// Agent 主体接口
 ///
@@ -464,4 +465,26 @@ abstract class IAgent {
 
   /// 清除文件操作记录
   Future<void> clearFileOperations();
+
+  // ===== Token 用量统计 =====
+
+  /// 获取当前会话的 Token 用量统计
+  ///
+  /// 返回当前 Agent 会话所有 LLM 调用的 token 累计值。
+  TokenUsageRecord getSessionTokenUsage();
+
+  /// 获取指定消息的 Token 用量统计
+  ///
+  /// [messageId] 用户消息 ID
+  /// 返回该消息触发的所有 LLM 调用的 token 累计值（含多轮工具调用），
+  /// 如果消息无统计记录则返回 null。
+  TokenUsageRecord? getMessageTokenUsage(String messageId);
+
+  /// 异步获取会话级 Token 用量（支持远程 RPC + 本地降级）
+  ///
+  /// 优先读内存 TokenUsageTracker（实时），若为空则降级读 MessageStore（持久化）。
+  Future<TokenUsageRecord> getSessionTokenUsageAsync();
+
+  /// 异步获取消息级 Token 用量（支持远程 RPC + 本地降级）
+  Future<TokenUsageRecord?> getMessageTokenUsageAsync(String messageId);
 }

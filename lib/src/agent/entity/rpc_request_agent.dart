@@ -328,6 +328,23 @@ class GetCallingToolIdsRequest {
   }
 }
 
+/// 获取 Token 用量请求
+class GetTokenUsageRequest {
+  final String employeeId;
+
+  const GetTokenUsageRequest({required this.employeeId});
+
+  Map<String, dynamic> toMap() {
+    return {'employeeId': employeeId};
+  }
+
+  factory GetTokenUsageRequest.fromMap(Map<String, dynamic> map) {
+    return GetTokenUsageRequest(
+      employeeId: map['employeeId'] as String,
+    );
+  }
+}
+
 /// 设置技能配置请求
 ///
 /// 同步技能实体列表到远程 Agent，更新持久化并重载运行时

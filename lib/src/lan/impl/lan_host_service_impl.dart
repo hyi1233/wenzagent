@@ -457,6 +457,7 @@ class LanHostServiceImpl implements LanHostService {
         type == LanMessageType.rpcError ||
         type == LanMessageType.agentStatusChanged ||
         type == LanMessageType.agentMessageStatusChanged ||
+        type == LanMessageType.agentTokenUsageUpdated ||
         type == LanMessageType.agentPermissionChanged ||
         type == LanMessageType.agentSessionCleared ||
         type == LanMessageType.deviceOnline ||

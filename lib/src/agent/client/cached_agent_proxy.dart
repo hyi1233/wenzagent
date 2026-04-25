@@ -7,6 +7,7 @@ import 'agent_proxy.dart';
 import '../entity/entity.dart';
 import '../agent_state.dart';
 import '../tool/agent_tool.dart';
+import '../tracker/token_usage_tracker.dart';
 import '../../shared/chat_message.dart' show ToolCall;
 import '../../shared/shared.dart' as shared;
 import '../../service/message_store_service.dart';
@@ -1186,6 +1187,21 @@ class CachedAgentProxy extends _CachedAgentProxyBase
 
   /// 清除文件操作记录
   Future<void> clearFileOperations() => _proxy.clearFileOperations();
+
+  // ===== Token 用量统计 =====
+
+  @override
+  TokenUsageRecord getSessionTokenUsage() => _proxy.getSessionTokenUsage();
+
+  @override
+  TokenUsageRecord? getMessageTokenUsage(String messageId) =>
+      _proxy.getMessageTokenUsage(messageId);
+
+  Future<TokenUsageRecord> getSessionTokenUsageAsync() =>
+      _proxy.getSessionTokenUsageAsync();
+
+  Future<TokenUsageRecord?> getMessageTokenUsageAsync(String messageId) =>
+      _proxy.getMessageTokenUsageAsync(messageId);
 
   // ===== 基础属性 =====
 

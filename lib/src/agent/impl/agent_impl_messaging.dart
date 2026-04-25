@@ -651,4 +651,46 @@ mixin _AgentImplMessaging on _AgentImplBase {
 
     return msgId;
   }
+
+  // ===== Token 用量 Store 查询 =====
+
+  /// 从 MessageStore 聚合会话级 Token 用量
+  ///
+  /// 遍历该 employeeId 下所有消息的 input_tokens/output_tokens 并累加。
+  /// 用于 Agent 销毁后（内存清空）的历史 Token 查询。
+  Future<TokenUsageRecord> getTokenUsageFromStore(String employeeId) async {
+    final store = MessageStore(deviceId: deviceId);
+    final messages = await store.getMessages(deviceId, employeeId);
+    int totalInput = 0;
+    int totalOutput = 0;
+    for (final msg in messages) {
+      totalInput += msg.inputTokens ?? 0;
+      totalOutput += msg.outputTokens ?? 0;
+    }
+    return TokenUsageRecord(
+      promptTokens: totalInput,
+      completionTokens: totalOutput,
+      totalTokens: totalInput + totalOutput,
+    );
+  }
+
+  /// 从 MessageStore 查询单条消息的 Token 用量
+  Future<TokenUsageRecord?> getMessageTokenUsageFromStore(
+    String employeeId,
+    String messageId,
+  ) async {
+    final store = MessageStore(deviceId: deviceId);
+    final msg = await store.find(deviceId, messageId);
+    if (msg == null) return null;
+
+    final input = msg.inputTokens;
+    final output = msg.outputTokens;
+    if (input == null && output == null) return null;
+
+    return TokenUsageRecord(
+      promptTokens: input ?? 0,
+      completionTokens: output ?? 0,
+      totalTokens: (input ?? 0) + (output ?? 0),
+    );
+  }
 }

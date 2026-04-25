@@ -74,6 +74,9 @@ enum LanMessageType {
   /// Agent 配置变更（跨设备同步）
   agentConfigChanged,
 
+  /// Agent Token 用量更新（跨设备同步）
+  agentTokenUsageUpdated,
+
   // ===== AI Employee 消息类型 =====
 
   /// AI 聊天请求

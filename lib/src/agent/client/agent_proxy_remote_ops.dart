@@ -459,6 +459,28 @@ class _RemoteOps {
     return AgentStateSnapshot.fromMap(result);
   }
 
+  /// 获取 Token 用量（远程 RPC）
+  Future<TokenUsageRecord> getSessionTokenUsageAsync() async {
+    final request = GetTokenUsageRequest(employeeId: _employeeId);
+    final result = await _rpcUtil.getTokenUsage(request);
+    final sessionUsageMap = result['sessionUsage'] as Map<String, dynamic>?;
+    if (sessionUsageMap != null) {
+      return TokenUsageRecord.fromMap(sessionUsageMap);
+    }
+    return const TokenUsageRecord();
+  }
+
+  /// 获取消息级 Token 用量（远程 RPC）
+  Future<TokenUsageRecord?> getMessageTokenUsageAsync(String messageId) async {
+    final request = GetTokenUsageRequest(employeeId: _employeeId);
+    final result = await _rpcUtil.getTokenUsage(request);
+    final messageUsageMap = result['messageUsage'] as Map<String, dynamic>?;
+    if (messageUsageMap != null) {
+      return TokenUsageRecord.fromMap(messageUsageMap);
+    }
+    return null;
+  }
+
   /// 获取提供者配置（异步版本，支持远程 RPC）
   Future<ProviderConfig?> getProviderConfigAsync() async {
     final request = GetProviderRequest(employeeId: _employeeId);

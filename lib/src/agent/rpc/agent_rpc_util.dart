@@ -266,6 +266,11 @@ class AgentRpcUtil {
     return _rpcCall(AgentRpcConfig.methodGetState, request.toMap());
   }
 
+  /// 获取 Token 用量
+  Future<Map<String, dynamic>> getTokenUsage(GetTokenUsageRequest request) async {
+    return _rpcCall(AgentRpcConfig.methodGetTokenUsage, request.toMap());
+  }
+
   /// 获取正在调用的工具 callId 列表
   Future<Map<String, dynamic>> getCallingToolIds(
     GetCallingToolIdsRequest request,

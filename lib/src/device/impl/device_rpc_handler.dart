@@ -239,6 +239,16 @@ class DeviceRpcHandler {
       return agent.getStateSnapshot().toMap();
     });
 
+    rpcServer.register(AgentRpcConfig.methodGetTokenUsage, (params) async {
+      final request = GetTokenUsageRequest.fromMap(params);
+      final agent = await _agentManager.ensureLocalAgentForRpc(request.employeeId);
+      // 优先内存，降级 Store
+      final sessionUsage = await agent.getSessionTokenUsageAsync();
+      return {
+        'sessionUsage': sessionUsage.toMap(),
+      };
+    });
+
     rpcServer.register(AgentRpcConfig.methodGetCallingToolIds, (params) async {
       final request = GetCallingToolIdsRequest.fromMap(params);
       final agent = await _agentManager.ensureLocalAgentForRpc(request.employeeId);

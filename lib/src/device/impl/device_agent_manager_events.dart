@@ -7,7 +7,6 @@ extension DeviceAgentManagerEvents on DeviceAgentManager {
     final subscription = agent.onEvent.listen((event) {
       // 始终广播到 LAN
       broadcastAgentEvent(employeeId, event);
-
       // 始终添加到本地 eventController，确保本地 UI 能接收到所有事件
       _stateHolder.eventController.add(
         AgentEvent(
@@ -204,6 +203,9 @@ extension DeviceAgentManagerEvents on DeviceAgentManager {
         msgType = LanMessageType.agentConfigChanged;
       case AgentEventType.messageStarted:
         msgType = LanMessageType.agentMessageStatusChanged;
+      case AgentEventType.tokenUsageUpdated:
+        msgType = LanMessageType.agentTokenUsageUpdated;
+        break;
       // streamDelta 和 thinkingDelta 为高频事件，仅本地使用，不广播到 LAN
       case AgentEventType.streamDelta:
       case AgentEventType.thinkingDelta:

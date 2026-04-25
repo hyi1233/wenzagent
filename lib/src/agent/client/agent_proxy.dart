@@ -8,6 +8,7 @@ import '../entity/entity.dart';
 import '../i_agent.dart';
 import '../rpc/agent_rpc_util.dart';
 import '../tool/agent_tool.dart';
+import '../tracker/token_usage_tracker.dart';
 import '../../persistence/persistence.dart';
 import '../../utils/logger.dart';
 
@@ -1163,6 +1164,37 @@ class AgentProxy {
       return _localAgent.clearFileOperations();
     }
     return _remoteOps!.clearFileOperations();
+  }
+
+  // ===== Token 用量统计 =====
+  TokenUsageRecord getSessionTokenUsage() {
+    if (isLocalMode && _localAgent != null) {
+      return _localAgent.getSessionTokenUsage();
+    }
+    // 远程模式暂不支持，返回空记录
+    return const TokenUsageRecord();
+  }
+
+  TokenUsageRecord? getMessageTokenUsage(String messageId) {
+    if (isLocalMode && _localAgent != null) {
+      return _localAgent.getMessageTokenUsage(messageId);
+    }
+    // 远程模式暂不支持
+    return null;
+  }
+
+  Future<TokenUsageRecord> getSessionTokenUsageAsync() {
+    if (isLocalMode && _localAgent != null) {
+      return _localAgent.getSessionTokenUsageAsync();
+    }
+    return _remoteOps!.getSessionTokenUsageAsync();
+  }
+
+  Future<TokenUsageRecord?> getMessageTokenUsageAsync(String messageId) {
+    if (isLocalMode && _localAgent != null) {
+      return _localAgent.getMessageTokenUsageAsync(messageId);
+    }
+    return _remoteOps!.getMessageTokenUsageAsync(messageId);
   }
 
   bool get isSending {

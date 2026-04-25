@@ -384,6 +384,7 @@ void main() {
         AgentEventType.specChanged,
         AgentEventType.configChanged,
         AgentEventType.messageStarted,
+        AgentEventType.tokenUsageUpdated,
       };
 
       // 以下事件仅本地使用，不广播到 LAN（高频或纯本地语义）
