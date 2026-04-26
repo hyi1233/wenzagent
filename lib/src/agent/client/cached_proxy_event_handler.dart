@@ -423,13 +423,17 @@ mixin _CachedProxyEventHandler on _CachedAgentProxyBase {
 
     // 在删除前获取本地 maxSeq，用于设置 clearSeq = lastSeq = maxSeq
     final maxSeq = _messageStore.getMaxSeq(_deviceId, _employeeId);
+    // 获取当前水位线，确保不回退
+    final currentLastSeq = _messageStore.getLastSeq(_deviceId, _employeeId);
     await _messageStore.deleteMessages(_deviceId, _employeeId);
-    if (maxSeq > 0) {
-      _messageStore.resetLastSeq(_deviceId, _employeeId, maxSeq);
+    // 水位线取 maxSeq 和 currentLastSeq 的较大值，确保不回退
+    final targetSeq = maxSeq > currentLastSeq ? maxSeq : currentLastSeq;
+    if (targetSeq > 0) {
+      _messageStore.resetLastSeq(_deviceId, _employeeId, targetSeq);
     }
     _notifyMessagesChanged();
 
-    _CachedAgentProxyBase._log.info('本地会话已清空，水位线: clearSeq=lastSeq=$maxSeq');
+    _CachedAgentProxyBase._log.info('本地会话已清空，水位线: lastSeq=$targetSeq (maxSeq=$maxSeq, prev=$currentLastSeq)');
   }
 
   /// 处理会话摘要变更事件

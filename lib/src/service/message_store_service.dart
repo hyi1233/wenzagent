@@ -170,7 +170,7 @@ abstract class MessageStoreService {
   void updateLastSeq(String deviceId, String employeeId, int lastSeq);
 
   /// 强制重置同步水位线（不受 MAX 语义限制，用于清空会话场景）
-  void resetLastSeq(String deviceId, String employeeId, int lastSeq);
+  void resetLastSeq(String deviceId, String employeeId, int lastSeq, {bool enforceMax = true});
 
   /// 从远程数据合并本地摘要（智能合并：仅当远程数据更新时覆盖，未读数取最大值）
   void upsertSummaryFromRemote(SessionSummaryEntity remote);
@@ -493,9 +493,9 @@ class MessageStoreServiceImpl implements MessageStoreService {
   }
 
   @override
-  void resetLastSeq(String deviceId, String employeeId, int lastSeq) {
+  void resetLastSeq(String deviceId, String employeeId, int lastSeq, {bool enforceMax = true}) {
     final store = SyncWatermarkStore(dbManager: _store.dbManager);
-    store.resetLastSeq(employeeId, lastSeq, deviceId: deviceId);
+    store.resetLastSeq(employeeId, lastSeq, deviceId: deviceId, enforceMax: enforceMax);
   }
 
   @override

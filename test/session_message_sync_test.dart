@@ -574,20 +574,20 @@ void main() {
       expect(watermarkA.getLastSeq(employeeId, deviceId: deviceA), equals(15));
     });
 
-    test('resetLastSeq 强制重置水位线（不受 MAX 语义限制）', () async {
+    test('resetLastSeq 强制重置水位线（enforceMax=false 不受 MAX 语义限制）', () async {
       final employeeId = randomEmpId();
 
       // 设置水位线为 100
       watermarkA.updateLastSeq(employeeId, 100, deviceId: deviceA);
       expect(watermarkA.getLastSeq(employeeId, deviceId: deviceA), equals(100));
 
-      // 强制重置为 0
-      watermarkA.resetLastSeq(employeeId, 0, deviceId: deviceA);
+      // 强制重置为 0（需要 enforceMax: false）
+      watermarkA.resetLastSeq(employeeId, 0, deviceId: deviceA, enforceMax: false);
       expect(watermarkA.getLastSeq(employeeId, deviceId: deviceA), equals(0));
 
-      // 重置为 50（小于之前的 100，但 resetLastSeq 允许）
+      // 重置为 50（小于之前的 100，但 resetLastSeq enforceMax:false 允许）
       watermarkA.updateLastSeq(employeeId, 100, deviceId: deviceA);
-      watermarkA.resetLastSeq(employeeId, 50, deviceId: deviceA);
+      watermarkA.resetLastSeq(employeeId, 50, deviceId: deviceA, enforceMax: false);
       expect(watermarkA.getLastSeq(employeeId, deviceId: deviceA), equals(50));
     });
 
@@ -601,8 +601,8 @@ void main() {
       await serviceB.addMessage(deviceB, msg);
       expect(serviceB.getLastSeq(deviceB, employeeId), equals(5));
 
-      // 通过 service 层重置
-      serviceB.resetLastSeq(deviceB, employeeId, 0);
+      // 通过 service 层重置（需要 enforceMax: false 才能降低）
+      serviceB.resetLastSeq(deviceB, employeeId, 0, enforceMax: false);
       expect(serviceB.getLastSeq(deviceB, employeeId), equals(0));
     });
 
@@ -707,9 +707,11 @@ void main() {
       final deletedCount = storeB.deleteBeforeSeq(employeeId, clearSeq!, deviceId: deviceB);
       expect(deletedCount, equals(2)); // seq=1, seq=2 被删除
 
-      // 重置水位线
+      // 重置水位线（clearSeq=3 < current lastSeq=5，enforceMax 默认 true 不会降低）
+      // 这里 clearSeq 用于清理旧消息，水位线应保持不变（仍为5）
       serviceB.resetLastSeq(deviceB, employeeId, clearSeq);
-      expect(serviceB.getLastSeq(deviceB, employeeId), equals(3));
+      // enforceMax=true 时，clearSeq=3 < lastSeq=5，水位线保持 5
+      expect(serviceB.getLastSeq(deviceB, employeeId), equals(5));
 
       // 清除 clearSeq 标记
       watermarkB.clearClearSeq(employeeId, deviceId: deviceB);
@@ -947,12 +949,13 @@ void main() {
 
       // 清空消息（直接用 storeB 避免触发 rebuildSummary）
       await storeB.deleteBySession(deviceB, employeeId);
-      serviceB.resetLastSeq(deviceB, employeeId, 0);
+      // 清空后水位线应保持为 maxSeq，而不是归0
+      final maxSeqBeforeClear = serviceB.getLastSeq(deviceB, employeeId);
+      serviceB.resetLastSeq(deviceB, employeeId, maxSeqBeforeClear);
 
       // 新消息的 seq 应大于清空前（getNextSeq 取 MAX(messages, watermark, clearSeq)）
-      // 注意：resetLastSeq 只重置 watermark，messages 表已清空
-      // 但 getNextSeq 还会看 clearSeq，如果 clearSeq=0 则取 MAX(0, 0, 0) + 1 = 1
-      // 所以清空后 seq 会从 1 重新开始（这是正确行为，因为所有旧消息已删除，不会产生冲突）
+      // 注意：resetLastSeq 保持 maxSeq，getNextSeq 取 MAX(0, maxSeqBeforeClear, 0) + 1
+      // 所以清空后新消息 seq = maxSeqBeforeClear + 1，不会与旧消息冲突
       final newMsg = createLocalMessage(
         employeeId: employeeId, deviceId: deviceB,
       );
@@ -960,8 +963,8 @@ void main() {
 
       final messages = await serviceB.getMessages(deviceB, employeeId);
       expect(messages.length, equals(1));
-      // 清空后 seq 从头开始，因为所有旧消息已删除，不会产生冲突
-      expect(messages.first.seq, greaterThan(0));
+      // 清空后新消息的 seq 应大于清空前的 maxSeq
+      expect(messages.first.seq, greaterThan(maxSeqBeforeClear));
     });
   });
 
@@ -1054,12 +1057,13 @@ void main() {
 
       // 3. 客户端收到清空事件
       await serviceB.deleteMessages(deviceB, employeeId);
-      serviceB.resetLastSeq(deviceB, employeeId, 0);
+      final maxSeqBefore = 5; // 清空前已知 maxSeq=5
+      serviceB.resetLastSeq(deviceB, employeeId, maxSeqBefore);
 
       expect(
         (await serviceB.getMessages(deviceB, employeeId)).length, equals(0),
       );
-      expect(serviceB.getLastSeq(deviceB, employeeId), equals(0));
+      expect(serviceB.getLastSeq(deviceB, employeeId), equals(5));
 
       // 4. 服务端写入新消息（seq 继续递增）
       final newMsg = createRemoteMessage(

@@ -78,21 +78,42 @@ class SyncWatermarkStore {
 
   /// 强制重置指定 employee + device 的 last_seq
   ///
-  /// 与 updateLastSeq 不同，此方法直接设置 last_seq 值，不受 MAX 语义限制。
-  /// 用于清空会话后需要将水位线降为 0 的场景。
-  void resetLastSeq(String employeeId, int lastSeq, {String deviceId = ''}) {
-    _db.execute('''
-      INSERT INTO sync_watermark (employee_id, device_id, last_seq, update_time)
-        VALUES (?, ?, ?, ?)
-        ON CONFLICT(employee_id, device_id) DO UPDATE SET
-          last_seq = excluded.last_seq,
-          update_time = excluded.update_time
-    ''', [
-      employeeId,
-      deviceId,
-      lastSeq,
-      DateTime.now().millisecondsSinceEpoch,
-    ]);
+  /// 与 updateLastSeq 不同，此方法直接设置 last_seq 值。
+  /// 用于清空会话后需要将水位线设置为 maxSeq 的场景。
+  ///
+  /// [enforceMax] 为 true 时（默认），使用 MAX 语义防止水位线回退；
+  /// 为 false 时直接设置值（仅用于需要真正归零的特殊场景）。
+  void resetLastSeq(String employeeId, int lastSeq,
+      {String deviceId = '', bool enforceMax = true}) {
+    if (enforceMax) {
+      // MAX 语义：只增不减，防止清空会话等场景意外降低水位线
+      _db.execute('''
+        INSERT INTO sync_watermark (employee_id, device_id, last_seq, update_time)
+          VALUES (?, ?, ?, ?)
+          ON CONFLICT(employee_id, device_id) DO UPDATE SET
+            last_seq = MAX(last_seq, excluded.last_seq),
+            update_time = excluded.update_time
+      ''', [
+        employeeId,
+        deviceId,
+        lastSeq,
+        DateTime.now().millisecondsSinceEpoch,
+      ]);
+    } else {
+      // 直接设置值，不受 MAX 语义限制（仅用于特殊场景）
+      _db.execute('''
+        INSERT INTO sync_watermark (employee_id, device_id, last_seq, update_time)
+          VALUES (?, ?, ?, ?)
+          ON CONFLICT(employee_id, device_id) DO UPDATE SET
+            last_seq = excluded.last_seq,
+            update_time = excluded.update_time
+      ''', [
+        employeeId,
+        deviceId,
+        lastSeq,
+        DateTime.now().millisecondsSinceEpoch,
+      ]);
+    }
   }
 
   /// 获取清空水位线，不存在或已清除返回 null

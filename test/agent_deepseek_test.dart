@@ -185,7 +185,7 @@ void main() {
 
       // 发送消息
       final messageId = await cachedProxy.sendMessage(MessageInput(
-        content: '分析项目',
+        content: '分析项目，思考一下',
       ));
 
       print('发送消息ID: $messageId');

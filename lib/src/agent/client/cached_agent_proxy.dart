@@ -885,7 +885,7 @@ class CachedAgentProxy extends _CachedAgentProxyBase
 
   /// 清空当前会话
   ///
-  /// 清空后重置本地水位线为 0，避免后续同步拉取大量无意义的删除事件。
+  /// 清空后重置本地水位线为清空前 maxSeq，避免后续同步拉取已清空的消息。
   Future<void> clearCurrentSession() async {
     // 第一步：清空远程会话
     await _proxy.clearCurrentSession();
@@ -894,12 +894,15 @@ class CachedAgentProxy extends _CachedAgentProxyBase
     if (!_proxy.isLocalMode) {
       _pendingPermissionRequests.clear();
       _pendingConfirmRequests.clear();
+      // 在删除消息前获取 maxSeq，用于设置水位线
+      final maxSeq = _messageStore.getMaxSeq(_deviceId, _employeeId);
       // 使用正确的 deviceId 删除消息
       await _messageStore.deleteMessages(_deviceId, _employeeId);
-      // 重置水位线，避免后续增量同步拉取大量删除事件
-      // 注意：updateLastSeq 使用 MAX 语义无法降为 0，必须用 resetLastSeq
-      _messageStore.resetLastSeq(_deviceId, _employeeId, 0);
-      _CachedAgentProxyBase._log.info('会话已清空，水位线已重置为 0');
+      // 重置水位线为清空前 maxSeq，确保后续增量同步不会拉回已清空的消息
+      if (maxSeq > 0) {
+        _messageStore.resetLastSeq(_deviceId, _employeeId, maxSeq);
+      }
+      _CachedAgentProxyBase._log.info('会话已清空，水位线已重置为 $maxSeq');
       _notifyMessagesChanged();
     }
   }

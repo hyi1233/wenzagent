@@ -619,14 +619,18 @@ class DeviceMessageHandler {
   void _syncAfterSessionCleared(String employeeId, String fromDeviceId) {
     Future(() async {
       try {
-        // 先删除本地消息并重置水位线，确保后续同步不会跳过
         final messageStore = MessageStoreService.getInstance(_deviceId);
+
+        // 在删除消息前获取 maxSeq，用于设置水位线
+        final maxSeq = messageStore.getMaxSeq(_deviceId, employeeId);
 
         // 删除本地消息
         await messageStore.deleteMessages(_deviceId, employeeId);
-        // 重置水位线为0，确保后续增量同步能正确拉取远程消息
-        messageStore.resetLastSeq(_deviceId, employeeId, 0);
-        _log.info('会话清空后本地消息已清除，水位线已重置: employeeId=$employeeId');
+        // 重置水位线为清空前 maxSeq，确保后续增量同步不会拉回已清空的消息
+        if (maxSeq > 0) {
+          messageStore.resetLastSeq(_deviceId, employeeId, maxSeq);
+        }
+        _log.info('会话清空后本地消息已清除，水位线已重置为 $maxSeq: employeeId=$employeeId');
 
         // 尝试通过已有的 AgentProxy 增量同步（拉取远程最新状态）
         var proxy = _agentManager.getAgentProxy(employeeId);

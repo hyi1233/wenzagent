@@ -179,25 +179,41 @@ void main() {
   // ═══════════════════════════════════════════════════
 
   group('resetLastSeq - 强制重置', () {
-    test('resetLastSeq 可以降为更小值', () {
+    test('resetLastSeq 默认 enforceMax=true 不会降低水位线', () {
       store.updateLastSeq(employeeId, 100);
       expect(store.getLastSeq(employeeId), equals(100));
 
+      // 默认 enforceMax=true，不会降低
       store.resetLastSeq(employeeId, 0);
+      expect(store.getLastSeq(employeeId), equals(100));
+    });
+
+    test('resetLastSeq enforceMax=true 更大值会更新', () {
+      store.updateLastSeq(employeeId, 100);
+      store.resetLastSeq(employeeId, 200);
+
+      expect(store.getLastSeq(employeeId), equals(200));
+    });
+
+    test('resetLastSeq enforceMax=false 可以降为更小值', () {
+      store.updateLastSeq(employeeId, 100);
+      expect(store.getLastSeq(employeeId), equals(100));
+
+      store.resetLastSeq(employeeId, 0, enforceMax: false);
       expect(store.getLastSeq(employeeId), equals(0));
     });
 
-    test('resetLastSeq 设为 0 后可重新递增', () {
+    test('resetLastSeq enforceMax=false 设为 0 后可重新递增', () {
       store.updateLastSeq(employeeId, 100);
-      store.resetLastSeq(employeeId, 0);
+      store.resetLastSeq(employeeId, 0, enforceMax: false);
       store.updateLastSeq(employeeId, 10);
 
       expect(store.getLastSeq(employeeId), equals(10));
     });
 
-    test('resetLastSeq 设为任意值', () {
+    test('resetLastSeq enforceMax=false 设为任意值', () {
       store.updateLastSeq(employeeId, 200);
-      store.resetLastSeq(employeeId, 50);
+      store.resetLastSeq(employeeId, 50, enforceMax: false);
 
       expect(store.getLastSeq(employeeId), equals(50));
     });
@@ -210,7 +226,7 @@ void main() {
 
     test('resetLastSeq 后 updateLastSeq 的 MAX 语义仍生效', () {
       store.updateLastSeq(employeeId, 100);
-      store.resetLastSeq(employeeId, 0);
+      store.resetLastSeq(employeeId, 0, enforceMax: false);
       store.updateLastSeq(employeeId, 50);
 
       // 50 > 0，所以更新
@@ -219,6 +235,19 @@ void main() {
       // 但 30 < 50，不更新
       store.updateLastSeq(employeeId, 30);
       expect(store.getLastSeq(employeeId), equals(50));
+    });
+
+    test('resetLastSeq enforceMax 按 deviceId 隔离', () {
+      store.updateLastSeq(employeeId, 100, deviceId: 'devA');
+      store.updateLastSeq(employeeId, 200, deviceId: 'devB');
+
+      // devA: 不会降低
+      store.resetLastSeq(employeeId, 50, deviceId: 'devA');
+      expect(store.getLastSeq(employeeId, deviceId: 'devA'), equals(100));
+
+      // devB: 不会降低
+      store.resetLastSeq(employeeId, 150, deviceId: 'devB');
+      expect(store.getLastSeq(employeeId, deviceId: 'devB'), equals(200));
     });
   });
 
@@ -338,20 +367,20 @@ void main() {
       store.updateLastSeq(employeeId, 200);
       expect(store.getLastSeq(employeeId), equals(200));
 
-      // 2. 清空会话：设置 clearSeq + 重置 lastSeq
+      // 2. 清空会话：设置 clearSeq + 重置 lastSeq 为 maxSeq（而非0）
       store.setClearSeq(employeeId, 200);
-      store.resetLastSeq(employeeId, 0);
+      store.resetLastSeq(employeeId, 200); // 清空后水位线 = maxSeq
       expect(store.getClearSeq(employeeId), equals(200));
-      expect(store.getLastSeq(employeeId), equals(0));
+      expect(store.getLastSeq(employeeId), equals(200));
 
       // 3. 客户端处理完清空后，清除 clearSeq
       store.clearClearSeq(employeeId);
       expect(store.getClearSeq(employeeId), isNull);
 
-      // 4. 新消息到来，水位线重新递增
-      store.updateLastSeq(employeeId, 10);
-      store.updateLastSeq(employeeId, 20);
-      expect(store.getLastSeq(employeeId), equals(20));
+      // 4. 新消息到来（seq > 200），水位线继续递增
+      store.updateLastSeq(employeeId, 210);
+      store.updateLastSeq(employeeId, 220);
+      expect(store.getLastSeq(employeeId), equals(220));
     });
 
     test('多设备水位线完全隔离', () {
@@ -367,8 +396,8 @@ void main() {
       expect(store.getLastSeq(employeeId, deviceId: 'devB'), equals(200));
       expect(store.getClearSeq(employeeId, deviceId: 'devB'), isNull);
 
-      // 重置 devA 不影响 devB
-      store.resetLastSeq(employeeId, 0, deviceId: 'devA');
+      // 重置 devA 不影响 devB（使用 enforceMax: false 模拟旧行为）
+      store.resetLastSeq(employeeId, 0, deviceId: 'devA', enforceMax: false);
       expect(store.getLastSeq(employeeId, deviceId: 'devA'), equals(0));
       expect(store.getLastSeq(employeeId, deviceId: 'devB'), equals(200));
     });
