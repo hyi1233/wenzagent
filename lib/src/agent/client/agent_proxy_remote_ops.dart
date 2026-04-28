@@ -453,10 +453,17 @@ class _RemoteOps {
   // ===== 异步状态/配置查询 =====
 
   /// 获取当前状态快照（异步版本，支持远程 RPC）
+  ///
+  /// 同时更新 [_remoteCache] 中的 status 和 snapshot，
+  /// 确保初始化同步后本地缓存与远程真实状态一致。
   Future<AgentStateSnapshot> getStateSnapshotAsync() async {
     final request = GetStateRequest(employeeId: _employeeId);
     final result = await _rpcUtil.getState(request);
-    return AgentStateSnapshot.fromMap(result);
+    final snapshot = AgentStateSnapshot.fromMap(result);
+    // 修复：同步更新远程状态缓存，避免初始化后 status 始终为 idle
+    _remoteCache.snapshot = snapshot;
+    _remoteCache.status = snapshot.status;
+    return snapshot;
   }
 
   /// 获取 Token 用量（远程 RPC）

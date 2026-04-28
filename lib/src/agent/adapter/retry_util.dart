@@ -97,7 +97,18 @@ class RetryUtil {
   /// - [DioException] 类型为 connectionError, connectionTimeout, sendTimeout, receiveTimeout
   /// - [DioException] 类型为 badResponse 且状态码在可重试列表中（429, 5xx）
   /// - 其他非 [StateError]、[TypeError]、[ArgumentError] 的异常
+  ///
+  /// 以下错误**不可重试**：
+  /// - 上下文长度超限（context_length_exceeded / maximum context length）
+  /// - 无效请求（400）中包含 token 超限信息
   static bool isRetryableError(Object error) {
+    // 先检查错误消息中是否包含 token/上下文超限关键词
+    // 这类错误重试无意义，只会浪费时间和 API 配额
+    if (_isTokenLimitError(error)) {
+      _log.warn('检测到 token 超限错误，不重试: $error');
+      return false;
+    }
+
     if (error is DioException) {
       switch (error.type) {
         case DioExceptionType.connectionError:
@@ -108,6 +119,7 @@ class RetryUtil {
         case DioExceptionType.badResponse:
           final statusCode = error.response?.statusCode;
           if (statusCode != null) {
+            // 400 Bad Request 但不是 token 超限（已在上方过滤）
             // 429 频率限制，5xx 服务端错误
             return statusCode == 429 ||
                 (statusCode >= 500 && statusCode < 600);
@@ -127,5 +139,46 @@ class RetryUtil {
 
     // 其他未知异常，尝试重试
     return true;
+  }
+
+  /// 检查错误是否为 token/上下文长度超限错误
+  ///
+  /// 各提供商的错误消息模式：
+  /// - OpenAI: "This model's maximum context length is XXXXX tokens"
+  /// - Anthropic: "prompt is too long" / "max_tokens to be less than"
+  /// - Google: "Request too large" / "exceeds the maximum number of tokens"
+  /// - 通用: "context_length_exceeded" / "token limit" / "maximum context"
+  static bool _isTokenLimitError(Object error) {
+    final errorStr = error.toString().toLowerCase();
+
+    // 常见的 token/上下文超限关键词
+    const tokenLimitPatterns = [
+      'maximum context length',
+      'context_length_exceeded',
+      'token limit',
+      'maximum number of tokens',
+      'requested', // "requested XXXXX tokens" 常出现在超限消息中
+      'prompt is too long',
+      'max_tokens to be less than',
+      'request too large',
+      'reduce the length', // "reduce the length of the messages"
+    ];
+
+    // 必须同时包含 "token" 或 "context" 或 "length" 等上下文相关词
+    // 避免误匹配其他类型的 "requested" 错误
+    const contextKeywords = [
+      'token',
+      'context',
+      'length',
+      'prompt',
+      'max_tokens',
+      'maxtokens',
+    ];
+
+    final hasContextKeyword =
+        contextKeywords.any((kw) => errorStr.contains(kw));
+    if (!hasContextKeyword) return false;
+
+    return tokenLimitPatterns.any((p) => errorStr.contains(p));
   }
 }

@@ -1,4 +1,10 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:crypto/crypto.dart';
+import 'package:path/path.dart' as p;
+import 'package:uuid/uuid.dart';
 
 import '../agent/client/cached_agent_proxy.dart';
 import '../agent/entity/entity.dart';
@@ -752,6 +758,126 @@ class DeviceClient {
     void Function(double)? onProgress,
   }) async {
     await _connectionManager.downloadFile(fileId, savePath);
+  }
+
+  // ===== 文件元信息消息 =====
+
+  /// 发送文件元信息到指定设备（或广播给所有设备）
+  ///
+  /// 不会上传文件本身，仅发送元信息。接收方根据元信息中的
+  /// [fromDeviceId] 和 [filePath] 自行通过 RPC → Token → HTTP 链路下载。
+  ///
+  /// [toDeviceId] 为 null 时广播给所有在线设备。
+  Future<void> sendFileMeta({
+    required String filePath,
+    String? toDeviceId,
+  }) async {
+    final file = File(filePath);
+    if (!await file.exists()) {
+      throw Exception('文件不存在: $filePath');
+    }
+
+    final fileName = p.basename(filePath);
+    final fileSize = await file.length();
+    final hash = sha256.convert(await file.readAsBytes()).toString();
+    final fileId = const Uuid().v4();
+
+    final meta = FileMetaMessage(
+      fileId: fileId,
+      fileName: fileName,
+      fileSize: fileSize,
+      sha256: hash,
+      filePath: filePath,
+      fromDeviceId: deviceId,
+    );
+
+    final message = LanMessage(
+      id: const Uuid().v4(),
+      type: LanMessageType.file,
+      fromId: deviceId,
+      toDeviceId: toDeviceId,
+      content: jsonEncode(meta.toJson()),
+      fileId: fileId,
+      fileName: fileName,
+      fileSize: fileSize,
+      fileHash: hash,
+    );
+
+    if (toDeviceId != null) {
+      await sendLanMessageTo(toDeviceId, message);
+    } else {
+      await sendLanMessage(message);
+    }
+  }
+
+  /// 根据文件元信息从远端设备下载文件
+  ///
+  /// 复用已有的 [requestRemoteDownloadToken] → HTTP 直传链路。
+  ///
+  /// 返回本地保存路径。下载完成后会校验 SHA256 哈希。
+  Future<String> downloadFileByMeta(
+    FileMetaMessage meta, {
+    required String saveDir,
+    void Function(double progress)? onProgress,
+  }) async {
+    // 1. 通过 RPC 向发送方设备请求下载 Token
+    final result = await requestRemoteDownloadToken(
+      toDeviceId: meta.fromDeviceId,
+      path: meta.filePath,
+    );
+
+    if (result.error != null || result.url.isEmpty) {
+      throw Exception('获取下载 Token 失败: ${result.error}');
+    }
+
+    // 2. 拼接保存路径
+    final savePath = p.join(saveDir, meta.fileName);
+
+    // 3. HTTP 直传下载
+    final uri = Uri.parse(result.url);
+    final client = HttpClient();
+    try {
+      final request = await client.getUrl(uri);
+      final response = await request.close();
+
+      if (response.statusCode != 200 && response.statusCode != 206) {
+        throw Exception('下载失败: HTTP ${response.statusCode}');
+      }
+
+      final contentLength = response.contentLength;
+      int received = 0;
+      final file = File(savePath);
+      final sink = file.openWrite();
+
+      try {
+        await for (final chunk in response) {
+          sink.add(chunk);
+          received += chunk.length;
+          if (contentLength > 0) {
+            onProgress?.call(received / contentLength);
+          }
+        }
+        await sink.close();
+      } catch (e) {
+        await sink.close();
+        try {
+          await file.delete();
+        } catch (_) {}
+        rethrow;
+      }
+    } finally {
+      client.close();
+    }
+
+    // 4. 校验 SHA256
+    final savedBytes = await File(savePath).readAsBytes();
+    final actualHash = sha256.convert(savedBytes).toString();
+    if (actualHash != meta.sha256) {
+      await File(savePath).delete();
+      throw Exception('文件校验失败: SHA256 不匹配');
+    }
+
+    return savePath;
   }
 
   // ===== 当前打开的会话状态 =====

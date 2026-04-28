@@ -165,6 +165,9 @@ class LlmMessageMapper {
     final result = <llm.ChatMessage>[];
     for (final msg in messages) {
       // 跳过空内容的 assistant 消息（既无文本也无工具调用）
+      // 但保留有 thinking 内容的消息，因为 DeepSeek 等提供商要求 reasoning_content
+      // 在多轮对话中必须回传（"The reasoning_content in the thinking mode must be
+      // passed back to the API"）
       if (msg.role == MessageRole.assistant) {
         final hasContent =
             msg.content != null && msg.content!.trim().isNotEmpty;
@@ -172,7 +175,9 @@ class LlmMessageMapper {
             msg.toolCalls != null && msg.toolCalls!.isNotEmpty;
         final hasLegacyToolCall =
             msg.toolCallId != null && msg.toolName != null;
-        if (!hasContent && !hasToolCalls && !hasLegacyToolCall) {
+        final hasThinking =
+            msg.thinking != null && msg.thinking!.trim().isNotEmpty;
+        if (!hasContent && !hasToolCalls && !hasLegacyToolCall && !hasThinking) {
           _log.warn('toLlmDartList: 跳过空 assistant 消息 (id=${msg.id})');
           continue;
         }
@@ -680,7 +685,8 @@ class LlmMessageMapper {
     result[index] = msg.copyWith(
       toolCalls: remainingToolCalls,
       content: newContent,
-      clearThinking: true,
+      // Note: Do NOT clear thinking. DeepSeek thinking mode requires
+      // reasoning_content to be passed back in multi-turn conversations.
     );
   }
 
@@ -719,7 +725,8 @@ class LlmMessageMapper {
 
     result[index] = msg.copyWith(
       clearToolCalls: true,
-      clearThinking: true,
+      // Note: Do NOT clear thinking. DeepSeek thinking mode requires
+      // reasoning_content to be passed back in multi-turn conversations.
       type: 'text',
       content: newContent,
     );
@@ -963,7 +970,11 @@ class LlmMessageMapper {
 
         result[i] = msg.copyWith(
           clearToolCalls: true,
-          clearThinking: true,
+          // Note: Do NOT clear thinking here.
+          // DeepSeek new models (deepseek-v4-flash/pro) use thinking mode by default
+          // and require reasoning_content to be passed back in multi-turn conversations.
+          // Clearing thinking would cause: "The reasoning_content in the thinking mode
+          // must be passed back to the API."
           type: 'text',
           content: newContent,
         );

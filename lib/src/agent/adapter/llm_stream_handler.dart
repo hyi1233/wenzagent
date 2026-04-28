@@ -125,7 +125,27 @@ extension _StreamHandler on LlmChatAdapter {
     if (hasTools) {
       LlmChatAdapter._log.debug('已注册工具列表 (${_toolRegistry!.length} 个):');
     }
-    LlmChatAdapter._log.debug('calling LLM, messages count: ${llmMessages.length}, hasTools: $hasTools');
+
+    // Token 估算：在发送前估算总 token 数，提前检测超限
+    final tokenEstimator = _compressor != null
+        ? CharBasedTokenEstimator() // 使用默认估算器
+        : CharBasedTokenEstimator();
+    final estimatedTokens = tokenEstimator.estimateMessagesTotal(chatMsgs);
+    LlmChatAdapter._log.info(
+      'calling LLM, messages count: ${llmMessages.length}, '
+      'hasTools: $hasTools, estimatedTokens: ~$estimatedTokens',
+    );
+
+    // 预检：如果压缩器已启用但估算 token 仍超出预算，记录警告
+    if (_compressor != null && _compressor!.config.enabled) {
+      final budget = _compressor!.config.effectiveBudget;
+      if (budget > 0 && estimatedTokens > budget) {
+        LlmChatAdapter._log.warn(
+          '压缩后估算 token ($estimatedTokens) 仍超出预算 ($budget)，'
+          'LLM 可能返回 token 超限错误',
+        );
+      }
+    }
 
     final aiContentBuffer = StringBuffer();
     final thinkingContentBuffer = StringBuffer();

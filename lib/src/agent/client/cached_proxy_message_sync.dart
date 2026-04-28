@@ -2,6 +2,17 @@ part of 'cached_agent_proxy.dart';
 
 /// 消息同步 mixin
 mixin _CachedProxyMessageSync on _CachedAgentProxyBase {
+  // ===== 工具方法 =====
+
+  /// 比较两个 List<String> 是否相等
+  static bool _listEquals(List<String> a, List<String> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
+  }
+
   // ===== 消息同步 =====
 
   /// 去抖同步远程消息（500ms 内只触发一次，避免短时间内多次调用）
@@ -209,9 +220,17 @@ mixin _CachedProxyMessageSync on _CachedAgentProxyBase {
     try {
       _CachedAgentProxyBase._log.debug('开始同步远程会话状态和权限请求...');
 
-      // 1. 查询远程 Agent 状态
+      // 1. 查询远程 Agent 状态（getStateSnapshotAsync 已更新 _remoteCache）
       final stateSnapshot = await _proxy.getStateSnapshotAsync();
       _CachedAgentProxyBase._log.debug('远程 Agent 状态: ${stateSnapshot.status}');
+
+      // 1.1 如果远程状态与本地缓存不同步，更新 CachedAgentProxy 状态缓存并通知 UI
+      if (_currentProcessingMessageId != stateSnapshot.currentProcessingMessageId ||
+          !_listEquals(_queuedMessageIds, stateSnapshot.queuedMessageIds)) {
+        _currentProcessingMessageId = stateSnapshot.currentProcessingMessageId;
+        _queuedMessageIds = stateSnapshot.queuedMessageIds;
+        _notifyMessagesChanged();
+      }
 
       // 2. 同步远程 Provider 配置
       try {

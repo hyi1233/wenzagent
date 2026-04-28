@@ -46,27 +46,27 @@ class EmployeeOnlineTracker {
   bool? isEmployeeOnline(String employeeId) => _employeeOnlineState[employeeId];
 
   /// 刷新所有员工的在线状态（含远程设备上的员工）
-  void refreshEmployeeOnlineStates() {
-    () async {
-      try {
-        final employees = await _employeeManager.getEmployees(allDevices: true);
-        for (final employee in employees) {
-          final devId = employee.currentDeviceId;
-          if (devId != null && devId.isNotEmpty) {
-            _employeeDeviceMap[employee.uuid] = devId;
-          }
-          bool online = false;
-          if (devId != null && devId.isNotEmpty) {
-            online = devId == _deviceId
-                ? (_agentManager.getLocalAgent(employee.uuid)?.isAlive ?? false)
-                : _deviceRegistry.containsDevice(devId);
-          }
-          _updateEmployeeOnlineState(employee.uuid, online, devId);
+  ///
+  /// 返回 Future 以便调用方可以 await 完成后再依赖状态结果。
+  Future<void> refreshEmployeeOnlineStates() async {
+    try {
+      final employees = await _employeeManager.getEmployees(allDevices: true);
+      for (final employee in employees) {
+        final devId = employee.currentDeviceId;
+        if (devId != null && devId.isNotEmpty) {
+          _employeeDeviceMap[employee.uuid] = devId;
         }
-      } catch (e) {
-        _log.debug('refreshEmployeeOnlineStates failed: $e');
+        bool online = false;
+        if (devId != null && devId.isNotEmpty) {
+          online = devId == _deviceId
+              ? (_agentManager.getLocalAgent(employee.uuid)?.isAlive ?? false)
+              : _deviceRegistry.containsDevice(devId);
+        }
+        _updateEmployeeOnlineState(employee.uuid, online, devId);
       }
-    }();
+    } catch (e) {
+      _log.debug('refreshEmployeeOnlineStates failed: $e');
+    }
   }
 
   /// 将指定设备的所有员工标记为离线
@@ -85,26 +85,24 @@ class EmployeeOnlineTracker {
   }
 
   /// 将所有远程员工标记为离线（基于完整员工列表，确保远程员工也被覆盖）
-  void markAllRemoteEmployeesOffline() {
-    () async {
-      try {
-        final employees = await _employeeManager.getEmployees(allDevices: true);
-        for (final employee in employees) {
-          final devId = employee.currentDeviceId;
-          // 跳过本设备的员工
-          if (devId == _deviceId) continue;
-          final online = _employeeOnlineState[employee.uuid] ?? false;
-          if (online) {
-            _employeeOnlineState[employee.uuid] = false;
-            _stateHolder.employeeOnlineController.add(
-              EmployeeOnlineEvent(employeeId: employee.uuid, isOnline: false),
-            );
-          }
+  Future<void> markAllRemoteEmployeesOffline() async {
+    try {
+      final employees = await _employeeManager.getEmployees(allDevices: true);
+      for (final employee in employees) {
+        final devId = employee.currentDeviceId;
+        // 跳过本设备的员工
+        if (devId == _deviceId) continue;
+        final online = _employeeOnlineState[employee.uuid] ?? false;
+        if (online) {
+          _employeeOnlineState[employee.uuid] = false;
+          _stateHolder.employeeOnlineController.add(
+            EmployeeOnlineEvent(employeeId: employee.uuid, isOnline: false),
+          );
         }
-      } catch (e) {
-        _log.debug('markAllRemoteEmployeesOffline failed: $e');
       }
-    }();
+    } catch (e) {
+      _log.debug('markAllRemoteEmployeesOffline failed: $e');
+    }
   }
 
   void _updateEmployeeOnlineState(String empId, bool isOnline, String? devId) {

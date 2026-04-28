@@ -21,6 +21,7 @@ import 'context_compressor.dart';
 import 'retry_config.dart';
 import 'retry_util.dart';
 import 'session_memory_manager.dart';
+import 'token_estimator.dart';
 
 part 'llm_stream_handler.dart';
 

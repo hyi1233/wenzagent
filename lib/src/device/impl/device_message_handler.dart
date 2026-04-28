@@ -113,6 +113,8 @@ class DeviceMessageHandler {
       case LanMessageType.deviceInfoChanged:
       case LanMessageType.deviceInfoResponse:
         _handleDeviceEventMessage(msg);
+      case LanMessageType.file:
+        _handleFileMessage(msg);
       case LanMessageType.deviceMessage:
         break;
       case LanMessageType.deviceInfoRequest:
@@ -120,6 +122,26 @@ class DeviceMessageHandler {
         break;
       default:
         break;
+    }
+  }
+
+  /// 处理接收到的文件元信息消息
+  ///
+  /// 仅解析元信息并记录日志，不自动下载。
+  /// 上层（wenzflow UI）通过监听 lanMessage 流获取元信息后决定是否下载。
+  void _handleFileMessage(LanMessage msg) {
+    try {
+      final content = msg.content;
+      if (content == null || content.isEmpty) return;
+
+      final metaMap = jsonDecode(content) as Map<String, dynamic>;
+      // 确保 fromDeviceId 使用 msg.fromId（可信来源）
+      metaMap['fromDeviceId'] ??= msg.fromId;
+
+      _log.info('收到文件元信息: ${metaMap['fileName']} '
+          '(${metaMap['fileSize']} bytes) from ${msg.fromId}');
+    } catch (e) {
+      _log.warn('解析文件元信息失败: $e');
     }
   }
 

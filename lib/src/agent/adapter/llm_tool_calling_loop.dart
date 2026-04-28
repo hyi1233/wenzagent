@@ -39,23 +39,27 @@ extension _ToolCallingLoop on LlmChatAdapter {
 
   /// 工具权限检查 + 并行执行
   ///
-  /// 返回执行结果列表。如果被取消，[cancelled] 为 true。
+  /// 返回执行结果列表，结果顺序与 [toolCalls] 保持一致。
+  /// 如果被取消，[cancelled] 为 true。
   Future<_ToolExecSummary> executeToolCalls(
     List<llm.ToolCall> toolCalls, {
     required Set<String> alreadyCallsSet,
     required bool streamCancelled,
     CancellationToken? cancellationToken,
   }) async {
+    // 使用 Map 存储结果（以 toolCallId 为键），最后按 toolCalls 原始顺序输出
+    final resultMap = <String, shared.ToolResult>{};
     // Phase 1: 权限检查（串行）+ 收集待执行工具
     final pendingExecutions =
         <({llm.ToolCall call, AgentTool tool, Map<String, dynamic> args})>[];
-    final allToolResults = <shared.ToolResult>[];
+    var cancelled = false;
 
     for (final toolCall in toolCalls) {
       if (streamCancelled || cancellationToken?.isCancelled == true) {
-        return _ToolExecSummary(cancelled: true, results: []);
+        cancelled = true;
+        break;
       }
-      if(alreadyCallsSet.contains(toolCall.id)){
+      if (alreadyCallsSet.contains(toolCall.id)) {
         // 重复 tool call ID：生成错误 result 确保序列完整，而非直接跳过
         LlmChatAdapter._log.warn('检测到重复 toolCallId: ${toolCall.id}, 生成跳过结果');
         final skipResult = shared.ToolResult(
@@ -64,7 +68,7 @@ extension _ToolCallingLoop on LlmChatAdapter {
           isError: true,
           name: toolCall.function.name,
         );
-        allToolResults.add(skipResult);
+        resultMap[toolCall.id] = skipResult;
         _toolEventCallback?.call(
           ToolCallResultEvent(
             toolCallId: toolCall.id,
@@ -102,13 +106,11 @@ extension _ToolCallingLoop on LlmChatAdapter {
       final tool = _toolRegistry!.getTool(toolName);
       if (tool == null) {
         final errorResult = '工具 "$toolName" 未注册';
-        allToolResults.add(
-          shared.ToolResult(
-            toolCallId: toolCallId,
-            content: errorResult,
-            isError: true,
-            name: toolName,
-          ),
+        resultMap[toolCallId] = shared.ToolResult(
+          toolCallId: toolCallId,
+          content: errorResult,
+          isError: true,
+          name: toolName,
         );
         _toolEventCallback?.call(
           ToolCallResultEvent(
@@ -131,13 +133,11 @@ extension _ToolCallingLoop on LlmChatAdapter {
           final denyResult =
               _permissionManager!.lastDenyMessage ??
               '权限被拒绝: 用户拒绝了工具 "$toolName" 的执行';
-          allToolResults.add(
-            shared.ToolResult(
-              toolCallId: toolCallId,
-              content: denyResult,
-              isError: true,
-              name: toolName,
-            ),
+          resultMap[toolCallId] = shared.ToolResult(
+            toolCallId: toolCallId,
+            content: denyResult,
+            isError: true,
+            name: toolName,
           );
           _toolEventCallback?.call(
             ToolCallResultEvent(
@@ -154,52 +154,50 @@ extension _ToolCallingLoop on LlmChatAdapter {
       pendingExecutions.add((call: toolCall, tool: tool, args: toolArguments));
     }
 
-    if (pendingExecutions.isEmpty) {
-      return _ToolExecSummary(cancelled: false, results: allToolResults);
-    }
-
     // Phase 2: 并行执行已批准的工具
-    _runningTools.addAll(pendingExecutions.map((e) => e.tool));
+    if (pendingExecutions.isNotEmpty) {
+      _runningTools.addAll(pendingExecutions.map((e) => e.tool));
 
-    final results = await Future.wait(
-      pendingExecutions.map(
-        (exec) => executeSingleTool(exec, cancellationToken),
-      ),
-    );
-
-    _runningTools.clear();
-
-    // 如果因取消导致所有工具被终止，直接退出
-    if (results.any((r) => r.wasCancelled) &&
-        (streamCancelled || cancellationToken?.isCancelled == true)) {
-      for (final r in results) {
-        if (r.wasCancelled) {
-          allToolResults.add(
-            shared.ToolResult(
-              toolCallId: r.toolCall.id,
-              content: r.result.content,
-              isError: true,
-              name: r.toolName,
-            ),
-          );
-        }
-      }
-      return _ToolExecSummary(cancelled: true, results: allToolResults);
-    }
-
-    // 收集执行结果
-    for (final r in results) {
-      allToolResults.add(
-        shared.ToolResult(
-          toolCallId: r.toolCall.id,
-          content: r.result.content,
-          isError: r.result.isError,
-          name: r.toolName,
+      final execResults = await Future.wait(
+        pendingExecutions.map(
+          (exec) => executeSingleTool(exec, cancellationToken),
         ),
       );
+
+      _runningTools.clear();
+
+      // 收集执行结果到 resultMap
+      for (final r in execResults) {
+        resultMap[r.toolCall.id] = shared.ToolResult(
+          toolCallId: r.toolCall.id,
+          content: r.result.content,
+          isError: r.result.isError || r.wasCancelled,
+          name: r.toolName,
+        );
+      }
+
+      // 如果因取消导致任意工具被终止，标记为 cancelled
+      if (execResults.any((r) => r.wasCancelled) &&
+          (streamCancelled || cancellationToken?.isCancelled == true)) {
+        cancelled = true;
+      }
     }
 
-    return _ToolExecSummary(cancelled: false, results: allToolResults);
+    // 按原始 toolCalls 顺序构建结果列表
+    return _ToolExecSummary(
+      cancelled: cancelled,
+      results: _resultsInOrder(toolCalls, resultMap),
+    );
+  }
+
+  /// 按原始 toolCalls 顺序输出结果列表，确保结果顺序与调用顺序一致
+  List<shared.ToolResult> _resultsInOrder(
+    List<llm.ToolCall> toolCalls,
+    Map<String, shared.ToolResult> resultMap,
+  ) {
+    return toolCalls
+        .map((tc) => resultMap[tc.id]!)
+        .toList(growable: false);
   }
 
   /// 执行单个工具调用
