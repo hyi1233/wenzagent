@@ -264,7 +264,10 @@ extension _StreamHandler on LlmChatAdapter {
       final contentPreview = contentLen > 60
           ? '${msg.content.substring(0, 60)}...'
           : msg.content;
-      buf.writeln('  [$i] $roleStr ($typeStr)$detail content="$contentPreview"');
+      final hasDeepseekExt = msg.hasExtension('deepseek');
+      final hasReasoningContent = hasDeepseekExt && (msg.getExtension<Map<String, dynamic>>('deepseek')?.containsKey('reasoning_content') ?? false);
+      final extInfo = hasReasoningContent ? ' [HAS reasoning_content]' : (msg.role == llm.ChatRole.assistant ? ' [NO reasoning_content]' : '');
+      buf.writeln('  [$i] $roleStr ($typeStr)$detail$extInfo content="$contentPreview"');
     }
     buf.write('=== End Sequence (${messages.length} messages) ===');
     LlmChatAdapter._log.debug(buf.toString());

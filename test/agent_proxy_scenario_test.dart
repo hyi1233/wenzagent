@@ -587,7 +587,7 @@ void main() {
         employeeId: employeeId,
         deviceId: deviceId,
         rpcCall: (method, params) async {
-          if (method == 'getStateSnapshot') {
+          if (method == 'agentGetState') {
             return AgentStateSnapshot(
               status: AgentStatus.streaming,
               currentProcessingMessageId: 'msg-001',
@@ -662,12 +662,279 @@ void main() {
       await proxy.dispose();
       await eventController.close();
     });
+
+    // =========================================================================
+    // Bug 修复测试：离线状态显示问题 - 重启后生效（缓存 Bug）
+    // =========================================================================
+
+    test('getStateSnapshotAsync 应更新 _remoteCache.status（修复 Bug 1）', () async {
+      // 场景：远程 Agent 正在 processing，但 _remoteCache 初始为 idle
+      // 修复前：getStateSnapshotAsync 只返回值，不更新缓存
+      // 修复后：getStateSnapshotAsync 同时更新 _remoteCache.status 和 snapshot
+      final proxy = AgentProxy.remote(
+        employeeId: employeeId,
+        deviceId: deviceId,
+        rpcCall: (method, params) async {
+          if (method == 'agentGetState') {
+            return AgentStateSnapshot(
+              status: AgentStatus.processing,
+              currentProcessingMessageId: 'msg-processing-001',
+              isStreaming: false,
+              queuedMessageIds: ['msg-002'],
+              queueLength: 1,
+            ).toMap();
+          }
+          return <String, dynamic>{};
+        },
+      );
+
+      // 初始状态应为 idle（_RemoteStateCache 默认值）
+      expect(proxy.status, equals(AgentStatus.idle));
+
+      // 调用 getStateSnapshotAsync 后，缓存应被更新
+      final snapshot = await proxy.getStateSnapshotAsync();
+      expect(snapshot.status, equals(AgentStatus.processing));
+      expect(snapshot.currentProcessingMessageId, equals('msg-processing-001'));
+
+      // 关键断言：proxy.status 应反映远程真实状态，而非初始 idle
+      expect(proxy.status, equals(AgentStatus.processing));
+
+      // isAlive 也应正确反映
+      expect(proxy.isAlive, isTrue);
+
+      await proxy.dispose();
+    });
+
+    test('CachedAgentProxy 初始化时同步远程 processing 状态到 UI（修复 Bug 2）', () async {
+      // 场景：远程 Agent 正在处理消息（processing），本地刚启动 CachedAgentProxy
+      // 修复前：初始化后 UI 看到的 status 仍然是 idle，直到收到事件才更新
+      // 修复后：syncFromRemote 查询远程状态后，_remoteCache.status 正确更新
+      final eventController = StreamController<AgentEvent>.broadcast();
+
+      final proxy = AgentProxy.remote(
+        employeeId: employeeId,
+        deviceId: deviceId,
+        rpcCall: (method, params) async {
+          if (method == 'agentGetState') {
+            // 模拟远程 Agent 正在处理消息
+            return AgentStateSnapshot(
+              status: AgentStatus.streaming,
+              currentProcessingMessageId: 'msg-streaming-001',
+              isStreaming: true,
+              queuedMessageIds: ['msg-003'],
+              queueLength: 1,
+            ).toMap();
+          }
+          return <String, dynamic>{};
+        },
+        remoteEventStream: eventController.stream,
+      );
+
+      final cachedProxy = CachedAgentProxy(
+        proxy: proxy,
+        messageStore: messageStore,
+        deviceId: deviceId,
+        employeeId: employeeId,
+      );
+
+      // 监听状态变更
+      final stateChanges = <AgentStateSnapshot>[];
+      cachedProxy.onStateChanged.listen((snapshot) {
+        stateChanges.add(snapshot);
+      });
+
+      // 初始化会调用 syncFromRemote → _syncRemoteStateAndPermission → getStateSnapshotAsync
+      await cachedProxy.initialize();
+
+      // 关键断言：初始化后 status 应为远程真实状态，而非 idle
+      expect(cachedProxy.status, equals(AgentStatus.streaming));
+      expect(cachedProxy.currentProcessingMessageId, equals('msg-streaming-001'));
+      expect(cachedProxy.queuedMessageIds, equals(['msg-003']));
+      expect(cachedProxy.isAlive, isTrue);
+
+      await cachedProxy.dispose();
+      await proxy.dispose();
+      await eventController.close();
+    });
+
+    test('初始化时远程 idle 状态不会误触发状态变更事件', () async {
+      // 场景：远程 Agent 是 idle，初始化后不应产生多余的状态变更事件
+      final eventController = StreamController<AgentEvent>.broadcast();
+
+      final proxy = AgentProxy.remote(
+        employeeId: employeeId,
+        deviceId: deviceId,
+        rpcCall: (method, params) async {
+          if (method == 'agentGetState') {
+            return AgentStateSnapshot(
+              status: AgentStatus.idle,
+              isStreaming: false,
+            ).toMap();
+          }
+          return <String, dynamic>{};
+        },
+        remoteEventStream: eventController.stream,
+      );
+
+      final cachedProxy = CachedAgentProxy(
+        proxy: proxy,
+        messageStore: messageStore,
+        deviceId: deviceId,
+        employeeId: employeeId,
+      );
+
+      final stateChanges = <AgentStateSnapshot>[];
+      cachedProxy.onStateChanged.listen((snapshot) {
+        stateChanges.add(snapshot);
+      });
+
+      await cachedProxy.initialize();
+      await _pumpEventQueue();
+
+      // idle → idle 不应有状态变更事件
+      // （注：如果 _syncRemoteStateAndPermission 检测到 processingMessageId 变化会通知）
+      expect(cachedProxy.status, equals(AgentStatus.idle));
+
+      await cachedProxy.dispose();
+      await proxy.dispose();
+      await eventController.close();
+    });
+
+    test('状态从 processing 恢复到 idle 后重新初始化应正确反映 idle', () async {
+      // 场景：模拟应用重启 - 上次远程 Agent 在 processing，现在已回到 idle
+      // 重新初始化后应正确反映 idle 状态
+      final eventController = StreamController<AgentEvent>.broadcast();
+
+      final proxy = AgentProxy.remote(
+        employeeId: employeeId,
+        deviceId: deviceId,
+        rpcCall: (method, params) async {
+          if (method == 'agentGetState') {
+            return AgentStateSnapshot(
+              status: AgentStatus.idle,
+              isStreaming: false,
+            ).toMap();
+          }
+          return <String, dynamic>{};
+        },
+        remoteEventStream: eventController.stream,
+      );
+
+      final cachedProxy = CachedAgentProxy(
+        proxy: proxy,
+        messageStore: messageStore,
+        deviceId: deviceId,
+        employeeId: employeeId,
+      );
+
+      await cachedProxy.initialize();
+
+      // 应正确反映 idle
+      expect(cachedProxy.status, equals(AgentStatus.idle));
+      expect(cachedProxy.currentProcessingMessageId, isNull);
+      expect(cachedProxy.queuedMessageIds, isEmpty);
+
+      await cachedProxy.dispose();
+      await proxy.dispose();
+      await eventController.close();
+    });
+
+    test('多次 getStateSnapshotAsync 调用应保持缓存一致性', () async {
+      // 场景：连续多次查询远程状态，缓存应始终与最后一次查询结果一致
+      var callCount = 0;
+      final states = [
+        AgentStatus.idle,
+        AgentStatus.processing,
+        AgentStatus.streaming,
+        AgentStatus.idle,
+      ];
+
+      final proxy = AgentProxy.remote(
+        employeeId: employeeId,
+        deviceId: deviceId,
+        rpcCall: (method, params) async {
+          if (method == 'agentGetState') {
+            final status = states[callCount < states.length ? callCount : states.length - 1];
+            callCount++;
+            return AgentStateSnapshot(
+              status: status,
+              isStreaming: status == AgentStatus.streaming,
+            ).toMap();
+          }
+          return <String, dynamic>{};
+        },
+      );
+
+      // 第一次查询：idle
+      var snapshot = await proxy.getStateSnapshotAsync();
+      expect(snapshot.status, equals(AgentStatus.idle));
+      expect(proxy.status, equals(AgentStatus.idle));
+
+      // 第二次查询：processing
+      snapshot = await proxy.getStateSnapshotAsync();
+      expect(snapshot.status, equals(AgentStatus.processing));
+      expect(proxy.status, equals(AgentStatus.processing));
+
+      // 第三次查询：streaming
+      snapshot = await proxy.getStateSnapshotAsync();
+      expect(snapshot.status, equals(AgentStatus.streaming));
+      expect(proxy.status, equals(AgentStatus.streaming));
+
+      // 第四次查询：回到 idle
+      snapshot = await proxy.getStateSnapshotAsync();
+      expect(snapshot.status, equals(AgentStatus.idle));
+      expect(proxy.status, equals(AgentStatus.idle));
+
+      await proxy.dispose();
+    });
+
+    test('事件流状态变更后 getStateSnapshotAsync 不覆盖事件状态', () async {
+      // 场景：先通过事件流收到 processing 状态，再查询远程（此时已 idle）
+      // 应以最后一次查询为准
+      final eventController = StreamController<AgentEvent>.broadcast();
+
+      final proxy = AgentProxy.remote(
+        employeeId: employeeId,
+        deviceId: deviceId,
+        rpcCall: (method, params) async {
+          if (method == 'agentGetState') {
+            return AgentStateSnapshot(
+              status: AgentStatus.idle,
+              isStreaming: false,
+            ).toMap();
+          }
+          return <String, dynamic>{};
+        },
+        remoteEventStream: eventController.stream,
+      );
+
+      // 先通过事件流设置 processing
+      eventController.add(AgentEvent(
+        type: AgentEventType.agentStatusChanged,
+        data: {
+          'status': 'processing',
+          'currentProcessingMessageId': 'msg-001',
+        },
+        employeeId: employeeId,
+      ));
+      await _pumpEventQueue();
+
+      expect(proxy.status, equals(AgentStatus.processing));
+
+      // 再查询远程（返回 idle）
+      final snapshot = await proxy.getStateSnapshotAsync();
+      expect(snapshot.status, equals(AgentStatus.idle));
+      // 缓存应被更新为远程真实状态
+      expect(proxy.status, equals(AgentStatus.idle));
+
+      await proxy.dispose();
+      await eventController.close();
+    });
   });
 
   // ===========================================================================
   // 4. 事件流
   // ===========================================================================
-
   group('事件流', () {
     test('toolCallStart 事件创建本地工具调用消息', () async {
       final eventController = StreamController<AgentEvent>.broadcast();

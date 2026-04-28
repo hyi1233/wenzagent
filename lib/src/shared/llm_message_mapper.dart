@@ -181,6 +181,11 @@ class LlmMessageMapper {
           _log.warn('toLlmDartList: 跳过空 assistant 消息 (id=${msg.id})');
           continue;
         }
+        // Debug: log assistant messages with thinking
+        if (hasThinking) {
+          _log.debug('toLlmDartList: assistant 消息有 thinking (${msg.thinking!.length} chars), '
+            'hasContent=$hasContent, hasToolCalls=$hasToolCalls, provider=$provider');
+        }
       }
       result.add(toLlmDart(msg, provider: provider));
     }
@@ -904,7 +909,13 @@ class LlmMessageMapper {
   /// - Anthropic：通过 anthropic extension 的 contentBlocks 回传
   /// - DeepSeek/OpenAI：直接通过 llm_dart 的 thinking 扩展回传
   static llm.ChatMessage _buildAssistantMessageWithThinking(ChatMessage msg, {LLMProvider? provider}) {
-    final assistantMsg = llm.ChatMessage.assistant(msg.content ?? '');
+    // For DeepSeek thinking mode, content must not be empty when reasoning_content is present.
+    // If content is empty/null but thinking is present, provide a placeholder.
+    final content = msg.content;
+    final effectiveContent = (content == null || content.trim().isEmpty)
+        ? ' ' // Single space placeholder to avoid empty assistant content
+        : content;
+    final assistantMsg = llm.ChatMessage.assistant(effectiveContent);
     if (msg.thinking != null && msg.thinking!.isNotEmpty) {
       return _attachThinking(assistantMsg, msg.thinking!, provider);
     }
