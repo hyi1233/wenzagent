@@ -102,6 +102,15 @@ class AgentRpcUtil {
     return _rpcCall(AgentRpcConfig.methodGetClearSeq, request.toMap());
   }
 
+  /// 清除清空水位线标记
+  ///
+  /// 客户端处理完 clearSeq 后调用，通知服务端将 clear_seq 重置为 NULL。
+  Future<Map<String, dynamic>> clearClearSeq(
+    ClearClearSeqRequest request,
+  ) async {
+    return _rpcCall(AgentRpcConfig.methodClearClearSeq, request.toMap());
+  }
+
   /// 标记消息为已读
   Future<Map<String, dynamic>> markMessagesAsRead(
     MarkMessagesAsReadRequest request,

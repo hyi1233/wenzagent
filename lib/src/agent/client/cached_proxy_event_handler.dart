@@ -410,12 +410,18 @@ mixin _CachedProxyEventHandler on _CachedAgentProxyBase {
     // 设置清空保护标志，防止 idle 状态触发的 _debouncedSyncMessages 重新同步消息
     _sessionClearPending = true;
     _sessionClearGuardTimer?.cancel();
+    final currentGeneration = ++_sessionClearGeneration;
     _sessionClearGuardTimer = Timer(const Duration(milliseconds: 500), () {
-      _sessionClearPending = false;
-      _sessionClearGuardTimer = null;
-      // 保护期结束后，主动触发一次补偿同步，确保保护期内收到的消息事件被处理
-      _CachedAgentProxyBase._log.debug('会话清空保护期结束，触发补偿同步');
-      _syncMessagesFromRemote();
+      // 仅当 generation 未被后续清空事件递增时才解除保护
+      if (_sessionClearGeneration == currentGeneration) {
+        _sessionClearPending = false;
+        _sessionClearGuardTimer = null;
+        // 保护期结束后，主动触发一次补偿同步，确保保护期内收到的消息事件被处理
+        _CachedAgentProxyBase._log.debug('会话清空保护期结束(gen=$currentGeneration)，触发补偿同步');
+        _syncMessagesFromRemote();
+      } else {
+        _CachedAgentProxyBase._log.debug('会话清空保护期跳过(gen=$currentGeneration, current=$_sessionClearGeneration)');
+      }
     });
 
     _pendingPermissionRequests.clear();

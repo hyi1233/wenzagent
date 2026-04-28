@@ -169,6 +169,14 @@ class DeviceRpcHandler {
       return {'clearSeq': clearSeq};
     });
 
+    // 清除清空水位线标记
+    rpcServer.register(AgentRpcConfig.methodClearClearSeq, (params) async {
+      final request = ClearClearSeqRequest.fromMap(params);
+      final watermarkStore = SyncWatermarkStore(deviceId: _deviceId);
+      watermarkStore.clearClearSeq(request.employeeId, deviceId: _deviceId);
+      return {'success': true};
+    });
+
     // 标记消息为已读
     rpcServer.register(AgentRpcConfig.methodMarkMessagesAsRead, (params) async {
       final request = MarkMessagesAsReadRequest.fromMap(params);

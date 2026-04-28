@@ -40,6 +40,26 @@ class GetClearSeqRequest {
   }
 }
 
+/// 清除清空水位线请求
+///
+/// 客户端处理完 clearSeq 后通知服务端清除 clear_seq 标记，
+/// 避免后续每次同步都重复执行无效的删除操作。
+class ClearClearSeqRequest {
+  final String employeeId;
+
+  const ClearClearSeqRequest({required this.employeeId});
+
+  Map<String, dynamic> toMap() {
+    return {'employeeId': employeeId};
+  }
+
+  factory ClearClearSeqRequest.fromMap(Map<String, dynamic> map) {
+    return ClearClearSeqRequest(
+      employeeId: map['employeeId'] as String,
+    );
+  }
+}
+
 /// 更新同步水位线请求
 ///
 /// 客户端同步完成后更新本地水位线

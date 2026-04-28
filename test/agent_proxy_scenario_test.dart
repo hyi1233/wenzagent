@@ -16,6 +16,7 @@
 // ============================================================================
 
 import 'dart:async';
+import 'dart:io';
 
 import 'package:test/test.dart';
 import 'package:uuid/uuid.dart';
@@ -27,6 +28,7 @@ import 'package:wenzagent/src/agent/entity/agent_message.dart';
 import 'package:wenzagent/src/agent/entity/entity.dart';
 import 'package:wenzagent/src/agent/entity/message_input.dart';
 import 'package:wenzagent/src/service/message_store_service.dart';
+import 'package:wenzagent/src/persistence/database_manager.dart';
 import 'package:wenzagent/src/shared/chat_message.dart' show ToolCall;
 
 void main() {
@@ -38,15 +40,20 @@ void main() {
   late String deviceId;
   late MessageStoreServiceImpl messageStore;
 
-  setUp(() {
+  setUp(() async {
     employeeId = 'emp-${const Uuid().v4().substring(0, 8)}';
     deviceId = 'dev-${const Uuid().v4().substring(0, 8)}';
+    final dbManager = DatabaseManager.getInstance(deviceId);
+    await dbManager.initialize(storagePath: Directory.systemTemp.path);
     messageStore = MessageStoreServiceImpl(deviceId: deviceId);
   });
 
   tearDown(() async {
-    await messageStore.deleteMessages(deviceId, employeeId);
+    try {
+      await messageStore.deleteMessages(deviceId, employeeId);
+    } catch (_) {}
     messageStore.dispose();
+    DatabaseManager.removeInstance(deviceId);
   });
 
   // ===========================================================================
@@ -705,9 +712,9 @@ void main() {
       await proxy.dispose();
     });
 
-    test('CachedAgentProxy 初始化时同步远程 processing 状态到 UI（修复 Bug 2）', () async {
+    test('CachedAgentProxy syncFromRemote 同步远程 processing 状态到 UI（修复 Bug 2）', () async {
       // 场景：远程 Agent 正在处理消息（processing），本地刚启动 CachedAgentProxy
-      // 修复前：初始化后 UI 看到的 status 仍然是 idle，直到收到事件才更新
+      // 修复前：syncFromRemote 后 UI 看到的 status 仍然是 idle，直到收到事件才更新
       // 修复后：syncFromRemote 查询远程状态后，_remoteCache.status 正确更新
       final eventController = StreamController<AgentEvent>.broadcast();
 
@@ -724,6 +731,9 @@ void main() {
               queuedMessageIds: ['msg-003'],
               queueLength: 1,
             ).toMap();
+          }
+          if (method == 'agentGetMessages') {
+            return {'messages': <Map<String, dynamic>>[]};
           }
           return <String, dynamic>{};
         },
@@ -743,10 +753,11 @@ void main() {
         stateChanges.add(snapshot);
       });
 
-      // 初始化会调用 syncFromRemote → _syncRemoteStateAndPermission → getStateSnapshotAsync
+      // initialize() 设置事件监听，syncFromRemote() 查询远程状态
       await cachedProxy.initialize();
+      await cachedProxy.syncFromRemote();
 
-      // 关键断言：初始化后 status 应为远程真实状态，而非 idle
+      // 关键断言：syncFromRemote 后 status 应为远程真实状态，而非 idle
       expect(cachedProxy.status, equals(AgentStatus.streaming));
       expect(cachedProxy.currentProcessingMessageId, equals('msg-streaming-001'));
       expect(cachedProxy.queuedMessageIds, equals(['msg-003']));
@@ -789,6 +800,7 @@ void main() {
       });
 
       await cachedProxy.initialize();
+      await cachedProxy.syncFromRemote();
       await _pumpEventQueue();
 
       // idle → idle 不应有状态变更事件
@@ -828,6 +840,7 @@ void main() {
       );
 
       await cachedProxy.initialize();
+      await cachedProxy.syncFromRemote();
 
       // 应正确反映 idle
       expect(cachedProxy.status, equals(AgentStatus.idle));

@@ -56,6 +56,12 @@ mixin _CachedProxyMessageSync on _CachedAgentProxyBase {
             _CachedAgentProxyBase._log.info('根据 clearSeq=$remoteClearSeq 删除了 $deletedCount 条本地消息');
             _messageStore.resetLastSeq(_deviceId, _employeeId, remoteClearSeq);
           }
+          // 通知服务端清除已处理的 clearSeq 标记，避免后续同步重复执行无效删除
+          try {
+            await _proxy.clearClearSeq();
+          } catch (e) {
+            _CachedAgentProxyBase._log.debug('清除远程 clearSeq 标记失败: $e');
+          }
         }
       } catch (e) {
         _CachedAgentProxyBase._log.error('获取远程 clearSeq 失败', e);

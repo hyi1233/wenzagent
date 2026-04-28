@@ -171,6 +171,14 @@ class _RemoteOps {
     return result['clearSeq'] as int? ?? 0;
   }
 
+  /// 清除清空水位线标记
+  ///
+  /// 客户端处理完 clearSeq 后调用，通知服务端将 clear_seq 重置为 NULL。
+  Future<void> clearClearSeq() async {
+    final request = ClearClearSeqRequest(employeeId: _employeeId);
+    await _rpcUtil.clearClearSeq(request);
+  }
+
   /// 标记消息为已读
   ///
   /// 当用户打开会话查看消息时，通知 Agent 消息已读

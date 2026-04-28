@@ -19,6 +19,20 @@ class SyncWatermarkStore {
     return _dbManager.db;
   }
 
+  /// 校验 deviceId 有效性，无效时抛出异常
+  ///
+  /// 设计约束：所有涉及水位线写入的操作必须传入有效的 deviceId，
+  /// 禁止 null、空字符串、'default'，以便通过日志快速定位问题。
+  void _validateDeviceId(String? deviceId, String caller) {
+    if (deviceId == null || deviceId.isEmpty || deviceId == 'default') {
+      throw StateError(
+        '[SyncWatermarkStore] deviceId 无效 (value="$deviceId"), '
+        '调用来源: $caller。'
+        'deviceId 不允许为 null、空字符串或 "default"，必须传入真实设备标识。',
+      );
+    }
+  }
+
   /// 获取指定 employee + device 的水位线
   SyncWatermarkEntity? getWatermark(String employeeId, {String deviceId = ''}) {
     final resultSet = _db.select(
@@ -62,6 +76,7 @@ class SyncWatermarkStore {
   /// 使用 MAX 语义：只在 lastSeq 大于当前值时才更新，
   /// 防止推送和拉取并发时水位线回退。
   void updateLastSeq(String employeeId, int lastSeq, {String deviceId = ''}) {
+    _validateDeviceId(deviceId, 'updateLastSeq');
     _db.execute('''
       INSERT INTO sync_watermark (employee_id, device_id, last_seq, update_time)
         VALUES (?, ?, ?, ?)
@@ -126,14 +141,21 @@ class SyncWatermarkStore {
   ///
   /// 客户端同步时检测到此值，应删除本地所有 seq < clearSeq 的消息。
   /// 如果已有 clear_seq，只在新值更大时才更新（防止回退）。
+  ///
+  /// INSERT 分支使用子查询保留已有 last_seq，避免首次插入时将 last_seq 硬编码为 0
+  /// 导致后续增量同步从 0 开始全量拉取。
   void setClearSeq(String employeeId, int clearSeq, {String deviceId = ''}) {
     _db.execute('''
       INSERT INTO sync_watermark (employee_id, device_id, last_seq, clear_seq, update_time)
-        VALUES (?, ?, 0, ?, ?)
+        VALUES (?, ?,
+          COALESCE((SELECT last_seq FROM sync_watermark WHERE employee_id = ? AND device_id = ?), 0),
+          ?, ?)
         ON CONFLICT(employee_id, device_id) DO UPDATE SET
           clear_seq = MAX(COALESCE(clear_seq, 0), excluded.clear_seq),
           update_time = excluded.update_time
     ''', [
+      employeeId,
+      deviceId,
       employeeId,
       deviceId,
       clearSeq,

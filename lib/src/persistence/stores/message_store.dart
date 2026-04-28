@@ -280,8 +280,9 @@ class MessageStore {
   /// 使用事务确保原子性。
   Future<void> batchUpdateWithDeviceId(
     String? deviceId,
-    List<ChatMessage> messages,
-  ) async {
+    List<ChatMessage> messages, {
+    bool updateWatermark = true,
+  }) async {
     final effDeviceId = deviceId ?? '';
     _db.execute('BEGIN');
     try {
@@ -299,8 +300,10 @@ class MessageStore {
         ''', _messageToParams(msg, effDeviceId));
       }
       // 更新 sync_watermark.last_seq
-      for (var msg in messages) {
-        _updateWatermarkLastSeq(msg.employeeId, msg.seq, deviceId: effDeviceId);
+      if (updateWatermark) {
+        for (var msg in messages) {
+          _updateWatermarkLastSeq(msg.employeeId, msg.seq, deviceId: effDeviceId);
+        }
       }
       _db.execute('COMMIT');
     } catch (e) {

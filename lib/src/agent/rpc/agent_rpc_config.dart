@@ -27,6 +27,7 @@ class AgentRpcConfig {
   static const String methodGetMaxSeq = 'agentGetMaxSeq';
   static const String methodGetMinSeq = 'agentGetMinSeq';
   static const String methodGetClearSeq = 'agentGetClearSeq';
+  static const String methodClearClearSeq = 'agentClearClearSeq';
   static const String methodMarkMessagesAsRead = 'agentMarkMessagesAsRead';
   static const String methodMarkAllMessagesAsRead = 'agentMarkAllMessagesAsRead';
   static const String methodMarkMessagesAsReadBySeq = 'agentMarkMessagesAsReadBySeq';

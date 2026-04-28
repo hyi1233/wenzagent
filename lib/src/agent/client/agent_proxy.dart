@@ -481,6 +481,17 @@ class AgentProxy {
     return _remoteOps!.getClearSeq();
   }
 
+  /// 清除清空水位线标记
+  ///
+  /// 客户端处理完 clearSeq 后调用，通知服务端将 clear_seq 重置为 NULL，
+  /// 避免后续每次同步都重复执行无效的删除操作。
+  Future<void> clearClearSeq() async {
+    if (isLocalMode && _localAgent != null) {
+      return; // 本地模式不需要此机制
+    }
+    return _remoteOps!.clearClearSeq();
+  }
+
   /// 标记消息为已读
   ///
   /// 当用户打开会话查看消息时，通知 Agent 消息已读

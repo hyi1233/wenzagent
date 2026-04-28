@@ -118,6 +118,11 @@ abstract class _CachedAgentProxyBase {
 
   set _sessionClearGuardTimer(Timer? value);
 
+  /// 会话清空 generation 计数器，用于防止连续清空竞态
+  int get _sessionClearGeneration;
+
+  set _sessionClearGeneration(int value);
+
   // ===== 状态缓存 =====
   String? get _currentProcessingMessageId;
 
@@ -305,6 +310,10 @@ class CachedAgentProxy extends _CachedAgentProxyBase
   /// 会话清空保护定时器：清空后短时间内跳过消息同步
   @override
   Timer? _sessionClearGuardTimer;
+
+  /// 会话清空 generation 计数器，每次收到 sessionCleared 事件时递增
+  @override
+  int _sessionClearGeneration = 0;
 
   /// 是否已释放
   bool get isDisposed => _isDisposed;
