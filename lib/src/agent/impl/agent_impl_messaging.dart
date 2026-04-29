@@ -72,6 +72,20 @@ mixin _AgentImplMessaging on _AgentImplBase {
             fileMessage,
           );
           _AgentImplBase._log.debug('文件消息已提前持久化: $finalMessageId');
+
+          // 广播 completed 事件，触发远程客户端增量同步
+          // 文件消息不经过 LLM 处理器，需要手动广播以通知其他设备
+          _broadcasterBroadcastMessageStatusChange(
+            messageId: finalMessageId,
+            status: AgentMessageStatus.completed,
+            extraData: {
+              'role': 'user',
+              'type': 'file',
+              'content': fileMessage.content,
+              'metadata': fileMessage.metadata,
+            },
+          );
+
           // 文件消息不提交到 LLM 处理器，直接返回
           return finalMessageId;
         }

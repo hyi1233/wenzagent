@@ -50,7 +50,32 @@ class MessageInput {
   });
 
   /// 从 Map 创建（向后兼容）
+  ///
+  /// 兼容两种 metadata 格式：
+  /// - 新格式：metadata 在 map['metadata'] 中（嵌套结构）
+  /// - 旧格式：metadata 字段被展开到 map 顶层（toMap 旧行为：addAll）
   factory MessageInput.fromMap(Map<String, dynamic> map) {
+    // 提取 metadata：优先取嵌套结构，兼容旧格式顶层展开
+    Map<String, dynamic>? metadata;
+    final explicitMeta = map['metadata'];
+    if (explicitMeta is Map<String, dynamic>) {
+      metadata = explicitMeta;
+    } else {
+      // 旧格式：metadata 字段被展开到 map 顶层，提取已知的 metadata 字段
+      final knownMetaKeys = <String>{
+        'fileId', 'fileName', 'filePath', 'fileSize', 'sha256', 'fileHash',
+        'fromDeviceId', 'isLocalFile', 'mimeType', 'localOnly', 'updateTime',
+        'trigger', 'scheduledSystemMessageId', 'taskName', 'taskId',
+      };
+      final extracted = <String, dynamic>{};
+      for (final key in knownMetaKeys) {
+        if (map.containsKey(key)) {
+          extracted[key] = map[key];
+        }
+      }
+      metadata = extracted.isNotEmpty ? extracted : null;
+    }
+
     return MessageInput(
       content: map['content'] as String? ?? '',
       type: map['type'] as String? ?? 'text',
@@ -64,7 +89,7 @@ class MessageInput {
       toolName: map['toolName'] as String?,
       toolArguments: map['toolArguments'] as Map<String, dynamic>?,
       toolResult: map['toolResult'] as String?,
-      metadata: map['metadata'] as Map<String, dynamic>?,
+      metadata: metadata,
     );
   }
 
@@ -84,8 +109,8 @@ class MessageInput {
     if (toolArguments != null) map['toolArguments'] = toolArguments!;
     if (toolResult != null) map['toolResult'] = toolResult!;
     if (metadata != null) {
-      // 将 metadata 中的字段合并到顶层 Map（保持原有行为）
-      map.addAll(metadata!);
+      // 保留 metadata 为嵌套结构（修复 RPC 序列化后 metadata 丢失的问题）
+      map['metadata'] = metadata!;
     }
 
     return map;
