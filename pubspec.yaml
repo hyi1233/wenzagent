@@ -32,6 +32,8 @@ dependencies:
   dio: ^5.9.0
   # MCP SDK
   mcp_dart: ^2.1.0
+  # Mutex / synchronized lock
+  synchronized: ^3.4.0
 
 dev_dependencies:
   lints: ^6.0.0

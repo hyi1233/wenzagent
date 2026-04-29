@@ -18,6 +18,7 @@ mixin _CachedProxyMessageSync on _CachedAgentProxyBase {
   /// 去抖同步远程消息（500ms 内只触发一次，避免短时间内多次调用）
   ///
   /// [delay] 去抖延迟时间，默认 500ms。关键事件可传更短延迟。
+  /// 内部通过 [_syncLock] 保证与 syncWithRemote/syncFromRemote 互斥。
   @override
   void _debouncedSyncMessages({Duration delay = const Duration(milliseconds: 500)}) {
     // 会话清空保护期内，记录需要补偿同步，不直接丢弃
@@ -28,7 +29,10 @@ mixin _CachedProxyMessageSync on _CachedAgentProxyBase {
     _syncDebounceTimer?.cancel();
     _syncDebounceTimer = Timer(delay, () {
       if (!_sessionClearPending) {
-        _syncMessagesFromRemote();
+        // 走 _syncLock 保证互斥，避免与 syncWithRemote/syncFromRemote 并发
+        _syncLock.synchronized(() async {
+          await _syncMessagesFromRemote();
+        });
       }
     });
   }
@@ -38,6 +42,10 @@ mixin _CachedProxyMessageSync on _CachedAgentProxyBase {
   /// 流程：
   /// 1. 查询服务端 clearSeq，硬删除本地 seq < clearSeq 的消息
   /// 2. 查询本地消息 maxSeq，查询服务端 lastSeq，拉取差量消息直接写入
+  ///
+  /// 安全措施：
+  /// - while 循环最大批次数限制（50 批，约 1000 条消息）
+  /// - _syncSessionSummaryFromRemote 异常隔离，不阻塞主流程
   @override
   Future<void> _syncMessagesFromRemote() async {
     if (_isDisposed || _proxy.isLocalMode) return;
@@ -81,20 +89,46 @@ mixin _CachedProxyMessageSync on _CachedAgentProxyBase {
 
       _CachedAgentProxyBase._log.debug('localLastSeq=$localLastSeq, remoteLastSeq=$remoteLastSeq');
 
-      // 4. 增量拉取：远程有更新的消息时，拉取 seq > localMaxSeq 的消息
-      if (remoteLastSeq > localLastSeq) {
-        const batchSize = 20;
-        final allNewMessages = <AgentMessage>[];
-        int currentSeq = localLastSeq;
+      // 4. 检测本地水位线异常：本地 > 远程，说明远程做了清空/重启，需重置水位线并重新同步
+      if (localLastSeq > remoteLastSeq) {
+        _CachedAgentProxyBase._log.warn(
+          '本地水位线($localLastSeq) > 远程maxSeq($remoteLastSeq)，'
+          '远程可能做了清空/重启，重置本地水位线并重新同步',
+        );
+        // 重置水位线为 0（enforceMax: false 允许下降），后续会全量拉取
+        _messageStore.resetLastSeq(
+          _deviceId, _employeeId, 0, enforceMax: false,
+        );
+        // 清空本地消息
+        await _messageStore.deleteMessages(_deviceId, _employeeId);
+        _notifyMessagesChanged();
+        _CachedAgentProxyBase._log.info('水位线已重置为 0，本地消息已清空，开始全量重新同步');
+      }
 
-        while (true) {
-          final batch = await _proxy.getMessagesAfterSeq(
-            lastSeq: currentSeq,
-            limit: batchSize,
-          );
+      // 5. 增量拉取：远程有更新的消息时，拉取 seq > effectiveLocalSeq 的消息
+      final effectiveLocalSeq = _messageStore.getLastSeq(_deviceId, _employeeId);
+      if (remoteLastSeq > effectiveLocalSeq) {
+        const batchSize = 20;
+        const maxBatches = 50; // 最多拉取 50 批（约 1000 条），防止单次同步无限循环
+        final allNewMessages = <AgentMessage>[];
+        int currentSeq = effectiveLocalSeq;
+        int batchCount = 0;
+
+        while (batchCount < maxBatches) {
+          List<AgentMessage> batch;
+          try {
+            batch = await _proxy.getMessagesAfterSeq(
+              lastSeq: currentSeq,
+              limit: batchSize,
+            );
+          } catch (e) {
+            _CachedAgentProxyBase._log.error('拉取消息批次失败(batch=$batchCount, seq=$currentSeq): $e');
+            break; // 单批失败时中断循环，已拉取的消息仍然写入
+          }
 
           if (batch.isEmpty) break;
           allNewMessages.addAll(batch);
+          batchCount++;
 
           for (final msg in batch) {
             final seq = msg.metadata?['seq'] as int? ?? 0;
@@ -103,8 +137,13 @@ mixin _CachedProxyMessageSync on _CachedAgentProxyBase {
 
           if (batch.length < batchSize) break;
         }
-        // 注意：不在循环后单独更新水位线，由 addMessage 内部逐条更新（MAX 语义），
-        // 避免崩溃时水位线已前进但消息未写入的风险窗口
+
+        if (batchCount >= maxBatches) {
+          _CachedAgentProxyBase._log.warn(
+            '同步达到最大批次数限制($maxBatches)，已拉取 ${allNewMessages.length} 条，'
+            '剩余消息将在下次同步时拉取',
+          );
+        }
 
         // 5. 直接写入本地（INSERT OR REPLACE，无需比较）
         if (allNewMessages.isNotEmpty) {
@@ -148,8 +187,12 @@ mixin _CachedProxyMessageSync on _CachedAgentProxyBase {
     // 清理残留的本地工具调用临时消息
     _cleanupStaleToolCallMessages();
 
-    // 同步远程会话摘要
-    await _syncSessionSummaryFromRemote();
+    // 同步远程会话摘要（异常隔离，不阻塞主流程）
+    try {
+      await _syncSessionSummaryFromRemote();
+    } catch (e) {
+      _CachedAgentProxyBase._log.debug('同步会话摘要失败(非阻塞): $e');
+    }
   }
 
   /// 清理已被远程消息取代的本地工具调用临时消息

@@ -107,7 +107,10 @@ mixin _CachedProxyEventHandler on _CachedAgentProxyBase {
         return key == messageId ||
             key == messageId.replaceFirst('local_toolcall_', '');
       });
-      _syncMessagesFromRemote();
+      // 走 _syncLock 保证互斥，避免与 syncWithRemote/syncFromRemote 并发
+      _syncLock.synchronized(() async {
+        await _syncMessagesFromRemote();
+      });
     }
   }
 
@@ -418,7 +421,10 @@ mixin _CachedProxyEventHandler on _CachedAgentProxyBase {
         _sessionClearGuardTimer = null;
         // 保护期结束后，主动触发一次补偿同步，确保保护期内收到的消息事件被处理
         _CachedAgentProxyBase._log.debug('会话清空保护期结束(gen=$currentGeneration)，触发补偿同步');
-        _syncMessagesFromRemote();
+        // 走 _syncLock 保证互斥，避免与 syncWithRemote/syncFromRemote 并发
+        _syncLock.synchronized(() async {
+          await _syncMessagesFromRemote();
+        });
       } else {
         _CachedAgentProxyBase._log.debug('会话清空保护期跳过(gen=$currentGeneration, current=$_sessionClearGeneration)');
       }
