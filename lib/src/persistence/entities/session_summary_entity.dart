@@ -82,19 +82,33 @@ class SessionSummaryEntity {
 
   factory SessionSummaryEntity.fromMap(Map<String, dynamic> map) {
     return SessionSummaryEntity(
-      employeeId: map['employee_id'] as String,
-      deviceId: map['device_id'] as String? ?? '',
-      unreadCount: map['unread_count'] as int? ?? 0,
-      lastMsgId: map['last_msg_id'] as String?,
-      lastMsgRole: map['last_msg_role'] as String?,
-      lastMsgContent: map['last_msg_content'] as String?,
-      lastMsgTime: map['last_msg_time'] as int?,
-      lastMsgSeq: map['last_msg_seq'] as int?,
-      pendingPermission: map['pending_permission'] as String?,
-      pendingConfirm: map['pending_confirm'] as String?,
-      pendingPermissionTime: map['pending_permission_time'] as int?,
-      pendingConfirmTime: map['pending_confirm_time'] as int?,
-      updateTime: map['update_time'] as int? ?? 0,
+      employeeId: (map['employee_id'] ?? '') as String,
+      deviceId: (map['device_id'] ?? '') as String,
+      unreadCount: (map['unread_count'] ?? 0) as int,
+      lastMsgId: _nullableString(map['last_msg_id']),
+      lastMsgRole: _nullableString(map['last_msg_role']),
+      lastMsgContent: _nullableString(map['last_msg_content']),
+      lastMsgTime: _nullableInt(map['last_msg_time']),
+      lastMsgSeq: _nullableInt(map['last_msg_seq']),
+      pendingPermission: _nullableString(map['pending_permission']),
+      pendingConfirm: _nullableString(map['pending_confirm']),
+      pendingPermissionTime: _nullableInt(map['pending_permission_time']),
+      pendingConfirmTime: _nullableInt(map['pending_confirm_time']),
+      updateTime: (map['update_time'] ?? 0) as int,
     );
+  }
+
+  /// 安全地将动态值转换为可空 String，避免 Null is not a subtype of String 错误
+  static String? _nullableString(dynamic value) {
+    if (value == null) return null;
+    if (value is String) return value;
+    return null;
+  }
+
+  /// 安全地将动态值转换为可空 int，避免 Null is not a subtype of int 错误
+  static int? _nullableInt(dynamic value) {
+    if (value == null) return null;
+    if (value is int) return value;
+    return null;
   }
 }

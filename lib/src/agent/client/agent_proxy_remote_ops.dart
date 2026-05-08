@@ -141,7 +141,7 @@ class _RemoteOps {
     );
     final result = await _rpcUtil.getMessagesAfterSeq(request);
     final messages =
-        (result['messages'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+        (result['result']['messages'] as List?)?.cast<Map<String, dynamic>>() ?? [];
     return messages.map((m) => AgentMessage.fromMap(m)).toList();
   }
 
@@ -149,7 +149,7 @@ class _RemoteOps {
   Future<int> getMaxSeq() async {
     final request = GetSessionMessagesRequest(employeeId: _employeeId);
     final result = await _rpcUtil.getMaxSeq(request);
-    return result['maxSeq'] as int? ?? 0;
+    return result['result']['maxSeq'] as int? ?? 0;
   }
 
   /// 获取会话的最小 seq
@@ -158,7 +158,7 @@ class _RemoteOps {
   Future<int> getMinSeq() async {
     final request = GetMinSeqRequest(employeeId: _employeeId);
     final result = await _rpcUtil.getMinSeq(request);
-    return result['minSeq'] as int? ?? 0;
+    return result['result']['minSeq'] as int? ?? 0;
   }
 
   /// 获取清空水位线

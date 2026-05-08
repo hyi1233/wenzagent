@@ -920,12 +920,14 @@ class DeviceClient {
       rethrow;
     }
 
-    // 4. 校验 SHA256
-    final savedBytes = await File(savePath).readAsBytes();
-    final actualHash = sha256.convert(savedBytes).toString();
-    if (actualHash != meta.sha256) {
-      await File(savePath).delete();
-      throw Exception('文件校验失败: SHA256 不匹配');
+    // 4. 校验 SHA256（仅当 meta 提供了非空 hash 时才校验）
+    if (meta.sha256.isNotEmpty) {
+      final savedBytes = await File(savePath).readAsBytes();
+      final actualHash = sha256.convert(savedBytes).toString();
+      if (actualHash != meta.sha256) {
+        await File(savePath).delete();
+        throw Exception('文件校验失败: SHA256 不匹配');
+      }
     }
 
     return savePath;
