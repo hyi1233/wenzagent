@@ -214,7 +214,7 @@ class AgentProxy {
 
     // 使用客户端生成的ID，而不是远程返回的ID
     // 远程服务器应该使用客户端提供的ID
-    final returnedId = result['messageId'] as String? ?? '';
+    final returnedId = result['result']['messageId'] as String? ?? '';
     _log.debug('远程返回的消息ID: $returnedId');
 
     if (returnedId.isNotEmpty && returnedId != messageId) {
@@ -285,7 +285,7 @@ class AgentProxy {
     }
     final request = GetPendingPermissionRequest(employeeId: employeeId);
     final result = await _rpcUtil!.getPendingPermission(request);
-    final requestData = result['request'] as Map<String, dynamic>?;
+    final requestData = result['result']['request'] as Map<String, dynamic>?;
     if (requestData == null) return null;
     return AgentPermissionRequest.fromMap(requestData);
   }
@@ -307,7 +307,7 @@ class AgentProxy {
     }
     final request = GetPendingConfirmRequest(employeeId: employeeId);
     final result = await _rpcUtil!.getPendingConfirm(request);
-    final requestData = result['request'] as Map<String, dynamic>?;
+    final requestData = result['result']['request'] as Map<String, dynamic>?;
     if (requestData == null) return null;
     return AgentConfirmRequest.fromMap(requestData);
   }
@@ -953,7 +953,7 @@ class AgentProxy {
     }
     final request = GetCallingToolIdsRequest(employeeId: employeeId);
     final result = await _rpcUtil!.getCallingToolIds(request);
-    return (result['callingToolIds'] as List?)?.cast<String>() ?? [];
+    return (result['result']['callingToolIds'] as List?)?.cast<String>() ?? [];
   }
 
   // ===== Todo 管理 =====

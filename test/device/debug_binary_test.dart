@@ -7,6 +7,7 @@ import 'package:test/test.dart';
 import 'package:uuid/uuid.dart';
 import 'package:wenzagent/src/agent/rpc/agent_rpc_config.dart';
 import 'package:wenzagent/src/entity/lan_message.dart';
+import 'package:wenzagent/src/lan/entity/client_info.dart';
 import 'package:wenzagent/src/lan/impl/lan_client_service_impl.dart';
 import 'package:wenzagent/src/lan/impl/lan_host_service_impl.dart';
 import 'package:wenzagent/src/lan/lan_client_service.dart';
@@ -206,7 +207,7 @@ void main() {
       // ignore: avoid_print
       print('[DEBUG] TIMEOUT waiting for binary! count=$binaryChunkCount, capturedRequestId=$capturedRequestId, capturedToDeviceId=$capturedToDeviceId');
       // ignore: avoid_print
-      print('[DEBUG] server clients: ${server.clients.map((c) => '${c.deviceId}(id=${c.id.substring(0, 8)})').toList()}');
+      print('[DEBUG] server clients: ${server.clients.map((c) => '${c.deviceId}(id=${c.id?.substring(0, 8)})').toList()}');
     } finally {
       await binarySub?.cancel();
     }
