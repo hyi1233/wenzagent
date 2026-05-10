@@ -20,6 +20,7 @@ import 'spawn_sub_agent_tool.dart';
 import 'todo_manage_tool.dart';
 import 'spec_manage_tool.dart';
 import 'web_fetch_tool.dart';
+import 'send_file_message_tool.dart';
 import 'web_search_tool.dart';
 
 /// 内置工具集合
@@ -62,6 +63,7 @@ class BuiltinTools {
     'env_info',
     'web_fetch',
     'web_search_prime',
+    'send_file_message',
   };
 
   /// 获取所有内置工具
@@ -89,6 +91,7 @@ class BuiltinTools {
       CodeSymbolsTool(),
       TodoManageTool(),
       SpecManageTool(),
+      SendFileMessageTool(),
     ];
   }
 

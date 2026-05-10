@@ -2,12 +2,15 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:crypto/crypto.dart' as crypto;
+import 'package:path/path.dart' as p;
 import 'package:uuid/uuid.dart';
 import 'package:wenzagent/wenzagent.dart';
 
 import '../../utils/logger.dart';
 import '../tool/builtin/bg_command_tool.dart';
 import '../tool/builtin/command_session_pool.dart';
+import '../tool/builtin/send_file_message_tool.dart';
 import '../tool/builtin/spec_manage_tool.dart';
 
 part 'agent_impl_messaging.dart';
@@ -266,6 +269,9 @@ class AgentImpl extends _AgentImplBase
 
     // 注入 ConfirmTool 回调
     _injectConfirmToolCallbacks();
+
+    // 注入 SendFileMessageTool 回调
+    _injectSendFileMessageCallbacks();
 
     // 技能系统由 warmup 后台加载，不在 initialize 中阻塞
 
@@ -1193,6 +1199,105 @@ class AgentImpl extends _AgentImplBase
     _AgentImplBase._log.info(
       'SpawnSubAgentTool fully injected (executor + registry) for $agentEmployeeId',
     );
+  }
+
+  /// 注入 SendFileMessageTool 回调：将本地文件以助手文件消息形式发送给用户
+  ///
+  /// 回调内部完成：校验文件 → 计算 SHA256 → 创建 ChatMessage.file(role:assistant)
+  /// → 持久化到 DB → 广播 messageStatusChanged(completed) 事件
+  void _injectSendFileMessageCallbacks() {
+    final tool = _toolRegistry.getTool('send_file_message');
+    if (tool is! SendFileMessageTool) {
+      _AgentImplBase._log.warn(
+        'SendFileMessageTool not found in registry for injection. '
+        'Available tools: ${_toolRegistry.toolNames}',
+      );
+      return;
+    }
+
+    final agentEmployeeId = employeeId;
+    final agentDeviceId = deviceId;
+
+    tool.sendFileMessage = ({
+      required String filePath,
+      String? mimeType,
+    }) async {
+      // 1. 校验文件
+      final file = File(filePath);
+      if (!await file.exists()) {
+        throw Exception('文件不存在: $filePath');
+      }
+
+      final fileName = p.basename(filePath);
+      final fileSize = await file.length();
+      final hash = crypto.sha256.convert(await file.readAsBytes()).toString();
+      final fileId = const Uuid().v4();
+      final messageId = const Uuid().v4();
+      final actualMimeType = mimeType ?? _inferMimeType(filePath);
+
+      // 2. 创建助手文件消息（与 AI 循环中 ChatMessage.assistant 模式一致）
+      final fileMessage = ChatMessage.file(
+        id: messageId,
+        employeeId: agentEmployeeId,
+        role: MessageRole.assistant,
+        fileName: fileName,
+        fileSize: fileSize,
+        fileId: fileId,
+        fileHash: hash,
+        filePath: filePath,
+        fromDeviceId: agentDeviceId,
+        mimeType: actualMimeType,
+        deviceId: agentDeviceId,
+      );
+
+      // 3. 持久化到 DB（与 injectAssistantMessage 模式一致）
+      if (_chatAdapter case final LlmChatAdapter adapter) {
+        adapter.memoryManager.addMessage(
+          agentEmployeeId,
+          agentDeviceId,
+          fileMessage,
+        );
+      }
+
+      // 4. 广播 completed 事件（与 AI 循环 onMessageStatusChanged 模式一致）
+      _broadcasterBroadcastMessageStatusChange(
+        messageId: messageId,
+        status: AgentMessageStatus.completed,
+        extraData: {
+          'role': 'assistant',
+          'type': 'file',
+          'content': fileMessage.content,
+          'metadata': fileMessage.metadata,
+        },
+      );
+
+      return messageId;
+    };
+
+    _AgentImplBase._log.info(
+      'SendFileMessageTool injected for $agentEmployeeId',
+    );
+  }
+
+  /// 根据文件扩展名推断 MIME 类型
+  String? _inferMimeType(String path) {
+    final ext = p.extension(path).toLowerCase();
+    const mimeMap = {
+      '.pdf': 'application/pdf',
+      '.png': 'image/png',
+      '.jpg': 'image/jpeg',
+      '.jpeg': 'image/jpeg',
+      '.gif': 'image/gif',
+      '.csv': 'text/csv',
+      '.xlsx':
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      '.json': 'application/json',
+      '.txt': 'text/plain',
+      '.md': 'text/markdown',
+      '.html': 'text/html',
+      '.zip': 'application/zip',
+    };
+    return mimeMap[ext];
   }
 
   /// 注入 BgCommandTool 的 CommandSessionPool 引用和监控 LLM 回调
