@@ -72,6 +72,11 @@ class AgentRpcConfig {
   /// 流式读取文件（用于大文件下载，通过二进制 WebSocket 传输）
   static const String methodReadFileStream = 'agentReadFileStream';
 
+  // ===== Agent 技能文件同步 =====
+
+  /// 打包 Skill 文件夹为 ZIP（返回 ZIP 临时文件路径和元信息）
+  static const String methodPackSkillFolder = 'agentPackSkillFolder';
+
   // ===== Agent 技能管理 =====
 
   static const String methodSetSkills = 'agentSetSkills';

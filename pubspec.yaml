@@ -34,6 +34,8 @@ dependencies:
   mcp_dart: ^2.1.0
   # Mutex / synchronized lock
   synchronized: ^3.4.0
+  # ZIP archive
+  archive: ^4.0.4
 
 dev_dependencies:
   lints: ^6.0.0

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:archive/archive.dart';
 import 'package:crypto/crypto.dart';
 import 'package:path/path.dart' as p;
 import 'package:uuid/uuid.dart';
@@ -940,6 +941,107 @@ class DeviceClient {
     }
 
     return savePath;
+  }
+
+  // ===== Folder Skill 文件同步 =====
+
+  /// 从远端设备同步 Folder Skill 文件
+  ///
+  /// 流程：
+  /// 1. RPC 调用远端打包 ZIP → 获取 zipFilePath + zipSize + sha256
+  /// 2. 通过 downloadFileByMeta（二进制流式传输）下载 ZIP
+  /// 3. 解压到本地 skills/folder/{folderName}/
+  /// 4. 删除临时 ZIP
+  ///
+  /// 返回本地解压后的文件夹路径。
+  Future<String> syncFolderSkillFiles({
+    required String fromDeviceId,
+    required String folderPath,
+    required String skillId,
+    String? localSkillsDir,
+    void Function(double progress)? onProgress,
+  }) async {
+    if (!_connectionManager.isConnected) {
+      throw StateError('未连接到服务器');
+    }
+
+    // 1. 调用远端打包
+    final packResult = await invokeFileRpc(
+      toDeviceId: fromDeviceId,
+      method: AgentRpcConfig.methodPackSkillFolder,
+      params: {
+        'folderPath': folderPath,
+        'skillId': skillId,
+      },
+    );
+    final packData = Map<String, dynamic>.from(packResult['result']);
+    if (packData['success'] != true) {
+      throw Exception('打包失败: ${packData['error']}');
+    }
+
+    final zipFilePath = packData['zipFilePath'] as String;
+    final zipSize = packData['zipSize'] as int;
+    final zipHash = packData['sha256'] as String;
+    final folderName = packData['folderName'] as String;
+
+    // 2. 构建 FileMetaMessage，通过 downloadFileByMeta 下载
+    final meta = FileMetaMessage(
+      fileId: skillId,
+      fileName: '$skillId.zip',
+      fileSize: zipSize,
+      sha256: zipHash,
+      filePath: zipFilePath,
+      fromDeviceId: fromDeviceId,
+    );
+
+    final tempZipDir = await Directory.systemTemp.createTemp('skill_sync_');
+
+    try {
+      // 3. 下载 ZIP
+      final downloadedPath = await downloadFileByMeta(
+        meta,
+        saveDir: tempZipDir.path,
+        onProgress: onProgress,
+      );
+
+      // 4. 解压到 skills/folder/{folderName}/
+      final skillsDir = localSkillsDir ??
+          'skills${Platform.pathSeparator}folder';
+      final targetDir =
+          '$skillsDir${Platform.pathSeparator}$folderName';
+      await _unpackZip(downloadedPath, targetDir);
+
+      return targetDir;
+    } finally {
+      // 5. 清理临时文件
+      try {
+        await tempZipDir.delete(recursive: true);
+      } catch (_) {}
+    }
+  }
+
+  /// 解压 ZIP 文件到目标目录
+  static Future<void> _unpackZip(String zipPath, String targetDir) async {
+    final target = Directory(targetDir);
+    if (await target.exists()) {
+      await target.delete(recursive: true);
+    }
+    await target.create(recursive: true);
+
+    final zipBytes = await File(zipPath).readAsBytes();
+    final archive = ZipDecoder().decodeBytes(zipBytes);
+
+    for (final file in archive) {
+      final filePath =
+          '$targetDir${Platform.pathSeparator}${file.name.replaceAll('/', Platform.pathSeparator)}';
+      if (file.isFile) {
+        final outFile = File(filePath);
+        await outFile.parent.create(recursive: true);
+        await outFile.writeAsBytes(file.content as List<int>);
+      } else {
+        await Directory(filePath).create(recursive: true);
+      }
+    }
   }
 
   // ===== 当前打开的会话状态 =====

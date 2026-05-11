@@ -1,8 +1,12 @@
+import 'dart:convert';
+import 'dart:io';
+
 import '../../host/host_rpc_methods.dart';
 import '../../persistence/persistence.dart';
 import '../../service/service.dart';
 import '../../utils/logger.dart';
 import '../app_context.dart';
+import '../device_client.dart';
 import 'device_agent_manager.dart';
 import 'device_connection_manager.dart';
 import 'device_registry.dart';
@@ -109,6 +113,8 @@ class DataSyncManager {
     // 技能同步不需要等待其他同步完成
     _doSyncSkillsFromDevices();
     _doSyncGlobalSkillsFromDevices();
+    // Folder Skill 文件同步（元数据同步后）
+    syncFolderSkillFiles();
     if (changedEmployeeIds.isNotEmpty || changedSessionIds.isNotEmpty) {
       _stateHolder.notifyDataSynced(DataSyncEvent(
         changedEmployeeIds: changedEmployeeIds,
@@ -830,6 +836,117 @@ class DataSyncManager {
       return true;
     }
     return false;
+  }
+
+  // ===== Folder Skill 文件同步 =====
+
+  /// 同步 Folder Skill 文件内容
+  ///
+  /// 检测本地缺失的 folder skill 文件夹，从远端设备下载并解压。
+  /// 在元数据同步完成后调用。
+  Future<void> syncFolderSkillFiles() async {
+    if (!_connectionManager.isConnected) return;
+
+    final deviceClient = DeviceClient.getInstance(_deviceId);
+    // DeviceClient.getInstance 在 AppContext 已注册时不会返回 null
+
+    final devices = await _deviceRegistry.getOnlineDevices();
+    final otherDevices = devices.where((d) => d.id != _deviceId).toList();
+    if (otherDevices.isEmpty) return;
+
+    // 收集需要文件同步的 folder skill
+    final folderSkills = <Map<String, dynamic>>[];
+
+    // 员工级
+    final skills = await _skillManager.getAllSkills();
+    for (final s in skills) {
+      if (s.skillType == 'folder' && s.deleted != 1 && s.config != null) {
+        final folderPath = _extractFolderPath(s.config);
+        if (folderPath != null && !await Directory(folderPath).exists()) {
+          folderSkills.add({
+            'skillId': s.uuid,
+            'folderPath': folderPath,
+            'type': 'employee',
+            'employeeId': s.employeeId,
+          });
+        }
+      }
+    }
+
+    // 全局级
+    final globalSkills = await _globalSkillManager.getAllSkills();
+    for (final s in globalSkills) {
+      if (s.skillType == 'folder' && s.deleted != 1 && s.config != null) {
+        final folderPath = _extractFolderPath(s.config);
+        if (folderPath != null && !await Directory(folderPath).exists()) {
+          folderSkills.add({
+            'skillId': s.uuid,
+            'folderPath': folderPath,
+            'type': 'global',
+          });
+        }
+      }
+    }
+
+    if (folderSkills.isEmpty) return;
+
+    _log.info('发现 ${folderSkills.length} 个 Folder Skill 需要文件同步');
+
+    // 逐个同步（串行，避免带宽争抢）
+    for (final item in folderSkills) {
+      final skillId = item['skillId'] as String;
+      final folderPath = item['folderPath'] as String;
+
+      for (final device in otherDevices) {
+        try {
+          _log.debug('同步 Folder Skill 文件: $skillId from ${device.id}');
+
+          final localPath = await deviceClient.syncFolderSkillFiles(
+            fromDeviceId: device.id,
+            folderPath: folderPath,
+            skillId: skillId,
+          );
+
+          // 更新 skill config 为本地路径
+          final newConfig =
+              '{"folder_path": "${localPath.replaceAll('\\', '\\\\')}"}';
+          if (item['type'] == 'employee') {
+            final skill = await _skillManager.getSkill(skillId);
+            if (skill != null) {
+              await _skillManager.updateSkill(
+                skill.copyWith(config: newConfig),
+              );
+            }
+          } else {
+            final skill =
+                await _globalSkillManager.getSkill(skillId);
+            if (skill != null) {
+              await _globalSkillManager.updateSkill(
+                skill.copyWith(config: newConfig),
+              );
+            }
+          }
+
+          _log.info(
+              'Folder Skill 文件同步成功: $skillId → $localPath');
+          break; // 同步成功，跳出设备循环
+        } catch (e) {
+          _log.debug(
+              'Folder Skill 文件同步失败: $skillId from ${device.id}: $e');
+        }
+      }
+    }
+  }
+
+  /// 从 skill.config JSON 中提取 folder_path
+  String? _extractFolderPath(String? configJson) {
+    if (configJson == null || configJson.isEmpty) return null;
+    try {
+      final map = jsonDecode(configJson) as Map<String, dynamic>;
+      return map['folder_path'] as String?;
+    } catch (_) {
+      return configJson;
+    }
   }
 
 }

@@ -2,6 +2,9 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:archive/archive.dart';
+import 'package:crypto/crypto.dart' as crypto;
+
 import '../../agent/agent_state.dart';
 import '../../agent/entity/entity.dart';
 import '../../agent/rpc/agent_rpc_config.dart';
@@ -971,6 +974,49 @@ class DeviceRpcHandler {
       return {'success': true};
     });
 
+    // ===== Skill 文件夹 ZIP 打包 =====
+
+    rpcServer.register(AgentRpcConfig.methodPackSkillFolder, (params) async {
+      final folderPath = params['folderPath'] as String;
+      final skillId = params['skillId'] as String? ?? '';
+
+      final dir = Directory(folderPath);
+      if (!await dir.exists()) {
+        return {'success': false, 'error': '文件夹不存在: $folderPath'};
+      }
+
+      try {
+        // 1. 在系统临时目录创建 ZIP
+        final tempDir = await Directory.systemTemp.createTemp('skill_pack_');
+        final folderName = dir.path.split(Platform.pathSeparator).last;
+        final zipFileName = '${skillId.isNotEmpty ? skillId : folderName}.zip';
+        final zipPath = '${tempDir.path}${Platform.pathSeparator}$zipFileName';
+
+        // 2. 打包文件夹为 ZIP
+        await _packDirectoryToZip(folderPath, zipPath);
+
+        // 3. 计算元信息
+        final zipFile = File(zipPath);
+        final zipSize = await zipFile.length();
+        final zipBytes = await zipFile.readAsBytes();
+        final hash = crypto.sha256.convert(zipBytes).toString();
+
+        _log.info('Skill 文件夹打包完成: $folderPath → $zipPath (${_formatFileSize(zipSize)})');
+
+        return {
+          'success': true,
+          'zipFilePath': zipPath,
+          'zipSize': zipSize,
+          'sha256': hash,
+          'skillId': skillId,
+          'folderName': folderName,
+        };
+      } catch (e) {
+        _log.error('Skill 文件夹打包失败: $e');
+        return {'success': false, 'error': '打包失败: $e'};
+      }
+    });
+
     // ===== 流式文件读取（二进制 WebSocket 传输） =====
 
     rpcServer.registerStream(
@@ -1357,5 +1403,29 @@ class DeviceRpcHandler {
     builder.add(payload);
 
     return builder.takeBytes();
+  }
+
+  /// 将文件夹递归打包为 ZIP 文件
+  static Future<void> _packDirectoryToZip(
+    String dirPath,
+    String zipPath,
+  ) async {
+    final archive = Archive();
+    final dir = Directory(dirPath);
+    final dirName = dir.path.split(Platform.pathSeparator).last;
+
+    await for (final entity in dir.list(recursive: true)) {
+      if (entity is File) {
+        final relative = entity.path
+            .substring(dir.path.length + 1)
+            .replaceAll('\\', '/');
+        final bytes = await entity.readAsBytes();
+        final file = ArchiveFile('$dirName/$relative', bytes.length, bytes);
+        archive.addFile(file);
+      }
+    }
+
+    final zipData = ZipEncoder().encode(archive);
+    await File(zipPath).writeAsBytes(zipData!);
   }
 }
