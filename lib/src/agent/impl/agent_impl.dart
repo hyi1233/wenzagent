@@ -12,6 +12,7 @@ import '../tool/builtin/bg_command_tool.dart';
 import '../tool/builtin/command_session_pool.dart';
 import '../tool/builtin/send_file_message_tool.dart';
 import '../tool/builtin/spec_manage_tool.dart';
+import '../tool/builtin_tool_provider.dart';
 
 part 'agent_impl_messaging.dart';
 part 'agent_impl_skill.dart';
@@ -187,8 +188,16 @@ class AgentImpl extends _AgentImplBase
   @override
   Completer<void>? _lockCompleter;
 
-  AgentImpl({required this.employeeId, required this.deviceId, required IChatAdapter chatAdapter})
-    : _chatAdapter = chatAdapter;
+  /// 内置工具提供者（可选，为 null 时使用默认全部内置工具）
+  final BuiltinToolProvider? _builtinToolProvider;
+
+  AgentImpl({
+    required this.employeeId,
+    required this.deviceId,
+    required IChatAdapter chatAdapter,
+    BuiltinToolProvider? builtinToolProvider,
+  })  : _chatAdapter = chatAdapter,
+        _builtinToolProvider = builtinToolProvider;
 
   // ===== IAgent: 基础信息 =====
 
@@ -242,7 +251,8 @@ class AgentImpl extends _AgentImplBase
 
     // 注册内置工具（可选）
     if (enableBuiltinTools) {
-      _toolRegistry.registerTools(BuiltinTools.all());
+      final provider = _builtinToolProvider ?? DefaultBuiltinToolProvider();
+      _toolRegistry.registerTools(provider.provide());
     }
 
     // 注入 TodoManageTool 回调

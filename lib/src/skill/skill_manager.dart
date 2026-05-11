@@ -3,6 +3,7 @@ import 'dart:async';
 import '../utils/logger.dart';
 import 'skill.dart';
 import 'skill_context.dart';
+import 'skill_factory.dart';
 
 /// 技能变更事件
 class SkillEvent {
@@ -31,6 +32,7 @@ class SkillLifecycleManager {
 
   final SkillContext _context;
   final Map<String, Skill> _skills = {};
+  final Map<String, SkillFactory> _skillFactories = {};
   final _eventController = StreamController<SkillEvent>.broadcast(sync: true);
 
   SkillLifecycleManager(this._context);
@@ -131,6 +133,43 @@ class SkillLifecycleManager {
       }
     }
     _skills.clear();
+    _skillFactories.clear();
     await _eventController.close();
+  }
+
+  // ===== SkillFactory 支持 =====
+
+  /// 注册自定义 Skill 工厂
+  ///
+  /// 允许 SDK 用户注册自定义类型的 Skill 创建器。
+  /// 当遇到 [typeKey] 对应的 Skill 配置时，会使用此工厂创建实例。
+  void registerSkillFactory(SkillFactory factory) {
+    _skillFactories[factory.typeKey] = factory;
+    _log.debug('注册 SkillFactory: typeKey=${factory.typeKey}');
+  }
+
+  /// 注销自定义 Skill 工厂
+  void unregisterSkillFactory(String typeKey) {
+    _skillFactories.remove(typeKey);
+  }
+
+  /// 根据类型标识查找已注册的 SkillFactory
+  SkillFactory? getSkillFactory(String typeKey) => _skillFactories[typeKey];
+
+  /// 获取所有已注册的 SkillFactory
+  List<SkillFactory> get skillFactories => _skillFactories.values.toList();
+
+  /// 通过工厂创建并加载自定义 Skill
+  ///
+  /// [typeKey] 工厂类型标识，必须在 [registerSkillFactory] 中已注册。
+  /// [config] 传递给工厂 [SkillFactory.create] 方法的配置数据。
+  Future<void> loadSkillFromFactory(String typeKey, Map<String, dynamic> config) async {
+    final factory = _skillFactories[typeKey];
+    if (factory == null) {
+      throw ArgumentError('未找到 typeKey="$typeKey" 对应的 SkillFactory，'
+          '请先通过 registerSkillFactory() 注册');
+    }
+    final skill = factory.create(config);
+    await loadSkill(skill);
   }
 }

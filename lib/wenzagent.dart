@@ -10,7 +10,7 @@ export 'src/lan/lan.dart';
 // RPC
 export 'src/rpc/rpc.dart';
 
-// Agent (hide ToolResult to avoid conflict with shared/chat_message.dart)
+// Agent
 export 'src/agent/agent.dart' hide ToolResult;
 
 // Device
@@ -44,6 +44,7 @@ export 'src/agent/tool/builtin/symbol_parser/generic_parser.dart';
 export 'src/skill/skill.dart';
 export 'src/skill/skill_context.dart';
 export 'src/skill/skill_manager.dart';
+export 'src/skill/skill_factory.dart';
 export 'src/skill/config/config_skill.dart';
 export 'src/skill/config/config_tool_adapter.dart';
 export 'src/skill/folder/folder_skill.dart';
@@ -53,3 +54,10 @@ export 'src/skill/mcp/mcp_skill.dart';
 export 'src/skill/mcp/mcp_tool_adapter.dart';
 export 'src/skill/mcp/mcp_client.dart';
 export 'src/skill/mcp/mcp_client_impl.dart';
+export 'src/skill/mcp/mcp_client_provider.dart';
+
+// SDK
+export 'src/sdk/wenzagent_sdk.dart';
+
+// BuiltinToolProvider
+export 'src/agent/tool/builtin_tool_provider.dart';

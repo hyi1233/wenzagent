@@ -28,6 +28,9 @@ enum SkillType {
 
   /// Type 3: 名称/描述/内容配置
   config,
+
+  /// Type 4: 用户自定义类型
+  custom,
 }
 
 /// 技能接口

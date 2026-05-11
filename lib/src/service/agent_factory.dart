@@ -4,12 +4,18 @@ import 'dart:convert';
 import 'package:uuid/uuid.dart';
 
 import '../agent/adapter/llm_chat_adapter.dart';
+import '../agent/adapter/provider_config.dart';
 import '../agent/entity/entity.dart';
 import '../agent/i_agent.dart';
 import '../agent/impl/agent_impl.dart';
+import '../agent/tool/agent_tool.dart';
 import '../agent/tool/builtin/schedule_task_tool.dart';
+import '../agent/tool/builtin_tool_provider.dart';
 import '../agent/tool/permission_rule.dart';
 import '../persistence/persistence.dart';
+import '../skill/mcp/mcp_client_provider.dart';
+import '../skill/skill.dart';
+import '../skill/skill_factory.dart';
 import '../utils/logger.dart';
 import 'employee_manager.dart';
 import 'message_store_service.dart';
@@ -67,6 +73,13 @@ class AgentFactoryImpl implements AgentFactory {
   final MessageStoreService _messageStore;
   final ScheduledTaskManager? _scheduledTaskManager;
 
+  // ===== SDK 配置（可选注入） =====
+  final BuiltinToolProvider? _builtinToolProvider;
+  final McpClientProvider? _mcpClientProvider;
+  final List<SkillFactory> _skillFactories;
+  final List<AgentTool> _extraTools;
+  final List<Skill> _extraSkills;
+
   final _lifecycleController =
       StreamController<AgentLifecycleEvent>.broadcast();
 
@@ -75,9 +88,19 @@ class AgentFactoryImpl implements AgentFactory {
     required MessageStoreService messageStore,
     required SkillManager skillManager,
     ScheduledTaskManager? scheduledTaskManager,
+    BuiltinToolProvider? builtinToolProvider,
+    McpClientProvider? mcpClientProvider,
+    List<SkillFactory>? skillFactories,
+    List<AgentTool>? extraTools,
+    List<Skill>? extraSkills,
   })  : _employeeManager = employeeManager,
-       _messageStore = messageStore,
-       _scheduledTaskManager = scheduledTaskManager;
+        _messageStore = messageStore,
+        _scheduledTaskManager = scheduledTaskManager,
+        _builtinToolProvider = builtinToolProvider,
+        _mcpClientProvider = mcpClientProvider,
+        _skillFactories = skillFactories ?? const [],
+        _extraTools = extraTools ?? const [],
+        _extraSkills = extraSkills ?? const [];
 
   @override
   Future<IAgent> getOrCreateAgent({
@@ -113,8 +136,13 @@ class AgentFactoryImpl implements AgentFactory {
       deviceId: deviceId,
     );
 
-    // 创建Agent
-    agent = AgentImpl(employeeId: employeeId, deviceId: deviceId, chatAdapter: chatAdapter);
+    // 创建Agent（注入 BuiltinToolProvider）
+    agent = AgentImpl(
+      employeeId: employeeId,
+      deviceId: deviceId,
+      chatAdapter: chatAdapter,
+      builtinToolProvider: _builtinToolProvider,
+    );
 
     // 初始化Agent
     await agent.initialize(employeeId: employeeId);
@@ -157,6 +185,9 @@ class AgentFactoryImpl implements AgentFactory {
 
     // 注入权限配置（从员工实体的 permissionConfig 字段）
     _injectPermissionConfig(agent, employee);
+
+    // 注入 SDK 额外工具
+    _injectExtraTools(agent);
 
     _agents[employeeId] = agent;
     _notifyLifecycle(AgentLifecycleType.created, agent);
@@ -267,6 +298,27 @@ class AgentFactoryImpl implements AgentFactory {
       }
     };
   }
+
+  /// 注入 SDK 额外工具到 Agent
+  void _injectExtraTools(IAgent agent) {
+    if (_extraTools.isEmpty) return;
+    for (final tool in _extraTools) {
+      agent.registerTool(tool);
+    }
+    _log.debug('注入 ${_extraTools.length} 个 SDK 额外工具');
+  }
+
+  /// 注入 SDK Skill 工厂到 Agent 的 SkillLifecycleManager
+  ///
+  /// 在 Agent warmup 后调用，将 SDK 注册的 SkillFactory 注入到运行时。
+  /// 由外部调用方在合适的时机使用。
+  List<SkillFactory> get skillFactories => _skillFactories;
+
+  /// 获取 SDK 注册的 MCP 客户端提供者
+  McpClientProvider? get mcpClientProvider => _mcpClientProvider;
+
+  /// 获取 SDK 注册的额外 Skill 实例
+  List<Skill> get extraSkills => _extraSkills;
 
   @override
   IAgent? getAgent(String employeeId) {

@@ -5,6 +5,7 @@ import '../../utils/logger.dart';
 import '../skill.dart';
 import 'mcp_client.dart';
 import 'mcp_client_impl.dart';
+import 'mcp_client_provider.dart';
 import 'mcp_tool_adapter.dart';
 
 /// Type 1: MCP Skill 实现
@@ -19,6 +20,12 @@ class McpSkill implements Skill {
   final String _description;
   final McpServerConfig _serverConfig;
 
+  /// MCP 客户端提供者（实例级注入）
+  ///
+  /// 优先使用实例注入的 [_clientProvider]，
+  /// 回退到静态 [clientFactory]（向后兼容）。
+  final McpClientProvider? _clientProvider;
+
   SkillStatus _status = SkillStatus.uninitialized;
   List<AgentTool> _tools = [];
   McpClient? _client;
@@ -27,6 +34,9 @@ class McpSkill implements Skill {
   ///
   /// 默认使用 [McpClientImpl]（基于 mcp_dart SDK）。
   /// 测试时可通过 `McpSkill.clientFactory = (config) => MockMcpClient(...)` 注入 Mock。
+  ///
+  /// 向后兼容：实例级 [_clientProvider] 优先于静态工厂。
+  /// 新代码建议使用 [McpClientProvider] 注入方式。
   static McpClient Function(McpServerConfig)? clientFactory =
       (config) => McpClientImpl(config);
 
@@ -35,10 +45,12 @@ class McpSkill implements Skill {
     required String name,
     required String description,
     required McpServerConfig serverConfig,
+    McpClientProvider? clientProvider,
   })  : _id = id,
         _name = name,
         _description = description,
-        _serverConfig = serverConfig;
+        _serverConfig = serverConfig,
+        _clientProvider = clientProvider;
 
   @override
   String get id => _id;
@@ -65,11 +77,16 @@ class McpSkill implements Skill {
   Future<void> initialize() async {
     _status = SkillStatus.initializing;
     try {
-      final factory = clientFactory;
-      if (factory == null) {
-        throw UnsupportedError('McpSkill.clientFactory 未设置');
+      // 优先使用实例注入的 McpClientProvider，回退到静态 clientFactory
+      if (_clientProvider != null) {
+        _client = _clientProvider.createClient(_serverConfig);
+      } else {
+        final factory = clientFactory;
+        if (factory == null) {
+          throw UnsupportedError('McpSkill.clientFactory 未设置');
+        }
+        _client = factory(_serverConfig);
       }
-      _client = factory(_serverConfig);
       await _client!.connect();
       final mcpTools = await _client!.listTools();
       _tools = mcpTools

@@ -384,6 +384,13 @@ class DeviceClient {
   /// 跨设备数据同步完成事件（同步后如有数据变更则发射）
   Stream<DataSyncEvent> get onSyncEvent => _stateHolder.onSyncEvent;
 
+  /// 员工级技能变更通知（新增/更新/删除），由底层 SkillManager 触发
+  Stream<SkillChangeEvent> get onSkillEvent => _stateHolder.onSkillEvent;
+
+  /// 全局技能变更通知（新增/更新/删除），由底层 GlobalSkillManager 触发
+  Stream<GlobalSkillChangeEvent> get onGlobalSkillEvent =>
+      _stateHolder.onGlobalSkillEvent;
+
   List<LanDeviceInfo> get cachedDevices => _deviceRegistry.cachedDevices;
 
   Stream<LanMessage> get onLanMessage => _stateHolder.onLanMessage;

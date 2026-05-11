@@ -15,12 +15,24 @@ class DataSyncEvent {
   /// 变更的会话ID集合（employeeId）
   final Set<String> changedSessionIds;
 
+  /// 变更的员工级技能ID集合
+  final Set<String> changedSkillIds;
+
+  /// 变更的全局技能ID集合
+  final Set<String> changedGlobalSkillIds;
+
   DataSyncEvent({
     this.changedEmployeeIds = const {},
     this.changedSessionIds = const {},
+    this.changedSkillIds = const {},
+    this.changedGlobalSkillIds = const {},
   });
 
-  bool get hasChanges => changedEmployeeIds.isNotEmpty || changedSessionIds.isNotEmpty;
+  bool get hasChanges =>
+      changedEmployeeIds.isNotEmpty ||
+      changedSessionIds.isNotEmpty ||
+      changedSkillIds.isNotEmpty ||
+      changedGlobalSkillIds.isNotEmpty;
 }
 
 /// 设备共享状态持有者
@@ -42,6 +54,10 @@ class DeviceStateHolder {
       StreamController<SessionChangeEvent>.broadcast();
   final _syncEventController =
       StreamController<DataSyncEvent>.broadcast();
+  final _skillChangeController =
+      StreamController<SkillChangeEvent>.broadcast();
+  final _globalSkillChangeController =
+      StreamController<GlobalSkillChangeEvent>.broadcast();
 
   final AgentNotificationHub notificationHub = AgentNotificationHub();
 
@@ -50,6 +66,8 @@ class DeviceStateHolder {
 
   StreamSubscription? _employeeChangeSub;
   StreamSubscription? _sessionChangeSub;
+  StreamSubscription? _skillChangeSub;
+  StreamSubscription? _globalSkillChangeSub;
 
   DeviceStateHolder._({required this.deviceId}) {
     _initSubscriptions();
@@ -66,6 +84,16 @@ class DeviceStateHolder {
     _sessionChangeSub = sessionManager.onSessionEvent.listen((event) {
       _sessionChangeController.add(event);
     });
+
+    final skillManager = SkillManager.getInstance(deviceId);
+    _skillChangeSub = skillManager.onSkillChanged.listen((event) {
+      _skillChangeController.add(event);
+    });
+
+    final globalSkillManager = GlobalSkillManager.getInstance(deviceId);
+    _globalSkillChangeSub = globalSkillManager.onSkillChanged.listen((event) {
+      _globalSkillChangeController.add(event);
+    });
   }
 
   // ===== 流访问 =====
@@ -81,6 +109,8 @@ class DeviceStateHolder {
   Stream<SessionChangeEvent> get onSessionEvent =>
       _sessionChangeController.stream;
   Stream<DataSyncEvent> get onSyncEvent => _syncEventController.stream;
+  Stream<SkillChangeEvent> get onSkillEvent => _skillChangeController.stream;
+  Stream<GlobalSkillChangeEvent> get onGlobalSkillEvent => _globalSkillChangeController.stream;
 
   // ===== 流控制 =====
 
@@ -122,6 +152,8 @@ class DeviceStateHolder {
   Future<void> close() async {
     await _employeeChangeSub?.cancel();
     await _sessionChangeSub?.cancel();
+    await _skillChangeSub?.cancel();
+    await _globalSkillChangeSub?.cancel();
     await _stateController.close();
     await _eventController.close();
     await _lanMessageController.close();
@@ -130,5 +162,7 @@ class DeviceStateHolder {
     await _employeeChangeController.close();
     await _sessionChangeController.close();
     await _syncEventController.close();
+    await _skillChangeController.close();
+    await _globalSkillChangeController.close();
   }
 }

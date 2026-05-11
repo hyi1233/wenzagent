@@ -707,6 +707,7 @@ class DataSyncManager {
             await _mergeAndSaveGlobalSkill(existing, remote);
           }
         }
+        _log.debug('syncGlobalSkills from device ${device.id} success.');
       } catch (e) {
         _log.debug('syncGlobalSkills from device ${device.id} failed: $e');
       }
