@@ -77,7 +77,9 @@ final client = DeviceClient.getInstance(deviceId);
 
 // 2. 初始化（必须在使用前调用）
 await client.initialize(DeviceClientConfig(
-  dbPath: '/path/to/app/data',   // 数据库存储路径（必填）
+  storagePath: '/path/to/app/data',   // 存储根路径（必填）
+  // dbPath: '/path/to/app/data/db',  // 可选，默认 {storagePath}/db
+  // skillsDir: '/path/to/app/data/skills/folder',  // 可选，默认 {storagePath}/skills/folder
   host: '192.168.1.100',         // LAN 服务器地址
   port: 9090,                    // 端口，默认 9090
   deviceName: '我的电脑',          // 设备名称（可选）

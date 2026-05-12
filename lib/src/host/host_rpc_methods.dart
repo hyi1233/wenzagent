@@ -48,6 +48,10 @@ class HostRpcConfig {
   static const String methodGetGlobalSkills = 'hostGetGlobalSkills';
   static const String methodSyncGlobalSkills = 'hostSyncGlobalSkills';
 
+  // ===== 项目同步 =====
+  static const String methodGetAllProjects = 'hostGetAllProjects';
+  static const String methodSyncProjects = 'hostSyncProjects';
+
   // ===== 设备管理 =====
   static const String methodGetOnlineDevices = 'getOnlineDevices';
   static const String methodGetDeviceInfo = 'getDeviceInfo';
@@ -498,6 +502,87 @@ void registerHostRpcMethods({
       }
     }
     return {'count': skills.length};
+  });
+
+  // ===== 项目同步方法 =====
+
+  // 获取所有项目数据（含子资源：modules/skills/issues）
+  rpcServer.register(HostRpcConfig.methodGetAllProjects, (params) async {
+    final includeDeleted = params['includeDeleted'] as bool? ?? false;
+    final projectStore = ProjectStore(deviceId: '');
+    final projects = includeDeleted
+        ? await projectStore.findAllProjectsIncludingDeleted()
+        : await projectStore.findAllProjects();
+
+    final result = <Map<String, dynamic>>[];
+    for (final project in projects) {
+      final modules = includeDeleted
+          ? await projectStore.findAllModulesIncludingDeleted(project.uuid)
+          : await projectStore.findModules(project.uuid);
+      final skills = includeDeleted
+          ? await projectStore.findAllSkillsIncludingDeleted(project.uuid)
+          : await projectStore.findSkills(project.uuid);
+      final issues = includeDeleted
+          ? await projectStore.findAllIssuesIncludingDeleted(project.uuid)
+          : await projectStore.findIssues(project.uuid);
+      result.add({
+        'project': project.toMap(),
+        'modules': modules.map((m) => m.toMap()).toList(),
+        'skills': skills.map((s) => s.toMap()).toList(),
+        'issues': issues.map((i) => i.toMap()).toList(),
+      });
+    }
+    return {'projects': result};
+  });
+
+  // 同步项目数据（逐条合并，含子资源）
+  rpcServer.register(HostRpcConfig.methodSyncProjects, (params) async {
+    final projectsData = params['projects'] as List;
+    final projectStore = ProjectStore(deviceId: '');
+    int count = 0;
+
+    for (final item in projectsData) {
+      final itemMap = item as Map<String, dynamic>;
+
+      // 合并项目主表
+      if (itemMap.containsKey('project')) {
+        final project = ProjectEntity.fromMap(itemMap['project'] as Map<String, dynamic>);
+        if (projectStore.upsertFromRemote(project)) {
+          count++;
+        }
+      }
+
+      // 合并模块
+      final modules = (itemMap['modules'] as List? ?? [])
+          .map((m) => ProjectModuleEntity.fromMap(m as Map<String, dynamic>))
+          .toList();
+      for (final module in modules) {
+        if (projectStore.upsertModuleFromRemote(module)) {
+          count++;
+        }
+      }
+
+      // 合并技能
+      final skills = (itemMap['skills'] as List? ?? [])
+          .map((s) => ProjectSkillEntity.fromMap(s as Map<String, dynamic>))
+          .toList();
+      for (final skill in skills) {
+        if (projectStore.upsertSkillFromRemote(skill)) {
+          count++;
+        }
+      }
+
+      // 合并工单
+      final issues = (itemMap['issues'] as List? ?? [])
+          .map((i) => ProjectIssueEntity.fromMap(i as Map<String, dynamic>))
+          .toList();
+      for (final issue in issues) {
+        if (projectStore.upsertIssueFromRemote(issue)) {
+          count++;
+        }
+      }
+    }
+    return {'count': count};
   });
 
   // 获取在线设备列表

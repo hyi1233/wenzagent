@@ -33,9 +33,26 @@ import 'impl/employee_online_tracker.dart';
 ///
 /// 包含数据库路径和连接参数等初始化所需的信息。
 /// host/port/topic 不传时，将从数据库配置表中自动读取。
+/// DeviceClient 配置
+///
+/// [storagePath] 是存储根路径（必填），用于推导其他路径：
+/// - db_path: {storagePath}/db
+/// - skill_path: {storagePath}/skills/folder
+///
+/// 如果需要覆盖默认推导路径，可单独传入 [dbPath] 或 [skillsDir]。
 class DeviceClientConfig {
-  /// 数据库存储路径（必填）
-  final String dbPath;
+  /// 存储根路径（必填）
+  ///
+  /// 作为 db_path 和 skill_path 的前缀：
+  /// - db_path 默认: {storagePath}/db
+  /// - skill_path 默认: {storagePath}/skills/folder
+  final String storagePath;
+
+  /// 数据库存储路径（可选，默认 {storagePath}/db）
+  final String? dbPath;
+
+  /// Skill 文件夹存储路径（可选，默认 {storagePath}/skills/folder）
+  final String? skillsDir;
 
   /// 服务器地址（可选，不传则从数据库配置读取）
   final String? host;
@@ -50,7 +67,9 @@ class DeviceClientConfig {
   final String? deviceName;
 
   const DeviceClientConfig({
-    required this.dbPath,
+    required this.storagePath,
+    this.dbPath,
+    this.skillsDir,
     this.host,
     this.port = 9090,
     this.topic,
@@ -114,7 +133,7 @@ typedef LanMessageHandler = void Function(LanMessage message);
 /// ```dart
 /// final client = DeviceClient.getInstance(deviceId);
 /// await client.initialize(DeviceClientConfig(
-///   dbPath: '/path/to/data',
+///   storagePath: '/path/to/data',
 ///   host: '192.168.1.100',
 ///   port: 9090,
 /// ));
@@ -129,6 +148,12 @@ class DeviceClient {
   int _port = 9090;
   String? _topic;
   bool _initialized = false;
+
+  /// Skill 文件夹存储根路径，初始化时由 DeviceClientConfig 推导设置
+  String _skillsDir = '';
+
+  /// 获取 Skill 文件夹存储根路径
+  String get skillsDir => _skillsDir;
 
   // ===== AppContext 依赖注入 =====
 
@@ -211,19 +236,36 @@ class DeviceClient {
     await lock.synchronized(() async {
       if (_initialized) return;
 
-      // 1. 初始化数据库
+      // 1. 基于 storagePath 推导默认路径
+      final storagePath = config.storagePath;
+      final effectiveDbPath = config.dbPath ??
+          '$storagePath${Platform.pathSeparator}db';
+      final effectiveSkillsDir = config.skillsDir ??
+          '$storagePath${Platform.pathSeparator}skills${Platform.pathSeparator}folder';
+
+      // 2. 确保目录存在
+      await _ensureDirExists(effectiveDbPath, 'dbPath');
+      await _ensureDirExists(effectiveSkillsDir, 'skillsDir');
+
+      // 3. 初始化数据库
       await DatabaseManager.getInstance(
         _deviceId,
-      ).initialize(storagePath: config.dbPath);
+      ).initialize(storagePath: effectiveDbPath);
 
-      // 2. 创建 AppContext 依赖容器
-      AppContext.create(deviceId: _deviceId, dbPath: config.dbPath);
+      // 4. 创建 AppContext 依赖容器
+      AppContext.create(deviceId: _deviceId, dbPath: effectiveDbPath);
 
-      // 3. 设置配置（参数优先）
+      // 5. 设置配置（参数优先）
       _host = config.host ?? '';
       _port = config.port;
       _topic = config.topic;
       _deviceName = config.deviceName;
+      _skillsDir = effectiveSkillsDir;
+
+      _log.info('DeviceClient 初始化配置:');
+      _log.info('  storagePath = ${Directory(storagePath).absolute.path}');
+      _log.info('  dbPath      = ${Directory(effectiveDbPath).absolute.path}');
+      _log.info('  skillsDir   = ${Directory(effectiveSkillsDir).absolute.path}');
 
       // 如果 host 未传入，尝试从数据库配置读取
       if (_host.isEmpty) {
@@ -236,7 +278,7 @@ class DeviceClient {
         }
       }
 
-      // 4. 初始化子模块
+      // 6. 初始化子模块
       _connectionManager.initialize(host: _host, port: _port, topic: _topic);
       _deviceRegistry.initialize(
         deviceName: _deviceName,
@@ -248,9 +290,20 @@ class DeviceClient {
       _agentManager.initialize(topic: _topic);
       _messageHandler.initialize(deviceName: _deviceName, topic: _topic);
 
-      // 5. 初始化完成
+      // 7. 初始化完成
       _initialized = true;
     });
+  }
+
+  /// 确保目录存在，不存在则自动创建
+  Future<void> _ensureDirExists(String path, String label) async {
+    final dir = Directory(path);
+    if (!await dir.exists()) {
+      await dir.create(recursive: true);
+      _log.info('  自动创建目录 [$label]: ${dir.absolute.path}');
+    } else {
+      _log.info('  目录已存在 [$label]: ${dir.absolute.path}');
+    }
   }
 
   /// 从数据库配置合并缺失的连接参数
@@ -272,8 +325,9 @@ class DeviceClient {
 
   /// 获取当前配置
   DeviceClientConfig getConfig() => DeviceClientConfig(
-    dbPath: '',
-    // dbPath 仅在 initialize 时设置，运行时不可变
+    storagePath: '',
+    // storagePath 仅在 initialize 时设置，运行时不可变
+    skillsDir: _skillsDir,
     host: _host,
     port: _port,
     topic: _topic,
@@ -604,6 +658,18 @@ class DeviceClient {
   /// 删除技能并同步到其他设备
   Future<void> deleteSkillWithSync(String skillId) =>
       _dataSyncManager.deleteSkillWithSync(skillId);
+
+  /// 同步项目数据（从远端拉取最新项目到本地）
+  Future<void> syncProjectsFromDevices() =>
+      _dataSyncManager.syncProjectsFromDevices();
+
+  /// 广播项目数据到所有在线设备（创建/更新后调用）
+  Future<void> broadcastProjectToAllDevices(String projectUuid) =>
+      _dataSyncManager.broadcastProjectToAllDevices(projectUuid);
+
+  /// 删除项目并同步到其他设备
+  Future<void> deleteProjectWithSync(String projectUuid) =>
+      _dataSyncManager.deleteProjectWithSync(projectUuid);
 
   /// 同步员工到指定远程设备
   Future<bool> syncEmployeeToDevice({
@@ -950,7 +1016,7 @@ class DeviceClient {
   /// 流程：
   /// 1. RPC 调用远端打包 ZIP → 获取 zipFilePath + zipSize + sha256
   /// 2. 通过 downloadFileByMeta（二进制流式传输）下载 ZIP
-  /// 3. 解压到本地 skills/folder/{folderName}/
+  /// 3. 解压到本地 skillsDir/{folderName}/
   /// 4. 删除临时 ZIP
   ///
   /// 返回本地解压后的文件夹路径。
@@ -964,6 +1030,8 @@ class DeviceClient {
     if (!_connectionManager.isConnected) {
       throw StateError('未连接到服务器');
     }
+
+    _log.info('syncFolderSkillFiles: 开始从设备 $fromDeviceId 同步 skill=$skillId, folderPath=$folderPath');
 
     // 1. 调用远端打包
     final packResult = await invokeFileRpc(
@@ -983,6 +1051,8 @@ class DeviceClient {
     final zipSize = packData['zipSize'] as int;
     final zipHash = packData['sha256'] as String;
     final folderName = packData['folderName'] as String;
+
+    _log.info('syncFolderSkillFiles: 远端打包完成, zipSize=$zipSize, folderName=$folderName, zipHash=$zipHash');
 
     // 2. 构建 FileMetaMessage，通过 downloadFileByMeta 下载
     final meta = FileMetaMessage(
@@ -1004,13 +1074,15 @@ class DeviceClient {
         onProgress: onProgress,
       );
 
-      // 4. 解压到 skills/folder/{folderName}/
-      final skillsDir = localSkillsDir ??
-          'skills${Platform.pathSeparator}folder';
+      _log.info('syncFolderSkillFiles: ZIP 下载完成, downloadedPath=$downloadedPath');
+
+      // 4. 解压到 skillsDir/{folderName}/
+      final skillsDir = localSkillsDir ?? _skillsDir;
       final targetDir =
           '$skillsDir${Platform.pathSeparator}$folderName';
       await _unpackZip(downloadedPath, targetDir);
 
+      _log.info('syncFolderSkillFiles: 解压完成, targetDir=$targetDir');
       return targetDir;
     } finally {
       // 5. 清理临时文件

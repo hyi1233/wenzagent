@@ -6,7 +6,8 @@ class AiEmployeeSkillEntity {
   /// 员工UUID
   String employeeId;
 
-  /// 设备ID
+  /// 设备ID（仅作为元数据保留，不再用于查询隔离）
+  @Deprecated('deviceId 不再用于查询隔离，仅保留作为元数据')
   String deviceId;
 
   /// 技能名称

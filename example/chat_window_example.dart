@@ -31,7 +31,7 @@ void main() async {
 
   final client = DeviceClient.getInstance(deviceId);
   await client.initialize(DeviceClientConfig(
-    dbPath: '/tmp/wenzagent_db',
+    storagePath: '/tmp/wenzagent_db',
     host: '192.168.1.100',
     port: 9527,
     topic: 'default',

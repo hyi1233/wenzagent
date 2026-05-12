@@ -431,7 +431,7 @@ class DeviceRpcHandler {
     rpcServer.register(AgentRpcConfig.methodGetSkills, (params) async {
       final request = AgentGetSkillsRequest.fromMap(params);
       final store = SkillStore(deviceId: _deviceId);
-      final entities = await store.findByEmployeeWithDeviceId(_deviceId, request.employeeId);
+      final entities = await store.findByEmployee(request.employeeId);
       return {'skills': entities.map((e) => e.toMap()).toList()};
     });
 
@@ -1338,6 +1338,87 @@ class DeviceRpcHandler {
         }
       }
       return {'count': skills.length};
+    });
+
+    // ===== 项目同步方法 =====
+
+    // 获取所有项目数据（含子资源）
+    rpcServer.register(HostRpcConfig.methodGetAllProjects, (params) async {
+      final includeDeleted = params['includeDeleted'] as bool? ?? false;
+      final projectStore = ProjectStore(deviceId: _deviceId);
+      final projects = includeDeleted
+          ? await projectStore.findAllProjectsIncludingDeleted()
+          : await projectStore.findAllProjects();
+
+      final result = <Map<String, dynamic>>[];
+      for (final project in projects) {
+        final modules = includeDeleted
+            ? await projectStore.findAllModulesIncludingDeleted(project.uuid)
+            : await projectStore.findModules(project.uuid);
+        final skills = includeDeleted
+            ? await projectStore.findAllSkillsIncludingDeleted(project.uuid)
+            : await projectStore.findSkills(project.uuid);
+        final issues = includeDeleted
+            ? await projectStore.findAllIssuesIncludingDeleted(project.uuid)
+            : await projectStore.findIssues(project.uuid);
+        result.add({
+          'project': project.toMap(),
+          'modules': modules.map((m) => m.toMap()).toList(),
+          'skills': skills.map((s) => s.toMap()).toList(),
+          'issues': issues.map((i) => i.toMap()).toList(),
+        });
+      }
+      return {'projects': result};
+    });
+
+    // 同步项目数据（逐条合并，含子资源）
+    rpcServer.register(HostRpcConfig.methodSyncProjects, (params) async {
+      final projectsData = params['projects'] as List;
+      final projectStore = ProjectStore(deviceId: _deviceId);
+      int count = 0;
+
+      for (final item in projectsData) {
+        final itemMap = item as Map<String, dynamic>;
+
+        // 合并项目主表
+        if (itemMap.containsKey('project')) {
+          final project = ProjectEntity.fromMap(itemMap['project'] as Map<String, dynamic>);
+          if (projectStore.upsertFromRemote(project)) {
+            count++;
+          }
+        }
+
+        // 合并模块
+        final modules = (itemMap['modules'] as List? ?? [])
+            .map((m) => ProjectModuleEntity.fromMap(m as Map<String, dynamic>))
+            .toList();
+        for (final module in modules) {
+          if (projectStore.upsertModuleFromRemote(module)) {
+            count++;
+          }
+        }
+
+        // 合并技能
+        final skills = (itemMap['skills'] as List? ?? [])
+            .map((s) => ProjectSkillEntity.fromMap(s as Map<String, dynamic>))
+            .toList();
+        for (final skill in skills) {
+          if (projectStore.upsertSkillFromRemote(skill)) {
+            count++;
+          }
+        }
+
+        // 合并工单
+        final issues = (itemMap['issues'] as List? ?? [])
+            .map((i) => ProjectIssueEntity.fromMap(i as Map<String, dynamic>))
+            .toList();
+        for (final issue in issues) {
+          if (projectStore.upsertIssueFromRemote(issue)) {
+            count++;
+          }
+        }
+      }
+      return {'count': count};
     });
 
     // 设备管理方法

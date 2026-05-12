@@ -1,12 +1,16 @@
 import 'package:sqlite3/sqlite3.dart';
 
 /// skills 表 schema
+///
+/// Skill 绑定员工（employeeId），不绑定设备（deviceId）。
+/// device_id 保留作为元数据，不建索引，不用于查询过滤。
 class SkillSchema {
   static void create(Database db) {
     db.execute('''
       CREATE TABLE IF NOT EXISTS skills (
         uuid         TEXT PRIMARY KEY,
         employee_id  TEXT NOT NULL,
+        device_id    TEXT DEFAULT '',
         name         TEXT NOT NULL,
         description  TEXT,
         skill_type   TEXT DEFAULT 'mcp',

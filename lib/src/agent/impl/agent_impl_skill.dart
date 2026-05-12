@@ -69,7 +69,7 @@ mixin _AgentImplSkill on _AgentImplBase {
     final store = SkillStore(deviceId: deviceId);
     _AgentImplBase._log.debug('开始加载持久化技能, employeeId=$employeeId');
 
-    final entities = await store.findByEmployeeWithDeviceId(deviceId, employeeId);
+    final entities = await store.findByEmployee(employeeId);
     _AgentImplBase._log.debug('数据库查询完成, 共 ${entities.length} 条技能记录');
 
     int loaded = 0;
@@ -159,8 +159,20 @@ mixin _AgentImplSkill on _AgentImplBase {
 
   /// 扫描文件夹技能
   Future<void> _scanFolderSkills(SkillContext context) async {
-    final skillsDir = Directory('skills${Platform.pathSeparator}folder');
-    if (!await skillsDir.exists()) return;
+    // 从 DeviceClient 获取可配置的 skillsDir（由 storagePath 推导）
+    String skillsDirPath;
+    try {
+      final dc = DeviceClient.getInstance(deviceId);
+      skillsDirPath = dc.skillsDir;
+    } catch (_) {
+      skillsDirPath = 'skills${Platform.pathSeparator}folder';
+    }
+    _AgentImplBase._log.info('扫描 Folder Skill: skillsDirPath=${Directory(skillsDirPath).absolute.path}');
+    final skillsDir = Directory(skillsDirPath);
+    if (!await skillsDir.exists()) {
+      _AgentImplBase._log.info('扫描 Folder Skill: 目录不存在, path=${Directory(skillsDirPath).absolute.path}');
+      return;
+    }
 
     await for (final entity in skillsDir.list()) {
       if (entity is! Directory) continue;
@@ -182,21 +194,18 @@ mixin _AgentImplSkill on _AgentImplBase {
     await _withLock(() async {
       final store = SkillStore(deviceId: deviceId);
 
-      // 1. 软删除当前员工的所有技能
-      final existingSkills = await store.findByEmployeeWithDeviceId(
-        deviceId,
-        employeeId,
-      );
+      // 1. 软删除当前员工的所有技能（不按 deviceId 隔离）
+      final existingSkills = await store.findByEmployee(employeeId);
       for (final skill in existingSkills) {
-        await store.delete(null, skill.uuid);
+        await store.delete(skill.uuid);
       }
 
-      // 2. 保存新的技能列表
+      // 2. 保存新的技能列表（直接 save，不覆盖 deviceId）
       final entities = skillMaps
           .map((m) => AiEmployeeSkillEntity.fromMap(m))
           .toList();
       for (final entity in entities) {
-        await store.saveWithDeviceId(deviceId, entity);
+        await store.save(entity);
       }
 
       // 3. 卸载当前运行时技能
@@ -254,13 +263,12 @@ mixin _AgentImplSkill on _AgentImplBase {
 
       // 2. 同步 MCP 技能实体到 SkillStore
       // 先删除旧的 MCP 类型技能
-      final existingSkills = await skillStore.findByEmployeeWithDeviceId(
-        deviceId,
+      final existingSkills = await skillStore.findByEmployee(
         employeeId,
       );
       for (final skill in existingSkills) {
         if (skill.skillType == 'mcp') {
-          await skillStore.delete(null, skill.uuid);
+          await skillStore.delete(skill.uuid);
         }
       }
       // 为每个 MCP 配置创建技能实体
@@ -276,7 +284,7 @@ mixin _AgentImplSkill on _AgentImplBase {
           createTime: DateTime.now(),
           updateTime: DateTime.now(),
         );
-        await skillStore.saveWithDeviceId(deviceId, entity);
+        await skillStore.save(entity);
       }
 
       // 3. 卸载旧的 MCP 技能并重新加载
@@ -290,8 +298,7 @@ mixin _AgentImplSkill on _AgentImplBase {
       }
 
       // 4. 重新加载所有持久化技能（仅 MCP 类型）
-      final allSkills = await skillStore.findByEmployeeWithDeviceId(
-        deviceId,
+      final allSkills = await skillStore.findByEmployee(
         employeeId,
       );
       for (final entity in allSkills) {

@@ -41,6 +41,9 @@ class DataSyncManager {
   late final GlobalSkillManager _globalSkillManager = GlobalSkillManager.getInstance(
     _deviceId,
   );
+  late final ProjectManager _projectManager = ProjectManager.getInstance(
+    _deviceId,
+  );
 
   DataSyncManager._({required String deviceId}) : _deviceId = deviceId;
 
@@ -99,6 +102,11 @@ class DataSyncManager {
     await _doSyncTodosFromDevices();
   }
 
+  /// 从其他设备同步项目数据
+  Future<void> syncProjectsFromDevices() async {
+    await _doSyncProjectsFromDevices();
+  }
+
   /// 同步全部数据（员工+会话+会话摘要+spec+技能，并行执行）
   Future<void> syncAllFromDevices() async {
     final (changedEmployeeIds, changedSessionIds, _) = await (
@@ -113,6 +121,8 @@ class DataSyncManager {
     // 技能同步不需要等待其他同步完成
     _doSyncSkillsFromDevices();
     _doSyncGlobalSkillsFromDevices();
+    // 项目同步不需要等待其他同步完成
+    _doSyncProjectsFromDevices();
     // Folder Skill 文件同步（元数据同步后）
     syncFolderSkillFiles();
     if (changedEmployeeIds.isNotEmpty || changedSessionIds.isNotEmpty) {
@@ -314,7 +324,10 @@ class DataSyncManager {
   Future<void> broadcastSkillToAllDevices(String employeeId) async {
     if (!_connectionManager.isConnected) return;
     try {
-      final skills = await _skillManager.getSkills(employeeId);
+      // 获取所有 skill（含已删除的），确保删除状态也能同步到其他设备
+      final allSkills = await _skillManager.getAllSkills();
+      final skills =
+          allSkills.where((s) => s.employeeId == employeeId).toList();
       if (skills.isEmpty) return;
       final devices = await _deviceRegistry.getOnlineDevices();
       for (final device in devices) {
@@ -363,7 +376,57 @@ class DataSyncManager {
     final skill = await _skillManager.getSkillIncludingDeleted(skillId);
     await _skillManager.deleteSkill(skillId);
     if (skill != null) {
-      _syncSkillDeleteToDevices(skill.copyWith(
+      await _syncSkillDeleteToDevices(skill.copyWith(
+        deleted: 1,
+        deleteTime: DateTime.now(),
+        updateTime: DateTime.now(),
+      ));
+    }
+  }
+
+  /// 广播项目数据到所有在线设备（创建/更新后调用）
+  Future<void> broadcastProjectToAllDevices(String projectUuid) async {
+    if (!_connectionManager.isConnected) return;
+    try {
+      final project = await _projectManager.getProject(projectUuid);
+      if (project == null) return;
+      final projectStore = ProjectStore(deviceId: _deviceId);
+      final modules = await projectStore.findModules(projectUuid);
+      final skills = await projectStore.findSkills(projectUuid);
+      final issues = await projectStore.findIssues(projectUuid);
+      final devices = await _deviceRegistry.getOnlineDevices();
+      for (final device in devices) {
+        if (device.id == _deviceId) continue;
+        try {
+          await _connectionManager.invokeRemote(
+            device.id,
+            HostRpcConfig.methodSyncProjects,
+            {
+              'projects': [
+                {
+                  'project': project.toMap(),
+                  'modules': modules.map((m) => m.toMap()).toList(),
+                  'skills': skills.map((s) => s.toMap()).toList(),
+                  'issues': issues.map((i) => i.toMap()).toList(),
+                },
+              ],
+            },
+          );
+        } catch (e) {
+          _log.debug('broadcastProject to device ${device.id} failed: $e');
+        }
+      }
+    } catch (e) {
+      _log.debug('broadcastProjectToAllDevices failed: $e');
+    }
+  }
+
+  /// 删除项目并同步到其他设备
+  Future<void> deleteProjectWithSync(String projectUuid) async {
+    final project = await _projectManager.getProject(projectUuid);
+    await _projectManager.deleteProject(projectUuid);
+    if (project != null) {
+      _syncProjectDeleteToDevices(project.copyWith(
         deleted: 1,
         deleteTime: DateTime.now(),
         updateTime: DateTime.now(),
@@ -636,27 +699,63 @@ class DataSyncManager {
   }
 
   /// 将技能删除同步到所有在线设备
-  void _syncSkillDeleteToDevices(AiEmployeeSkillEntity skill) {
+  Future<void> _syncSkillDeleteToDevices(AiEmployeeSkillEntity skill) async {
+    if (!_connectionManager.isConnected) return;
+    try {
+      final devices = await _deviceRegistry.getOnlineDevices();
+      for (final device in devices) {
+        if (device.id == _deviceId) continue;
+        try {
+          await _connectionManager.invokeRemote(
+            device.id,
+            HostRpcConfig.methodSyncSkills,
+            {
+              'skills': [skill.toMap()],
+            },
+          );
+        } catch (e) {
+          _log.debug('syncSkillDelete to device ${device.id} failed: $e');
+        }
+      }
+    } catch (e) {
+      _log.debug('syncSkillDeleteToDevices failed: $e');
+    }
+  }
+
+  /// 将项目删除同步到所有在线设备
+  void _syncProjectDeleteToDevices(ProjectEntity project) {
     Future(() async {
       if (!_connectionManager.isConnected) return;
       try {
+        final projectStore = ProjectStore(deviceId: _deviceId);
+        // 获取子资源（含已删除）一起广播
+        final modules = await projectStore.findAllModulesIncludingDeleted(project.uuid);
+        final skills = await projectStore.findAllSkillsIncludingDeleted(project.uuid);
+        final issues = await projectStore.findAllIssuesIncludingDeleted(project.uuid);
         final devices = await _deviceRegistry.getOnlineDevices();
         for (final device in devices) {
           if (device.id == _deviceId) continue;
           try {
             await _connectionManager.invokeRemote(
               device.id,
-              HostRpcConfig.methodSyncSkills,
+              HostRpcConfig.methodSyncProjects,
               {
-                'skills': [skill.toMap()],
+                'projects': [
+                  {
+                    'project': project.toMap(),
+                    'modules': modules.map((m) => m.toMap()).toList(),
+                    'skills': skills.map((s) => s.toMap()).toList(),
+                    'issues': issues.map((i) => i.toMap()).toList(),
+                  },
+                ],
               },
             );
           } catch (e) {
-            _log.debug('syncSkillDelete to device ${device.id} failed: $e');
+            _log.debug('syncProjectDelete to device ${device.id} failed: $e');
           }
         }
       } catch (e) {
-        _log.debug('syncSkillDeleteToDevices failed: $e');
+        _log.debug('syncProjectDeleteToDevices failed: $e');
       }
     });
   }
@@ -778,6 +877,56 @@ class DataSyncManager {
     return false;
   }
 
+  // ===== 项目同步内部实现 =====
+
+  Future<void> _doSyncProjectsFromDevices() async {
+    if (!_connectionManager.isConnected) return;
+    final devices = await _deviceRegistry.getOnlineDevices();
+    final projectStore = ProjectStore(deviceId: _deviceId);
+    for (final device in devices) {
+      if (device.id == _deviceId) continue;
+      try {
+        final result = await _connectionManager.invokeRemote(
+          device.id,
+          HostRpcConfig.methodGetAllProjects,
+          {'includeDeleted': true},
+        );
+        for (final item in (result['result']['projects'] as List? ?? [])) {
+          final itemMap = item as Map<String, dynamic>;
+
+          // 合并项目主表
+          if (itemMap.containsKey('project')) {
+            final remote = ProjectEntity.fromMap(
+              itemMap['project'] as Map<String, dynamic>,
+            );
+            projectStore.upsertFromRemote(remote);
+          }
+
+          // 合并模块
+          for (final m in (itemMap['modules'] as List? ?? [])) {
+            final remote = ProjectModuleEntity.fromMap(m as Map<String, dynamic>);
+            projectStore.upsertModuleFromRemote(remote);
+          }
+
+          // 合并技能
+          for (final s in (itemMap['skills'] as List? ?? [])) {
+            final remote = ProjectSkillEntity.fromMap(s as Map<String, dynamic>);
+            projectStore.upsertSkillFromRemote(remote);
+          }
+
+          // 合并工单
+          for (final i in (itemMap['issues'] as List? ?? [])) {
+            final remote = ProjectIssueEntity.fromMap(i as Map<String, dynamic>);
+            projectStore.upsertIssueFromRemote(remote);
+          }
+        }
+        _log.debug('syncProjects from device ${device.id} success.');
+      } catch (e) {
+        _log.debug('syncProjects from device ${device.id} failed: $e');
+      }
+    }
+  }
+
   // ===== 合并逻辑 =====
 
   Future<bool> _mergeAndSaveEmployee(
@@ -852,7 +1001,10 @@ class DataSyncManager {
 
     final devices = await _deviceRegistry.getOnlineDevices();
     final otherDevices = devices.where((d) => d.id != _deviceId).toList();
-    if (otherDevices.isEmpty) return;
+    if (otherDevices.isEmpty) {
+      _log.debug('syncFolderSkillFiles: 无其他在线设备，跳过');
+      return;
+    }
 
     // 收集需要文件同步的 folder skill
     final folderSkills = <Map<String, dynamic>>[];
@@ -888,9 +1040,12 @@ class DataSyncManager {
       }
     }
 
-    if (folderSkills.isEmpty) return;
+    if (folderSkills.isEmpty) {
+      _log.debug('syncFolderSkillFiles: 所有 Folder Skill 文件夹已存在，无需同步');
+      return;
+    }
 
-    _log.info('发现 ${folderSkills.length} 个 Folder Skill 需要文件同步');
+    _log.info('syncFolderSkillFiles: 发现 ${folderSkills.length} 个 Folder Skill 需要文件同步, 在线设备: ${otherDevices.map((d) => d.id).toList()}');
 
     // 逐个同步（串行，避免带宽争抢）
     for (final item in folderSkills) {
@@ -899,12 +1054,13 @@ class DataSyncManager {
 
       for (final device in otherDevices) {
         try {
-          _log.debug('同步 Folder Skill 文件: $skillId from ${device.id}');
+          _log.info('syncFolderSkillFiles: 开始同步 skill=$skillId, folderPath=$folderPath, fromDevice=${device.id}');
 
           final localPath = await deviceClient.syncFolderSkillFiles(
             fromDeviceId: device.id,
             folderPath: folderPath,
             skillId: skillId,
+            localSkillsDir: deviceClient.skillsDir,
           );
 
           // 更新 skill config 为本地路径
@@ -927,12 +1083,10 @@ class DataSyncManager {
             }
           }
 
-          _log.info(
-              'Folder Skill 文件同步成功: $skillId → $localPath');
+          _log.info('syncFolderSkillFiles: 同步成功 skill=$skillId, localPath=$localPath');
           break; // 同步成功，跳出设备循环
         } catch (e) {
-          _log.debug(
-              'Folder Skill 文件同步失败: $skillId from ${device.id}: $e');
+          _log.warn('syncFolderSkillFiles: 同步失败 skill=$skillId from ${device.id}: $e');
         }
       }
     }

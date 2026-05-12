@@ -7,6 +7,7 @@ import 'package:path/path.dart' as p;
 import 'package:uuid/uuid.dart';
 import 'package:wenzagent/wenzagent.dart';
 
+import '../../device/device_client.dart';
 import '../../utils/logger.dart';
 import '../tool/builtin/bg_command_tool.dart';
 import '../tool/builtin/command_session_pool.dart';

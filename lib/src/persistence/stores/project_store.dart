@@ -2,6 +2,7 @@ import 'package:sqlite3/sqlite3.dart';
 
 import '../database_manager.dart';
 import '../entities/entities.dart';
+import '../store_merge_util.dart';
 
 /// 项目数据存储（wenzagent SQLite）
 ///
@@ -333,5 +334,234 @@ class ProjectStore {
       'UPDATE wenz_project_issues SET deleted = 1, delete_time = ? WHERE uuid = ?',
       [DateTime.now().millisecondsSinceEpoch, uuid],
     );
+  }
+
+  // ==================== 批量查询（含已删除） ====================
+
+  /// 获取所有项目（含已删除）
+  Future<List<ProjectEntity>> findAllProjectsIncludingDeleted() async {
+    final rs = _db.select(
+      'SELECT * FROM wenz_projects ORDER BY update_time DESC',
+    );
+    return rs.map(_rowToProject).toList();
+  }
+
+  /// 获取项目的所有模块（含已删除）
+  Future<List<ProjectModuleEntity>> findAllModulesIncludingDeleted(String projectUuid) async {
+    final rs = _db.select(
+      'SELECT * FROM wenz_project_modules WHERE project_uuid = ? ORDER BY sort_order ASC',
+      [projectUuid],
+    );
+    return rs.map(_rowToModule).toList();
+  }
+
+  /// 获取项目的所有技能（含已删除）
+  Future<List<ProjectSkillEntity>> findAllSkillsIncludingDeleted(String projectUuid) async {
+    final rs = _db.select(
+      'SELECT * FROM wenz_project_skills WHERE project_uuid = ? ORDER BY sort_order ASC',
+      [projectUuid],
+    );
+    return rs.map(_rowToSkill).toList();
+  }
+
+  /// 获取项目的所有工单（含已删除）
+  Future<List<ProjectIssueEntity>> findAllIssuesIncludingDeleted(String projectUuid) async {
+    final rs = _db.select(
+      'SELECT * FROM wenz_project_issues WHERE project_uuid = ? ORDER BY create_time DESC',
+      [projectUuid],
+    );
+    return rs.map(_rowToIssue).toList();
+  }
+
+  // ==================== 单个查询（含已删除） ====================
+
+  /// 获取单个模块（含已删除）
+  Future<ProjectModuleEntity?> findModuleIncludingDeleted(String uuid) async {
+    final rs = _db.select(
+      'SELECT * FROM wenz_project_modules WHERE uuid = ?',
+      [uuid],
+    );
+    for (final row in rs) {
+      return _rowToModule(row);
+    }
+    return null;
+  }
+
+  /// 获取单个技能（含已删除）
+  Future<ProjectSkillEntity?> findSkillIncludingDeleted(String uuid) async {
+    final rs = _db.select(
+      'SELECT * FROM wenz_project_skills WHERE uuid = ?',
+      [uuid],
+    );
+    for (final row in rs) {
+      return _rowToSkill(row);
+    }
+    return null;
+  }
+
+  /// 获取单个工单（含已删除）
+  Future<ProjectIssueEntity?> findIssueIncludingDeleted(String uuid) async {
+    final rs = _db.select(
+      'SELECT * FROM wenz_project_issues WHERE uuid = ?',
+      [uuid],
+    );
+    for (final row in rs) {
+      return _rowToIssue(row);
+    }
+    return null;
+  }
+
+  // ==================== 远程合并写入 ====================
+
+  /// 远程项目数据合并写入
+  ///
+  /// 返回 true 表示有更新，false 表示无需更新。
+  /// 使用 StoreMergeUtil.mergeDeleteState + shouldUpdateData 进行合并判断。
+  bool upsertFromRemote(ProjectEntity remote) {
+    final rs = _db.select(
+      'SELECT * FROM wenz_projects WHERE uuid = ?',
+      [remote.uuid],
+    );
+    if (rs.isEmpty) {
+      // 本地不存在 → 直接保存（未删除的才保存）
+      if (remote.deleted != 1) {
+        saveProject(remote);
+      }
+      return remote.deleted != 1;
+    }
+    final existing = _rowToProject(rs.first);
+    final mergeResult = StoreMergeUtil.mergeDeleteState(
+      localDeleteTime: existing.deleteTime,
+      localDeleted: existing.deleted,
+      remoteDeleteTime: remote.deleteTime,
+      remoteDeleted: remote.deleted,
+      localUpdateTime: existing.updateTime,
+      remoteUpdateTime: remote.updateTime,
+    );
+    final shouldUpdateData = StoreMergeUtil.shouldUpdateData(
+        existing.updateTime, remote.updateTime);
+    final shouldUpdateDelete =
+        mergeResult.mergedDeleteTime != existing.deleteTime ||
+            mergeResult.mergedDeleted != existing.deleted;
+    if (shouldUpdateData || shouldUpdateDelete) {
+      final base = shouldUpdateData ? remote : existing;
+      saveProject(base.copyWith(
+        deleted: mergeResult.mergedDeleted,
+        deleteTime: mergeResult.mergedDeleteTime,
+      ));
+      return true;
+    }
+    return false;
+  }
+
+  /// 远程模块数据合并写入
+  bool upsertModuleFromRemote(ProjectModuleEntity remote) {
+    final rs = _db.select(
+      'SELECT * FROM wenz_project_modules WHERE uuid = ?',
+      [remote.uuid],
+    );
+    if (rs.isEmpty) {
+      if (remote.deleted != 1) {
+        saveModule(remote);
+      }
+      return remote.deleted != 1;
+    }
+    final existing = _rowToModule(rs.first);
+    final mergeResult = StoreMergeUtil.mergeDeleteState(
+      localDeleteTime: existing.deleteTime,
+      localDeleted: existing.deleted,
+      remoteDeleteTime: remote.deleteTime,
+      remoteDeleted: remote.deleted,
+      localUpdateTime: existing.updateTime,
+      remoteUpdateTime: remote.updateTime,
+    );
+    final shouldUpdateData = StoreMergeUtil.shouldUpdateData(
+        existing.updateTime, remote.updateTime);
+    final shouldUpdateDelete =
+        mergeResult.mergedDeleteTime != existing.deleteTime ||
+            mergeResult.mergedDeleted != existing.deleted;
+    if (shouldUpdateData || shouldUpdateDelete) {
+      final base = shouldUpdateData ? remote : existing;
+      saveModule(base.copyWith(
+        deleted: mergeResult.mergedDeleted,
+        deleteTime: mergeResult.mergedDeleteTime,
+      ));
+      return true;
+    }
+    return false;
+  }
+
+  /// 远程技能数据合并写入
+  bool upsertSkillFromRemote(ProjectSkillEntity remote) {
+    final rs = _db.select(
+      'SELECT * FROM wenz_project_skills WHERE uuid = ?',
+      [remote.uuid],
+    );
+    if (rs.isEmpty) {
+      if (remote.deleted != 1) {
+        saveSkill(remote);
+      }
+      return remote.deleted != 1;
+    }
+    final existing = _rowToSkill(rs.first);
+    final mergeResult = StoreMergeUtil.mergeDeleteState(
+      localDeleteTime: existing.deleteTime,
+      localDeleted: existing.deleted,
+      remoteDeleteTime: remote.deleteTime,
+      remoteDeleted: remote.deleted,
+      localUpdateTime: existing.updateTime,
+      remoteUpdateTime: remote.updateTime,
+    );
+    final shouldUpdateData = StoreMergeUtil.shouldUpdateData(
+        existing.updateTime, remote.updateTime);
+    final shouldUpdateDelete =
+        mergeResult.mergedDeleteTime != existing.deleteTime ||
+            mergeResult.mergedDeleted != existing.deleted;
+    if (shouldUpdateData || shouldUpdateDelete) {
+      final base = shouldUpdateData ? remote : existing;
+      saveSkill(base.copyWith(
+        deleted: mergeResult.mergedDeleted,
+        deleteTime: mergeResult.mergedDeleteTime,
+      ));
+      return true;
+    }
+    return false;
+  }
+
+  /// 远程工单数据合并写入
+  bool upsertIssueFromRemote(ProjectIssueEntity remote) {
+    final rs = _db.select(
+      'SELECT * FROM wenz_project_issues WHERE uuid = ?',
+      [remote.uuid],
+    );
+    if (rs.isEmpty) {
+      if (remote.deleted != 1) {
+        saveIssue(remote);
+      }
+      return remote.deleted != 1;
+    }
+    final existing = _rowToIssue(rs.first);
+    final mergeResult = StoreMergeUtil.mergeDeleteState(
+      localDeleteTime: existing.deleteTime,
+      localDeleted: existing.deleted,
+      remoteDeleteTime: remote.deleteTime,
+      remoteDeleted: remote.deleted,
+      localUpdateTime: existing.updateTime,
+      remoteUpdateTime: remote.updateTime,
+    );
+    final shouldUpdateData = StoreMergeUtil.shouldUpdateData(
+        existing.updateTime, remote.updateTime);
+    final shouldUpdateDelete =
+        mergeResult.mergedDeleteTime != existing.deleteTime ||
+            mergeResult.mergedDeleted != existing.deleted;
+    if (shouldUpdateData || shouldUpdateDelete) {
+      final base = shouldUpdateData ? remote : existing;
+      saveIssue(base.copyWith(
+        deleted: mergeResult.mergedDeleted,
+        deleteTime: mergeResult.mergedDeleteTime,
+      ));
+      return true;
+    }
+    return false;
   }
 }

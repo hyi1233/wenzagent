@@ -27,10 +27,14 @@ class SkillChangeEvent {
 }
 
 /// 技能管理器接口
+///
+/// Skill 绑定员工（employeeId），不绑定设备（deviceId）。
+/// deviceId 仅用于确定数据库文件路径，不参与 skill 数据查询隔离。
 abstract class SkillManager {
   static final Map<String, SkillManager> _instances = {};
 
   /// 按 deviceId 获取单例，不存在则自动创建
+  /// deviceId 用于确定数据库文件路径，不参与 skill 数据查询隔离
   static SkillManager getInstance(String deviceId) {
     return _instances.putIfAbsent(
       deviceId,
@@ -41,10 +45,10 @@ abstract class SkillManager {
   /// 移除指定 deviceId 的实例
   static void removeInstance(String deviceId) => _instances.remove(deviceId);
 
-  /// 获取员工的技能列表
+  /// 获取员工的技能列表（只按 employeeId）
   Future<List<AiEmployeeSkillEntity>> getSkills(String employeeId);
 
-  /// 获取单个技能
+  /// 获取单个技能（只按 uuid）
   Future<AiEmployeeSkillEntity?> getSkill(String uuid);
 
   /// 创建技能
@@ -53,7 +57,7 @@ abstract class SkillManager {
   /// 更新技能
   Future<void> updateSkill(AiEmployeeSkillEntity skill);
 
-  /// 删除技能
+  /// 删除技能（软删除，保留原 deviceId）
   Future<void> deleteSkill(String uuid);
 
   /// 获取单个技能（包含已删除的，用于同步合并场景）
@@ -83,12 +87,12 @@ class SkillManagerImpl implements SkillManager {
 
   @override
   Future<List<AiEmployeeSkillEntity>> getSkills(String employeeId) async {
-    return _store.findByEmployeeWithDeviceId(_deviceId, employeeId);
+    return _store.findByEmployee(employeeId);
   }
 
   @override
   Future<AiEmployeeSkillEntity?> getSkill(String uuid) async {
-    return _store.find(_deviceId, uuid);
+    return _store.find(uuid);
   }
 
   @override
@@ -98,7 +102,7 @@ class SkillManagerImpl implements SkillManager {
       createTime: now,
       updateTime: now,
     );
-    await _store.saveWithDeviceId(_deviceId, newSkill);
+    await _store.save(newSkill);
     _notifyChange(SkillChangeType.created, newSkill);
     return newSkill;
   }
@@ -108,20 +112,20 @@ class SkillManagerImpl implements SkillManager {
     final updated = skill.copyWith(
       updateTime: DateTime.now(),
     );
-    await _store.saveWithDeviceId(_deviceId, updated);
+    await _store.save(updated);
     _notifyChange(SkillChangeType.updated, updated);
   }
 
   @override
   Future<void> deleteSkill(String uuid) async {
-    final skill = await getSkill(uuid);
+    final skill = await getSkillIncludingDeleted(uuid);
     if (skill == null) return;
     final updated = skill.copyWith(
       deleted: 1,
       deleteTime: DateTime.now(),
       updateTime: DateTime.now(),
     );
-    await _store.saveWithDeviceId(_deviceId, updated);
+    await _store.save(updated);
     _notifyChange(SkillChangeType.deleted, updated);
   }
 
@@ -137,14 +141,14 @@ class SkillManagerImpl implements SkillManager {
 
   @override
   Future<void> setSkillEnabled(String uuid, bool enabled) async {
-    final skill = await getSkill(uuid);
-    if (skill == null) return;
+    final skill = await getSkillIncludingDeleted(uuid);
+    if (skill == null || skill.deleted == 1) return;
 
     final updated = skill.copyWith(
       enabled: enabled ? 1 : 0,
       updateTime: DateTime.now(),
     );
-    await _store.saveWithDeviceId(_deviceId, updated);
+    await _store.save(updated);
     _notifyChange(SkillChangeType.updated, updated);
   }
 

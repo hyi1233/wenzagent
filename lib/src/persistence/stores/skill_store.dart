@@ -5,7 +5,9 @@ import '../entities/skill_entity.dart';
 
 /// 技能数据存储
 ///
-/// 使用 SQLite 实现，保持与原 Hive 版本完全相同的公共 API。
+/// 使用 SQLite 实现。
+/// Skill 绑定员工（employeeId），不绑定设备（deviceId）。
+/// deviceId 仅作为元数据保留，不参与查询过滤。
 class SkillStore {
   final DatabaseManager _dbManager;
 
@@ -40,29 +42,17 @@ class SkillStore {
     });
   }
 
-  /// 获取员工的技能列表
-  Future<List<AiEmployeeSkillEntity>> findByEmployee(
-    String? deviceId,
-    String employeeId,
-  ) async {
-    final effDeviceId = deviceId ?? '';
+  /// 获取员工的技能列表（只按 employeeId，不按 deviceId）
+  Future<List<AiEmployeeSkillEntity>> findByEmployee(String employeeId) async {
     final resultSet = _db.select(
-      'SELECT * FROM skills WHERE employee_id = ? AND device_id = ? AND deleted = 0 ORDER BY sort_order ASC',
-      [employeeId, effDeviceId],
+      'SELECT * FROM skills WHERE employee_id = ? AND deleted = 0 ORDER BY sort_order ASC',
+      [employeeId],
     );
     return resultSet.map(_rowToEntity).toList();
   }
 
-  /// 使用明确deviceId获取员工技能
-  Future<List<AiEmployeeSkillEntity>> findByEmployeeWithDeviceId(
-    String? deviceId,
-    String employeeId,
-  ) async {
-    return findByEmployee(deviceId, employeeId);
-  }
-
-  /// 查找单个技能
-  Future<AiEmployeeSkillEntity?> find(String? deviceId, String uuid) async {
+  /// 查找单个技能（只按 uuid，不按 deviceId）
+  Future<AiEmployeeSkillEntity?> find(String uuid) async {
     final resultSet = _db.select(
       'SELECT * FROM skills WHERE uuid = ? AND deleted = 0',
       [uuid],
@@ -97,46 +87,32 @@ class SkillStore {
     ]);
   }
 
-  /// 使用明确deviceId保存技能
-  Future<void> saveWithDeviceId(
-    String? deviceId,
-    AiEmployeeSkillEntity entity,
-  ) async {
-    final updated = entity.copyWith(deviceId: deviceId ?? '');
-    await save(updated);
-  }
-
-  /// 删除技能（软删除）
-  Future<void> delete(String? deviceId, String uuid) async {
+  /// 删除技能（软删除，只按 uuid）
+  Future<void> delete(String uuid) async {
     _db.execute(
       'UPDATE skills SET deleted = 1, delete_time = ? WHERE uuid = ?',
       [DateTime.now().millisecondsSinceEpoch, uuid],
     );
   }
 
-  /// 硬删除技能
-  Future<void> hardDelete(String? deviceId, String uuid) async {
+  /// 硬删除技能（只按 uuid）
+  Future<void> hardDelete(String uuid) async {
     _db.execute('DELETE FROM skills WHERE uuid = ?', [uuid]);
   }
 
-  /// 删除员工的所有技能（软删除）
-  Future<void> deleteByEmployee(
-    String? deviceId,
-    String employeeId,
-  ) async {
-    final effDeviceId = deviceId ?? '';
+  /// 删除员工的所有技能（软删除，只按 employeeId）
+  Future<void> deleteByEmployee(String employeeId) async {
     _db.execute(
-      'UPDATE skills SET deleted = 1, delete_time = ? WHERE employee_id = ? AND device_id = ?',
-      [DateTime.now().millisecondsSinceEpoch, employeeId, effDeviceId],
+      'UPDATE skills SET deleted = 1, delete_time = ? WHERE employee_id = ?',
+      [DateTime.now().millisecondsSinceEpoch, employeeId],
     );
   }
 
-  /// 获取技能数量
-  Future<int> count(String? deviceId, String employeeId) async {
-    final effDeviceId = deviceId ?? '';
+  /// 获取技能数量（只按 employeeId）
+  Future<int> count(String employeeId) async {
     final resultSet = _db.select(
-      'SELECT COUNT(*) as cnt FROM skills WHERE employee_id = ? AND device_id = ? AND deleted = 0',
-      [employeeId, effDeviceId],
+      'SELECT COUNT(*) as cnt FROM skills WHERE employee_id = ? AND deleted = 0',
+      [employeeId],
     );
     return resultSet.first['cnt'] as int;
   }

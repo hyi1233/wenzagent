@@ -222,7 +222,7 @@ Future<void> main(List<String> args) async {
 
   // Initialize
   await client.initialize(DeviceClientConfig(
-    dbPath: config.storagePath,
+    storagePath: config.storagePath,
     host: config.host,
     port: config.port,
     deviceName: config.deviceName,
