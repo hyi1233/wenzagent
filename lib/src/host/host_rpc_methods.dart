@@ -79,6 +79,9 @@ void registerHostRpcMethods({
   required SkillManager skillManager,
   required MessageStoreService messageStore,
   required ClientSessionManager clientSessionManager,
+  required ProjectManager projectManager,
+  required GlobalSkillManager globalSkillManager,
+  required String deviceId,
   ScheduledTaskManager? scheduledTaskManager,
 }) {
   // ===== 员工管理方法 =====
@@ -318,14 +321,14 @@ void registerHostRpcMethods({
 
   // 获取所有会话摘要
   rpcServer.register(HostRpcConfig.methodGetSessionSummaries, (params) async {
-    final summaryStore = SessionSummaryStore(deviceId: '');
+    final summaryStore = SessionSummaryStore(deviceId: deviceId);
     final summaries = summaryStore.getAllSummaries();
     return {'summaries': summaries.map((s) => s.toMap()).toList()};
   });
 
   // 同步远端会话摘要（接收远端摘要列表，逐条写入本地）
   rpcServer.register(HostRpcConfig.methodSyncSessionSummaries, (params) async {
-    final summaryStore = SessionSummaryStore(deviceId: '');
+    final summaryStore = SessionSummaryStore(deviceId: deviceId);
     final summaries = (params['summaries'] as List? ?? [])
         .map((s) => SessionSummaryEntity.fromMap(s as Map<String, dynamic>))
         .toList();
@@ -342,14 +345,14 @@ void registerHostRpcMethods({
   // 获取指定员工的所有 spec 项（含已删除）
   rpcServer.register(HostRpcConfig.methodGetSpecs, (params) async {
     final employeeId = params['employeeId'] as String;
-    final specStore = SpecStore(deviceId: '');
+    final specStore = SpecStore(deviceId: deviceId);
     final specs = specStore.findAllByEmployee(employeeId);
     return {'specs': specs.map((s) => s.toMap()).toList()};
   });
 
   // 同步远程 spec 数据（接收远程 spec 列表，逐条 merge 写入本地）
   rpcServer.register(HostRpcConfig.methodSyncSpecs, (params) async {
-    final specStore = SpecStore(deviceId: '');
+    final specStore = SpecStore(deviceId: deviceId);
     final specs = (params['specs'] as List? ?? [])
         .map((s) => SpecItemEntity.fromMap(s as Map<String, dynamic>))
         .toList();
@@ -367,7 +370,7 @@ void registerHostRpcMethods({
   // 获取指定员工的所有 todo 数据（含已删除）
   rpcServer.register(HostRpcConfig.methodGetTodos, (params) async {
     final employeeId = params['employeeId'] as String;
-    final todoStore = TodoStore(deviceId: '');
+    final todoStore = TodoStore(deviceId: deviceId);
     final topics = todoStore.findAllTopicsIncludingDeleted(employeeId);
     final taskItems = <Map<String, dynamic>>[];
     for (final topic in topics) {
@@ -382,7 +385,7 @@ void registerHostRpcMethods({
 
   // 同步远程 todo 数据（接收远程 todo 列表，逐条 merge 写入本地）
   rpcServer.register(HostRpcConfig.methodSyncTodos, (params) async {
-    final todoStore = TodoStore(deviceId: '');
+    final todoStore = TodoStore(deviceId: deviceId);
     final topics = (params['topics'] as List? ?? [])
         .map((t) => TodoTopicEntity.fromMap(t as Map<String, dynamic>))
         .toList();
@@ -458,7 +461,6 @@ void registerHostRpcMethods({
   // 获取全局技能（含已删除）
   rpcServer.register(HostRpcConfig.methodGetGlobalSkills, (params) async {
     final includeDeleted = params['includeDeleted'] as bool? ?? false;
-    final globalSkillManager = GlobalSkillManager.getInstance('');
     final skills = includeDeleted
         ? await globalSkillManager.getAllSkillsIncludingDeleted()
         : await globalSkillManager.getAllSkills();
@@ -471,7 +473,6 @@ void registerHostRpcMethods({
     final skills = skillsData
         .map((s) => GlobalSkillEntity.fromMap(s as Map<String, dynamic>))
         .toList();
-    final globalSkillManager = GlobalSkillManager.getInstance('');
 
     for (final skill in skills) {
       final existing = await globalSkillManager.getSkillIncludingDeleted(skill.uuid);
@@ -509,22 +510,21 @@ void registerHostRpcMethods({
   // 获取所有项目数据（含子资源：modules/skills/issues）
   rpcServer.register(HostRpcConfig.methodGetAllProjects, (params) async {
     final includeDeleted = params['includeDeleted'] as bool? ?? false;
-    final projectStore = ProjectStore(deviceId: '');
     final projects = includeDeleted
-        ? await projectStore.findAllProjectsIncludingDeleted()
-        : await projectStore.findAllProjects();
+        ? await projectManager.getAllProjectsIncludingDeleted()
+        : await projectManager.getAllProjects();
 
     final result = <Map<String, dynamic>>[];
     for (final project in projects) {
       final modules = includeDeleted
-          ? await projectStore.findAllModulesIncludingDeleted(project.uuid)
-          : await projectStore.findModules(project.uuid);
+          ? await projectManager.getAllModulesIncludingDeleted(project.uuid)
+          : await projectManager.getModules(project.uuid);
       final skills = includeDeleted
-          ? await projectStore.findAllSkillsIncludingDeleted(project.uuid)
-          : await projectStore.findSkills(project.uuid);
+          ? await projectManager.getAllSkillsIncludingDeleted(project.uuid)
+          : await projectManager.getSkills(project.uuid);
       final issues = includeDeleted
-          ? await projectStore.findAllIssuesIncludingDeleted(project.uuid)
-          : await projectStore.findIssues(project.uuid);
+          ? await projectManager.getAllIssuesIncludingDeleted(project.uuid)
+          : await projectManager.getIssues(project.uuid);
       result.add({
         'project': project.toMap(),
         'modules': modules.map((m) => m.toMap()).toList(),
@@ -538,7 +538,6 @@ void registerHostRpcMethods({
   // 同步项目数据（逐条合并，含子资源）
   rpcServer.register(HostRpcConfig.methodSyncProjects, (params) async {
     final projectsData = params['projects'] as List;
-    final projectStore = ProjectStore(deviceId: '');
     int count = 0;
 
     for (final item in projectsData) {
@@ -547,7 +546,7 @@ void registerHostRpcMethods({
       // 合并项目主表
       if (itemMap.containsKey('project')) {
         final project = ProjectEntity.fromMap(itemMap['project'] as Map<String, dynamic>);
-        if (projectStore.upsertFromRemote(project)) {
+        if (projectManager.upsertProjectFromRemote(project)) {
           count++;
         }
       }
@@ -557,7 +556,7 @@ void registerHostRpcMethods({
           .map((m) => ProjectModuleEntity.fromMap(m as Map<String, dynamic>))
           .toList();
       for (final module in modules) {
-        if (projectStore.upsertModuleFromRemote(module)) {
+        if (projectManager.upsertModuleFromRemote(module)) {
           count++;
         }
       }
@@ -567,7 +566,7 @@ void registerHostRpcMethods({
           .map((s) => ProjectSkillEntity.fromMap(s as Map<String, dynamic>))
           .toList();
       for (final skill in skills) {
-        if (projectStore.upsertSkillFromRemote(skill)) {
+        if (projectManager.upsertSkillFromRemote(skill)) {
           count++;
         }
       }
@@ -577,7 +576,7 @@ void registerHostRpcMethods({
           .map((i) => ProjectIssueEntity.fromMap(i as Map<String, dynamic>))
           .toList();
       for (final issue in issues) {
-        if (projectStore.upsertIssueFromRemote(issue)) {
+        if (projectManager.upsertIssueFromRemote(issue)) {
           count++;
         }
       }

@@ -319,6 +319,9 @@ Future<void> main(List<String> args) async {
     skillManager: skillManager,
     messageStore: messageStore,
     clientSessionManager: clientSessionManager,
+    projectManager: ProjectManager.getInstance(config.deviceId),
+    globalSkillManager: GlobalSkillManager.getInstance(config.deviceId),
+    deviceId: config.deviceId,
   );
 
   // 11. Start LanHostServiceImpl

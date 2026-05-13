@@ -60,10 +60,16 @@ abstract class ProjectManager {
   /// 删除项目（软删除）
   Future<void> deleteProject(String uuid);
 
+  /// 获取所有项目（含已删除）
+  Future<List<ProjectEntity>> getAllProjectsIncludingDeleted();
+
   // ==================== 模块 ====================
 
   /// 获取项目的模块列表
   Future<List<ProjectModuleEntity>> getModules(String projectUuid);
+
+  /// 获取项目的所有模块（含已删除）
+  Future<List<ProjectModuleEntity>> getAllModulesIncludingDeleted(String projectUuid);
 
   /// 创建模块
   Future<ProjectModuleEntity> createModule(ProjectModuleEntity module);
@@ -82,6 +88,9 @@ abstract class ProjectManager {
   /// 获取项目的技能列表
   Future<List<ProjectSkillEntity>> getSkills(String projectUuid);
 
+  /// 获取项目的所有技能（含已删除）
+  Future<List<ProjectSkillEntity>> getAllSkillsIncludingDeleted(String projectUuid);
+
   /// 创建技能
   Future<ProjectSkillEntity> createSkill(ProjectSkillEntity skill);
 
@@ -99,6 +108,9 @@ abstract class ProjectManager {
   /// 获取项目的工单列表
   Future<List<ProjectIssueEntity>> getIssues(String projectUuid, {String? status});
 
+  /// 获取项目的所有工单（含已删除）
+  Future<List<ProjectIssueEntity>> getAllIssuesIncludingDeleted(String projectUuid);
+
   /// 创建工单
   Future<ProjectIssueEntity> createIssue(ProjectIssueEntity issue);
 
@@ -113,6 +125,18 @@ abstract class ProjectManager {
 
   /// 删除工单
   Future<void> deleteIssue(String uuid);
+
+  /// 同步合并远程项目数据（由 RPC handler 调用）
+  bool upsertProjectFromRemote(ProjectEntity remote);
+
+  /// 同步合并远程模块数据
+  bool upsertModuleFromRemote(ProjectModuleEntity remote);
+
+  /// 同步合并远程技能数据
+  bool upsertSkillFromRemote(ProjectSkillEntity remote);
+
+  /// 同步合并远程工单数据
+  bool upsertIssueFromRemote(ProjectIssueEntity remote);
 
   // ==================== 变更通知 ====================
 
@@ -184,11 +208,21 @@ class ProjectManagerImpl implements ProjectManager {
     _notifyChange(ProjectChangeType.deleted, uuid);
   }
 
+  @override
+  Future<List<ProjectEntity>> getAllProjectsIncludingDeleted() async {
+    return _store.findAllProjectsIncludingDeleted();
+  }
+
   // ==================== 模块 ====================
 
   @override
   Future<List<ProjectModuleEntity>> getModules(String projectUuid) async {
     return _store.findModules(projectUuid);
+  }
+
+  @override
+  Future<List<ProjectModuleEntity>> getAllModulesIncludingDeleted(String projectUuid) async {
+    return _store.findAllModulesIncludingDeleted(projectUuid);
   }
 
   @override
@@ -226,6 +260,11 @@ class ProjectManagerImpl implements ProjectManager {
   }
 
   @override
+  Future<List<ProjectSkillEntity>> getAllSkillsIncludingDeleted(String projectUuid) async {
+    return _store.findAllSkillsIncludingDeleted(projectUuid);
+  }
+
+  @override
   Future<ProjectSkillEntity> createSkill(ProjectSkillEntity skill) async {
     final now = DateTime.now();
     final newSkill = skill.copyWith(
@@ -257,6 +296,11 @@ class ProjectManagerImpl implements ProjectManager {
   @override
   Future<List<ProjectIssueEntity>> getIssues(String projectUuid, {String? status}) async {
     return _store.findIssues(projectUuid, status: status);
+  }
+
+  @override
+  Future<List<ProjectIssueEntity>> getAllIssuesIncludingDeleted(String projectUuid) async {
+    return _store.findAllIssuesIncludingDeleted(projectUuid);
   }
 
   @override
@@ -296,6 +340,28 @@ class ProjectManagerImpl implements ProjectManager {
   @override
   Future<void> deleteIssue(String uuid) async {
     await _store.deleteIssue(uuid);
+  }
+
+  // ==================== 远程同步合并 ====================
+
+  @override
+  bool upsertProjectFromRemote(ProjectEntity remote) {
+    return _store.upsertFromRemote(remote);
+  }
+
+  @override
+  bool upsertModuleFromRemote(ProjectModuleEntity remote) {
+    return _store.upsertModuleFromRemote(remote);
+  }
+
+  @override
+  bool upsertSkillFromRemote(ProjectSkillEntity remote) {
+    return _store.upsertSkillFromRemote(remote);
+  }
+
+  @override
+  bool upsertIssueFromRemote(ProjectIssueEntity remote) {
+    return _store.upsertIssueFromRemote(remote);
   }
 
   // ==================== 变更通知 ====================

@@ -208,6 +208,9 @@ class DeviceClient {
       _ctx?.employeeConfigService ??
       EmployeeConfigService.getInstance(_deviceId);
 
+  ProjectManager get _projectManager =>
+      ProjectManager.getInstance(_deviceId);
+
   DeviceClient._({required String deviceId}) : _deviceId = deviceId;
 
   // ===== 单例管理 =====
@@ -465,6 +468,8 @@ class DeviceClient {
   MessageStoreService get messageStore => _messageStoreService;
 
   EmployeeConfigService get configService => _configService;
+
+  ProjectManager get projectManager => _projectManager;
 
   // ===== 连接管理 =====
 

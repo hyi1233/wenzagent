@@ -381,6 +381,9 @@ void main() {
         skillManager: skillManagerA,
         messageStore: MessageStoreService.getInstance(deviceIdA),
         clientSessionManager: ClientSessionManager(),
+        projectManager: ProjectManager.getInstance(deviceIdA),
+        globalSkillManager: GlobalSkillManager.getInstance(deviceIdA),
+        deviceId: deviceIdA,
       );
       registerHostRpcMethods(
         rpcServer: rpcServerB,
@@ -389,6 +392,9 @@ void main() {
         skillManager: skillManagerB,
         messageStore: MessageStoreService.getInstance(deviceIdB),
         clientSessionManager: ClientSessionManager(),
+        projectManager: ProjectManager.getInstance(deviceIdB),
+        globalSkillManager: GlobalSkillManager.getInstance(deviceIdB),
+        deviceId: deviceIdB,
       );
 
       final subA = setupDispatch(clientA, rpcManagerA, rpcServerA);
@@ -466,6 +472,9 @@ void main() {
         skillManager: SkillManager.getInstance(deviceIdA),
         messageStore: MessageStoreService.getInstance(deviceIdA),
         clientSessionManager: ClientSessionManager(),
+        projectManager: ProjectManager.getInstance(deviceIdA),
+        globalSkillManager: GlobalSkillManager.getInstance(deviceIdA),
+        deviceId: deviceIdA,
       );
       registerHostRpcMethods(
         rpcServer: rpcServerB,
@@ -474,6 +483,9 @@ void main() {
         skillManager: SkillManager.getInstance(deviceIdB),
         messageStore: MessageStoreService.getInstance(deviceIdB),
         clientSessionManager: ClientSessionManager(),
+        projectManager: ProjectManager.getInstance(deviceIdB),
+        globalSkillManager: GlobalSkillManager.getInstance(deviceIdB),
+        deviceId: deviceIdB,
       );
 
       // 后注册全局技能 RPC（覆盖 registerHostRpcMethods 中的默认实例）

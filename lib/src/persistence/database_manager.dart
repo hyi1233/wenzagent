@@ -66,10 +66,7 @@ class DatabaseManager {
 
   /// 获取单例实例
   static DatabaseManager getInstance(String deviceId) {
-    return _instances.putIfAbsent(
-      deviceId,
-      () => DatabaseManager._(),
-    );
+    return _instances.putIfAbsent(deviceId, () => DatabaseManager._());
   }
 
   /// 移除指定设备的实例
@@ -79,6 +76,7 @@ class DatabaseManager {
 
   Database? _db;
   bool _initialized = false;
+  String? _dbPath;
 
   /// 当前 schema 版本号
   static const int currentVersion = 19;
@@ -137,7 +135,7 @@ class DatabaseManager {
 
     final dir = storagePath ?? Directory.current.path;
     final dbPath = p.join(dir, 'wenzagent.db');
-
+    _dbPath = dbPath;
     _db = sqlite3.open(dbPath);
 
     // 启用WAL模式提升并发性能
@@ -159,10 +157,11 @@ class DatabaseManager {
 
     if (oldVersion >= currentVersion) return;
 
-    final pending = _migrations
-        .where((m) => m.version > oldVersion && m.version <= currentVersion)
-        .toList()
-      ..sort((a, b) => a.version.compareTo(b.version));
+    final pending =
+        _migrations
+            .where((m) => m.version > oldVersion && m.version <= currentVersion)
+            .toList()
+          ..sort((a, b) => a.version.compareTo(b.version));
 
     for (final migration in pending) {
       final version = migration.version;
@@ -196,18 +195,15 @@ class DatabaseManager {
         "DELETE FROM messages WHERE employee_id LIKE ? ESCAPE '\\'",
         ['$deviceId-%'],
       );
-      _db!.execute(
-        "DELETE FROM skills WHERE employee_id LIKE ? ESCAPE '\\'",
-        ['$deviceId-%'],
-      );
-      _db!.execute(
-        'DELETE FROM sync_watermark WHERE device_id = ?',
-        [deviceId],
-      );
-      _db!.execute(
-        'DELETE FROM session_summary WHERE device_id = ?',
-        [deviceId],
-      );
+      _db!.execute("DELETE FROM skills WHERE employee_id LIKE ? ESCAPE '\\'", [
+        '$deviceId-%',
+      ]);
+      _db!.execute('DELETE FROM sync_watermark WHERE device_id = ?', [
+        deviceId,
+      ]);
+      _db!.execute('DELETE FROM session_summary WHERE device_id = ?', [
+        deviceId,
+      ]);
       _db!.execute(
         "DELETE FROM todo_task_items WHERE employee_id LIKE ? ESCAPE '\\'",
         ['$deviceId-%'],
