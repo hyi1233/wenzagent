@@ -208,6 +208,9 @@ class DeviceClient {
       _ctx?.employeeConfigService ??
       EmployeeConfigService.getInstance(_deviceId);
 
+  GlobalSkillManager get _globalSkillManager =>
+      _ctx?.globalSkillManager ?? GlobalSkillManager.getInstance(_deviceId);
+
   ProjectManager get _projectManager =>
       ProjectManager.getInstance(_deviceId);
 
@@ -464,6 +467,8 @@ class DeviceClient {
   SessionManager get sessionManager => _sessionManager;
 
   SkillManager get skillManager => _skillManager;
+
+  GlobalSkillManager get globalSkillManager => _globalSkillManager;
 
   MessageStoreService get messageStore => _messageStoreService;
 

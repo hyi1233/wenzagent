@@ -26,6 +26,7 @@ class AppContext {
   final SessionManager sessionManager;
   final MessageStoreService messageStoreService;
   final SkillManager skillManager;
+  final GlobalSkillManager globalSkillManager;
   final EmployeeConfigService employeeConfigService;
 
   // ===== 设备实现层 =====
@@ -46,6 +47,7 @@ class AppContext {
     required this.sessionManager,
     required this.messageStoreService,
     required this.skillManager,
+    required this.globalSkillManager,
     required this.employeeConfigService,
     required this.stateHolder,
     required this.connectionManager,
@@ -77,6 +79,7 @@ class AppContext {
     final messageStoreService = MessageStoreService.getInstance(deviceId);
     final skillManager = SkillManager.getInstance(deviceId);
     final employeeConfigService = EmployeeConfigService.getInstance(deviceId);
+    final globalSkillManager = GlobalSkillManager.getInstance(deviceId);
     final stateHolder = DeviceStateHolder.getInstance(deviceId);
     final connectionManager = DeviceConnectionManager.getInstance(deviceId);
     final deviceRegistry = DeviceRegistry.getInstance(deviceId);
@@ -94,6 +97,7 @@ class AppContext {
       sessionManager: sessionManager,
       messageStoreService: messageStoreService,
       skillManager: skillManager,
+      globalSkillManager: globalSkillManager,
       employeeConfigService: employeeConfigService,
       stateHolder: stateHolder,
       connectionManager: connectionManager,
@@ -121,6 +125,7 @@ class AppContext {
     SessionManager? sessionManager,
     MessageStoreService? messageStoreService,
     SkillManager? skillManager,
+    GlobalSkillManager? globalSkillManager,
     EmployeeConfigService? employeeConfigService,
     DeviceStateHolder? stateHolder,
     DeviceConnectionManager? connectionManager,
@@ -139,6 +144,7 @@ class AppContext {
       sessionManager: sessionManager ?? SessionManager.getInstance(deviceId),
       messageStoreService: messageStoreService ?? MessageStoreService.getInstance(deviceId),
       skillManager: skillManager ?? SkillManager.getInstance(deviceId),
+      globalSkillManager: globalSkillManager ?? GlobalSkillManager.getInstance(deviceId),
       employeeConfigService: employeeConfigService ?? EmployeeConfigService.getInstance(deviceId),
       stateHolder: stateHolder ?? DeviceStateHolder.getInstance(deviceId),
       connectionManager: connectionManager ?? DeviceConnectionManager.getInstance(deviceId),

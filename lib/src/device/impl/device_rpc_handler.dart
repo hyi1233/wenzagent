@@ -33,6 +33,7 @@ class DeviceRpcHandler {
   late final EmployeeManager _employeeManager = EmployeeManager.getInstance(_deviceId);
   late final SessionManager _sessionManager = SessionManager.getInstance(_deviceId);
   late final SkillManager _skillManager = SkillManager.getInstance(_deviceId);
+  late final GlobalSkillManager _globalSkillManager = GlobalSkillManager.getInstance(_deviceId);
   late final MessageStoreService _messageStoreService = MessageStoreService.getInstance(_deviceId);
   late final DeviceAgentManager _agentManager = DeviceAgentManager.getInstance(_deviceId);
   late final DeviceConfigManager _configManager = DeviceConfigManager.getInstance(_deviceId);
@@ -1293,10 +1294,9 @@ class DeviceRpcHandler {
     // 获取全局技能（含已删除）
     rpcServer.register(HostRpcConfig.methodGetGlobalSkills, (params) async {
       final includeDeleted = params['includeDeleted'] as bool? ?? false;
-      final globalSkillManager = GlobalSkillManager.getInstance(_deviceId);
       final skills = includeDeleted
-          ? await globalSkillManager.getAllSkillsIncludingDeleted()
-          : await globalSkillManager.getAllSkills();
+          ? await _globalSkillManager.getAllSkillsIncludingDeleted()
+          : await _globalSkillManager.getAllSkills();
       return {'skills': skills.map((s) => s.toMap()).toList()};
     });
 
@@ -1306,13 +1306,12 @@ class DeviceRpcHandler {
       final skills = skillsData
           .map((s) => GlobalSkillEntity.fromMap(s as Map<String, dynamic>))
           .toList();
-      final globalSkillManager = GlobalSkillManager.getInstance(_deviceId);
 
       for (final skill in skills) {
         final existing =
-            await globalSkillManager.getSkillIncludingDeleted(skill.uuid);
+            await _globalSkillManager.getSkillIncludingDeleted(skill.uuid);
         if (existing == null) {
-          await globalSkillManager.createSkill(skill);
+          await _globalSkillManager.createSkill(skill);
         } else {
           final mergeResult = StoreMergeUtil.mergeDeleteState(
             localDeleteTime: existing.deleteTime,
@@ -1330,7 +1329,7 @@ class DeviceRpcHandler {
 
           if (shouldUpdateData || shouldUpdateDelete) {
             final base = shouldUpdateData ? skill : existing;
-            await globalSkillManager.updateSkill(base.copyWith(
+            await _globalSkillManager.updateSkill(base.copyWith(
               deleted: mergeResult.mergedDeleted,
               deleteTime: mergeResult.mergedDeleteTime,
             ));

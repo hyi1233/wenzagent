@@ -7,6 +7,7 @@ import 'package:uuid/uuid.dart';
 import 'package:yaml/yaml.dart';
 
 import 'package:wenzagent/src/entity/lan_message.dart';
+import 'package:wenzagent/src/device/device_client.dart';
 import 'package:wenzagent/src/host/client_session_manager.dart';
 import 'package:wenzagent/src/host/host_rpc_methods.dart';
 import 'package:wenzagent/src/lan/impl/lan_host_service_impl.dart';
@@ -15,7 +16,6 @@ import 'package:wenzagent/src/lan/lan_client_service.dart';
 import 'package:wenzagent/src/persistence/database_manager.dart';
 import 'package:wenzagent/src/persistence/persistence.dart';
 import 'package:wenzagent/src/rpc/remote_call_server.dart';
-import 'package:wenzagent/src/service/service.dart';
 import 'package:wenzagent/src/utils/logger.dart';
 
 // ---------------------------------------------------------------------------
@@ -290,15 +290,21 @@ Future<void> main(List<String> args) async {
     storageDir.createSync(recursive: true);
   }
 
-  // 6. Initialize DatabaseManager
+  // 6. Initialize DeviceClient (unified entry point for all services)
+  final deviceClient = DeviceClient.getInstance(config.deviceId);
+  await deviceClient.initialize(DeviceClientConfig(
+    storagePath: config.storagePath,
+    host: '',
+    port: config.port,
+    deviceName: config.hostName,
+  ));
   final db = DatabaseManager.getInstance(config.deviceId);
-  await db.initialize(storagePath: config.storagePath);
 
-  // 7. Get service manager singletons
-  final employeeManager = EmployeeManager.getInstance(config.deviceId);
-  final sessionManager = SessionManager.getInstance(config.deviceId);
-  final skillManager = SkillManager.getInstance(config.deviceId);
-  final messageStore = MessageStoreService.getInstance(config.deviceId);
+  // 7. Get service instances from DeviceClient
+  final employeeManager = deviceClient.employeeManager;
+  final sessionManager = deviceClient.sessionManager;
+  final skillManager = deviceClient.skillManager;
+  final messageStore = deviceClient.messageStore;
 
   // 8. Create ClientSessionManager
   final clientSessionManager = ClientSessionManager();
@@ -319,8 +325,8 @@ Future<void> main(List<String> args) async {
     skillManager: skillManager,
     messageStore: messageStore,
     clientSessionManager: clientSessionManager,
-    projectManager: ProjectManager.getInstance(config.deviceId),
-    globalSkillManager: GlobalSkillManager.getInstance(config.deviceId),
+    projectManager: deviceClient.projectManager,
+    globalSkillManager: deviceClient.globalSkillManager,
     deviceId: config.deviceId,
   );
 
@@ -369,6 +375,7 @@ Future<void> main(List<String> args) async {
   await hostService.stop();
   rpcServer.dispose();
   await db.close();
+  await DeviceClient.removeInstance(config.deviceId);
 
   log.info('Server stopped.');
 }
