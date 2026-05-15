@@ -24,13 +24,9 @@ jobs:
           - platform: linux-x64
             os: ubuntu-latest
             exe-suffix: ""
-          # ── macOS x64 ──
-          - platform: macos-x64
-            os: macos-13          # macOS 13 提供 Intel (x64) runner
-            exe-suffix: ""
           # ── macOS ARM64 (Apple Silicon) ──
           - platform: macos-arm64
-            os: macos-latest      # macOS 14+ runner 原生 ARM64
+            os: macos-latest
             exe-suffix: ""
 
     steps:
@@ -75,7 +71,7 @@ jobs:
           retention-days: 1
 
   # ──────────────────────────────────────────────────────────────────────
-  # ARM64 架构：GitHub 没有免费 ARM runner，使用 QEMU 用户态模拟编译
+  # ARM64 架构：使用 Dart 交叉编译（--target-os + --target-arch）
   # ──────────────────────────────────────────────────────────────────────
   build-arm64:
     name: Build ${{ matrix.platform }}
@@ -104,24 +100,23 @@ jobs:
         with:
           sdk: stable
 
-      - name: Install QEMU (for Linux ARM64)
-        if: matrix.target-os == 'linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y qemu-user-static gcc-aarch64-linux-gnu
+      - name: Install dependencies
+        run: dart pub get
 
       - name: Compile server
+        shell: bash
         run: |
-          dart compile exe bin/wenzagent_server.dart `
-            --target-os=${{ matrix.target-os }} `
-            --target-arch=${{ matrix.target-arch }} `
+          dart compile exe bin/wenzagent_server.dart \
+            --target-os=${{ matrix.target-os }} \
+            --target-arch=${{ matrix.target-arch }} \
             -o build/wenzagent_server${{ matrix.exe-suffix }}
 
       - name: Compile client
+        shell: bash
         run: |
-          dart compile exe bin/wenzagent_client.dart `
-            --target-os=${{ matrix.target-os }} `
-            --target-arch=${{ matrix.target-arch }} `
+          dart compile exe bin/wenzagent_client.dart \
+            --target-os=${{ matrix.target-os }} \
+            --target-arch=${{ matrix.target-arch }} \
             -o build/wenzagent_client${{ matrix.exe-suffix }}
 
       - name: Package artifacts
