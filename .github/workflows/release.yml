@@ -74,9 +74,73 @@ jobs:
           path: dist/*
           retention-days: 1
 
+  # ──────────────────────────────────────────────────────────────────────
+  # ARM64 架构：GitHub 没有免费 ARM runner，使用 QEMU 用户态模拟编译
+  # ──────────────────────────────────────────────────────────────────────
+  build-arm64:
+    name: Build ${{ matrix.platform }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # ── Linux ARM64 ──
+          - platform: linux-arm64
+            target-os: linux
+            target-arch: arm64
+            exe-suffix: ""
+          # ── Windows ARM64 ──
+          - platform: windows-arm64
+            target-os: windows
+            target-arch: arm64
+            exe-suffix: .exe
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Dart SDK
+        uses: dart-lang/setup-dart@v1
+        with:
+          sdk: stable
+
+      - name: Install QEMU (for Linux ARM64)
+        if: matrix.target-os == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-user-static gcc-aarch64-linux-gnu
+
+      - name: Compile server
+        run: |
+          dart compile exe bin/wenzagent_server.dart `
+            --target-os=${{ matrix.target-os }} `
+            --target-arch=${{ matrix.target-arch }} `
+            -o build/wenzagent_server${{ matrix.exe-suffix }}
+
+      - name: Compile client
+        run: |
+          dart compile exe bin/wenzagent_client.dart `
+            --target-os=${{ matrix.target-os }} `
+            --target-arch=${{ matrix.target-arch }} `
+            -o build/wenzagent_client${{ matrix.exe-suffix }}
+
+      - name: Package artifacts
+        shell: bash
+        run: |
+          mkdir -p dist
+          tar czf dist/wenzagent_server-${{ matrix.platform }}.tar.gz -C build wenzagent_server${{ matrix.exe-suffix }}
+          tar czf dist/wenzagent_client-${{ matrix.platform }}.tar.gz -C build wenzagent_client${{ matrix.exe-suffix }}
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: wenzagent-${{ matrix.platform }}
+          path: dist/*
+          retention-days: 1
+
   release:
     name: Create GitHub Release
-    needs: build
+    needs: [build, build-arm64]
     runs-on: ubuntu-latest
 
     steps:
