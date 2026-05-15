@@ -19,6 +19,12 @@
 
 **WenzAgent** 是一个纯 Dart 实现的 AI Agent 管理框架，提供完整的 Agent 生命周期管理、局域网设备发现与通信、远程过程调用（RPC）以及可扩展的技能系统。无需原生依赖，可跨平台运行。
 
+### 🎬 演示视频
+
+<iframe src="//player.bilibili.com/player.html?isOutside=true&aid=116577391411605&bvid=BV1PN5i62Ebm&cid=38349049119&p=1" scrolling="no" border="0" frameborder="no" framespacing="0" allowfullscreen="true" width="100%" height="500" style="max-width:800px;"></iframe>
+
+> 📺 Bilibili: [BV1PN5i62Ebm](https://www.bilibili.com/video/BV1PN5i62Ebm)
+
 ### 核心特性
 
 - 🤖 **Agent 系统** — 创建和管理 AI Agent，支持多种 LLM 后端、工具调用和状态管理
