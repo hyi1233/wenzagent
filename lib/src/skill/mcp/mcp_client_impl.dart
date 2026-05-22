@@ -357,6 +357,75 @@ class McpClientImpl implements McpClient {
     });
   }
 
+  /// 解析 command 为完整可执行路径。
+  ///
+  /// 在 Windows 上，`Process.start(runInShell: false)` 使用 `CreateProcess` API，
+  /// 该 API 无法通过 PATH 找到 `.bat`/`.cmd` 包装的命令（如 Flutter 自带的 `dart.bat`）。
+  /// 此方法通过 `which`/`where` 命令将 command 解析为实际可执行文件的完整路径。
+  ///
+  /// 对于已经是绝对路径或包含路径分隔符的 command，不做处理。
+  /// 对于 Windows 上的 `.bat`/`.cmd` 文件，尝试查找对应的 `.exe` 或直接使用完整路径。
+  static String _resolveCommand(String command) {
+    // 已经是绝对路径，直接返回
+    if (Platform.isWindows) {
+      if (command.contains('\\') || command.contains('/')) {
+        return command;
+      }
+    } else {
+      if (command.contains('/')) {
+        return command;
+      }
+    }
+
+    // 非 Windows 平台直接返回，Process.start 可以正常找到
+    if (!Platform.isWindows) {
+      return command;
+    }
+
+    // Windows 平台：使用 where 命令查找完整路径
+    try {
+      final result = Process.runSync(
+        'where',
+        [command],
+        runInShell: true,
+      );
+
+      if (result.exitCode == 0) {
+        final output = (result.stdout as String).trim();
+        final lines = output.split(RegExp(r'\r?\n'));
+
+        // where 可能返回多行（如 dart.bat 和 dart 都存在）
+        // 优先选择 .exe，其次选择 .bat/.cmd 的完整路径
+        String? exePath;
+        String? batPath;
+
+        for (final line in lines) {
+          final trimmed = line.trim();
+          if (trimmed.isEmpty) continue;
+          final lower = trimmed.toLowerCase();
+          if (lower.endsWith('.exe')) {
+            exePath = trimmed;
+            break;
+          } else if (lower.endsWith('.bat') || lower.endsWith('.cmd')) {
+            batPath ??= trimmed;
+          }
+        }
+
+        final resolved = exePath ?? batPath;
+        if (resolved != null && resolved.isNotEmpty) {
+          _log.debug('Windows command 解析: "$command" -> "$resolved"');
+          return resolved;
+        }
+      }
+    } catch (e) {
+      _log.debug('Windows where 命令查找失败: $e');
+    }
+
+    // 解析失败，返回原始 command（让 Process.start 自行处理）
+    _log.debug('Windows command 解析失败，使用原始 command: "$command"');
+    return command;
+  }
+
   /// 根据 [McpServerConfig.transportType] 创建对应的传输层
   ///
   /// 支持三种类型：
@@ -393,7 +462,7 @@ class McpClientImpl implements McpClient {
         }
         return mcp_sdk.StdioClientTransport(
           mcp_sdk.StdioServerParameters(
-            command: config.command!,
+            command: _resolveCommand(config.command!),
             args: config.args ?? [],
             environment: config.env != null
                 ? Map<String, String>.from(config.env!)
