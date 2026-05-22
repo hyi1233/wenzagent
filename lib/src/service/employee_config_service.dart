@@ -1,7 +1,9 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:convert';
 
 import '../persistence/persistence.dart';
+import '../persistence/entities/mcp_server_config.dart';
+import '../persistence/entities/skill_entity.dart';
 import '../utils/logger.dart';
 import 'employee_manager.dart';
 import 'skill_manager.dart';

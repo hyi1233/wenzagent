@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:uuid/uuid.dart';
 
 import '../persistence/persistence.dart';
+import '../persistence/entities/mcp_server_config.dart';
 import '../utils/logger.dart';
 
 /// 技能变更类型
@@ -202,5 +204,72 @@ class SkillManagerImpl implements SkillManager {
   /// 释放资源
   void dispose() {
     _changeController.close();
+  }
+
+  // ===== MCP 便捷方法 =====
+
+  /// 获取员工的 MCP 配置列表
+  ///
+  /// 等价于 `getSkills(employeeId).where(skillType=='mcp')`。
+  Future<List<AiEmployeeSkillEntity>> getMcpSkills(String employeeId) async {
+    final skills = await getSkills(employeeId);
+    return skills.where((s) => s.skillType == 'mcp').toList();
+  }
+
+  /// 添加单个 MCP 配置
+  ///
+  /// 创建 skillType='mcp' 的技能条目，config 使用数组格式。
+  Future<AiEmployeeSkillEntity> addMcpSkill(
+    String employeeId,
+    McpServerConfig config,
+  ) async {
+    return createSkill(AiEmployeeSkillEntity(
+      uuid: 'mcp_${config.name}_${const Uuid().v4()}',
+      employeeId: employeeId,
+      name: config.name,
+      description: config.description,
+      skillType: 'mcp',
+      config: McpServerConfig.toJsonString([config]),
+      enabled: config.enabled ? 1 : 0,
+      createTime: DateTime.now(),
+      updateTime: DateTime.now(),
+    ));
+  }
+
+  /// 删除指定名称的 MCP 配置
+  ///
+  /// 按 employeeId + name 查找并软删除。
+  Future<void> removeMcpSkillByName(
+    String employeeId,
+    String name,
+  ) async {
+    final skills = await getMcpSkills(employeeId);
+    for (final skill in skills) {
+      if (skill.name == name) {
+        await deleteSkill(skill.uuid);
+      }
+    }
+  }
+
+  /// 更新指定名称的 MCP 配置
+  ///
+  /// 按 employeeId + name 查找并更新 config 和 enabled。
+  Future<void> updateMcpSkill(
+    String employeeId,
+    McpServerConfig config,
+  ) async {
+    final skills = await getMcpSkills(employeeId);
+    for (final skill in skills) {
+      if (skill.name == config.name) {
+        await updateSkill(skill.copyWith(
+          description: config.description,
+          config: McpServerConfig.toJsonString([config]),
+          enabled: config.enabled ? 1 : 0,
+          updateTime: DateTime.now(),
+        ));
+        return;
+      }
+    }
+    throw ArgumentError('MCP config "${config.name}" not found');
   }
 }

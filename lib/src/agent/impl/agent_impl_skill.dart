@@ -480,8 +480,8 @@ mixin _AgentImplSkill on _AgentImplBase {
           name: config.name,
           description: config.description,
           skillType: 'mcp',
-          config: jsonEncode(config.toMap()),
-          enabled: 1,
+          config: McpServerConfig.toJsonString([config]),
+          enabled: config.enabled ? 1 : 0,
           createTime: DateTime.now(),
           updateTime: DateTime.now(),
         );
