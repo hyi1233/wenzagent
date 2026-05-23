@@ -52,7 +52,7 @@ class McpToolAdapter extends AgentTool {
   bool get requiresPermission => true;
 
   @override
-  String get permissionType => 'mcp';
+  String get permissionType => name;
 
   @override
   Future<ToolResult> execute(Map<String, dynamic> arguments) async {
