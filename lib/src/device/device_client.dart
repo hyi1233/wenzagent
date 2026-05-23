@@ -296,7 +296,11 @@ class DeviceClient {
       _agentManager.initialize(topic: _topic);
       _messageHandler.initialize(deviceName: _deviceName, topic: _topic);
 
-      // 7. 初始化完成
+      // 8. 启动员工在线状态事件监听（创建/更新员工后自动刷新在线状态）
+      _log.info('[initialize] 即将调用 startListening(), _deviceId=$_deviceId');
+      _onlineTracker.startListening();
+
+      // 9. 初始化完成
       _initialized = true;
     });
   }

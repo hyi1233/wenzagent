@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import '../persistence/persistence.dart';
+import '../utils/logger.dart';
 
 /// 员工变更类型
 enum EmployeeChangeType { created, updated, deleted }
@@ -90,6 +91,7 @@ class EmployeeManagerImpl implements EmployeeManager {
   final EmployeeStore _store;
   final String _deviceId;
   final _changeController = StreamController<EmployeeChangeEvent>.broadcast();
+  static final _log = Logger('EmployeeManager');
 
   EmployeeManagerImpl({
     EmployeeStore? store,
@@ -125,11 +127,19 @@ class EmployeeManagerImpl implements EmployeeManager {
   @override
   Future<AiEmployeeEntity> createEmployee(AiEmployeeEntity employee) async {
     final now = DateTime.now();
+    _log.info('[createEmployee] 入参: name=${employee.name}, '
+        'currentDeviceId=${employee.currentDeviceId}, '
+        'deviceId=${employee.deviceId}, '
+        '_deviceId(本设备)=$_deviceId');
     final newEmployee = employee.copyWith(
       deviceId: employee.deviceId ?? _deviceId,
+      currentDeviceId: employee.currentDeviceId ?? employee.deviceId ?? _deviceId,
       createTime: now,
       updateTime: now,
     );
+    _log.info('[createEmployee] 处理后: name=${newEmployee.name}, '
+        'currentDeviceId=${newEmployee.currentDeviceId}, '
+        'deviceId=${newEmployee.deviceId}');
     await _store.save(newEmployee);
     _notifyChange(EmployeeChangeType.created, newEmployee);
     return newEmployee;

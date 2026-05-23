@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import '../../service/service.dart';
+import '../../persistence/persistence.dart';
 import '../../utils/logger.dart';
 import '../app_context.dart';
 import '../device_client.dart';
@@ -21,6 +24,9 @@ class EmployeeOnlineTracker {
   final Map<String, bool> _employeeOnlineState = {};
   final Map<String, String> _employeeDeviceMap = {};
 
+  StreamSubscription<EmployeeChangeEvent>? _employeeEventSub;
+  bool _started = false;
+
   EmployeeOnlineTracker._({required String deviceId}) : _deviceId = deviceId;
 
   // ===== 单例管理 =====
@@ -30,20 +36,99 @@ class EmployeeOnlineTracker {
   /// 从 [AppContext] 获取实例，不存在则回退到独立创建
   static EmployeeOnlineTracker getInstance(String deviceId) {
     final ctx = AppContext.get(deviceId);
-    if (ctx != null) return ctx.onlineTracker;
+    if (ctx != null) {
+      _log.info('[getInstance] 从 AppContext 获取, deviceId=$deviceId');
+      return ctx.onlineTracker;
+    }
     return _instances.putIfAbsent(
       deviceId,
-      () => EmployeeOnlineTracker._(deviceId: deviceId),
+      () {
+        _log.info('[getInstance] 新建实例, deviceId=$deviceId (无 AppContext)');
+        return EmployeeOnlineTracker._(deviceId: deviceId);
+      },
     );
   }
 
   static void removeInstance(String deviceId) {
-    _instances.remove(deviceId);
+    _log.info('[removeInstance] deviceId=$deviceId');
+    final tracker = _instances.remove(deviceId);
+    tracker?._dispose();
+  }
+
+  void _dispose() {
+    _employeeEventSub?.cancel();
+    _employeeEventSub = null;
+    _started = false;
+    _employeeOnlineState.clear();
+    _employeeDeviceMap.clear();
   }
 
   // ===== 公开访问 =====
 
-  bool? isEmployeeOnline(String employeeId) => _employeeOnlineState[employeeId];
+  bool? isEmployeeOnline(String employeeId) {
+    final result = _employeeOnlineState[employeeId];
+    _log.info('[isEmployeeOnline] empId=${employeeId.substring(0,8)}... '
+        'result=$result, mapSize=${_employeeOnlineState.length}, '
+        'keys=${_employeeOnlineState.keys.map((k) => k.substring(0,8)).toList()}');
+    return result;
+  }
+
+  /// 启动员工事件监听（在 DeviceClient 初始化完成后调用）
+  ///
+  /// 监听 [EmployeeManager.onEmployeeEvent]，在员工创建/更新后自动刷新在线状态，
+  /// 解决新建员工或切换设备后在线状态不更新的问题。
+  void startListening() {
+    if (_started) {
+      _log.info('[startListening] 已启动，跳过, deviceId=$_deviceId');
+      return;
+    }
+    _started = true;
+    _log.info('[startListening] 启动事件监听, deviceId=$_deviceId');
+    _employeeEventSub = _employeeManager.onEmployeeEvent.listen(_onEmployeeChanged);
+  }
+
+  /// 处理员工变更事件：先同步设置单个员工状态，再后台全量刷新兜底
+  ///
+  /// 关键优化：创建/更新员工时立即（同步）判定该员工的在线状态，
+  /// 不等异步全量刷新完成。消除 UI 首帧显示离线的闪烁问题。
+  void _onEmployeeChanged(EmployeeChangeEvent event) {
+    _log.info('[onEmployeeChanged] type=${event.type.name}, '
+        'empId=${event.employeeId.substring(0,8)}..., '
+        'hasEmployee=${event.employee != null}');
+    if (event.employee != null) {
+      _log.info('[onEmployeeChanged] employee fields: '
+          'currentDeviceId=${event.employee!.currentDeviceId}, '
+          'deviceId=${event.employee!.deviceId}');
+      // 立即同步设置该员工的在线状态（创建/更新都生效）
+      _setSingleEmployeeOnlineState(event.employee!);
+    } else {
+      _log.info('[onEmployeeChanged] employee=null, 跳过单员工设置');
+    }
+    // 后台全量刷新作为兜底（处理批量同步等场景）
+    refreshEmployeeOnlineStates();
+  }
+
+  /// 立即设置单个员工的在线状态（同步，无 await）
+  void _setSingleEmployeeOnlineState(AiEmployeeEntity employee) {
+    // currentDeviceId 优先，为空时回退到 deviceId
+    final devId = employee.currentDeviceId ?? employee.deviceId;
+    _log.info('[setSingleOnline] empId=${employee.uuid.substring(0,8)}..., '
+        'currentDeviceId=${employee.currentDeviceId}, '
+        'deviceId=${employee.deviceId}, '
+        'devId(实际使用)=$devId, '
+        '_deviceId(本设备)=$_deviceId, '
+        'isLocal=${devId == _deviceId}');
+    if (devId != null && devId.isNotEmpty) {
+      _employeeDeviceMap[employee.uuid] = devId;
+      final online = devId == _deviceId
+          ? true
+          : _deviceRegistry.containsDevice(devId);
+      _log.info('[setSingleOnline] 设置结果: online=$online, devId=$devId');
+      _updateEmployeeOnlineState(employee.uuid, online, devId);
+    } else {
+      _log.info('[setSingleOnline] devId 为空，跳过设置！(currentDeviceId 和 deviceId 都为 null)');
+    }
+  }
 
   /// 刷新所有员工的在线状态（含远程设备上的员工）
   ///
@@ -51,19 +136,27 @@ class EmployeeOnlineTracker {
   Future<void> refreshEmployeeOnlineStates() async {
     try {
       final employees = await _employeeManager.getEmployees(allDevices: true);
+      _log.info('[refreshAll] 查询到 ${employees.length} 个员工 (allDevices=true)');
       for (final employee in employees) {
-        final devId = employee.currentDeviceId;
+        // currentDeviceId 优先，为空时回退到 deviceId
+        final devId = employee.currentDeviceId ?? employee.deviceId;
         if (devId != null && devId.isNotEmpty) {
           _employeeDeviceMap[employee.uuid] = devId;
         }
         bool online = false;
         if (devId != null && devId.isNotEmpty) {
+          // 本地设备：当前设备在线则员工在线（Agent 是否存活是运行时细节，非在线判断依据）
+          // 远程设备：设备在缓存中（已上线）则为在线
           online = devId == _deviceId
-              ? (_agentManager.getLocalAgent(employee.uuid)?.isAlive ?? false)
+              ? true
               : _deviceRegistry.containsDevice(devId);
         }
+        _log.info('[refreshAll] empId=${employee.uuid.substring(0,8)}..., '
+            'name=${employee.name}, '
+            'devId=$devId, online=$online');
         _updateEmployeeOnlineState(employee.uuid, online, devId);
       }
+      _log.info('[refreshAll] 完成, onlineMapSize=${_employeeOnlineState.length}');
     } catch (e) {
       _log.debug('refreshEmployeeOnlineStates failed: $e');
     }
@@ -106,13 +199,19 @@ class EmployeeOnlineTracker {
   }
 
   void _updateEmployeeOnlineState(String empId, bool isOnline, String? devId) {
-    if (_employeeOnlineState[empId] != isOnline) {
+    final prev = _employeeOnlineState[empId];
+    if (prev != isOnline) {
+      _log.info('[updateState] empId=${empId.substring(0,8)}..., '
+          'prev=$prev → new=$isOnline, devId=$devId');
       _employeeOnlineState[empId] = isOnline;
       _stateHolder.employeeOnlineController.add(EmployeeOnlineEvent(
         employeeId: empId,
         isOnline: isOnline,
         deviceId: devId,
       ));
+    } else {
+      _log.info('[updateState] empId=${empId.substring(0,8)}..., '
+          '状态未变: $isOnline, devId=$devId');
     }
   }
 }
