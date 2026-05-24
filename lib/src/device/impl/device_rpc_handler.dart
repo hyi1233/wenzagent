@@ -18,7 +18,6 @@ import '../../utils/logger.dart';
 import '../app_context.dart';
 import 'data_sync_manager.dart';
 import 'device_agent_manager.dart';
-import 'device_config_manager.dart';
 import 'file_transfer_token_manager.dart';
 import '../../lan/impl/lan_host_service_impl.dart';
 import '../../rpc/rpc_protocol.dart';
@@ -38,7 +37,6 @@ class DeviceRpcHandler {
   late final GlobalSkillManager _globalSkillManager = GlobalSkillManager.getInstance(_deviceId);
   late final MessageStoreService _messageStoreService = MessageStoreService.getInstance(_deviceId);
   late final DeviceAgentManager _agentManager = DeviceAgentManager.getInstance(_deviceId);
-  late final DeviceConfigManager _configManager = DeviceConfigManager.getInstance(_deviceId);
   late final DataSyncManager _dataSyncManager = DataSyncManager.getInstance(_deviceId);
 
   DeviceRpcHandler._({required String deviceId}) : _deviceId = deviceId;
@@ -1513,7 +1511,8 @@ class DeviceRpcHandler {
         throw Exception('deviceInfo is required');
       }
       final deviceInfo = DeviceInfoConfig.fromMap(deviceInfoMap);
-      await _configManager.updateDeviceInfo(deviceInfo);
+      // 通过 DeviceClient.updateDeviceInfo() 确保内存同步和 LAN 广播
+      await DeviceClient.getInstance(_deviceId).updateDeviceInfo(deviceInfo);
       return {'success': true};
     });
 
@@ -1636,6 +1635,6 @@ class DeviceRpcHandler {
     }
 
     final zipData = ZipEncoder().encode(archive);
-    await File(zipPath).writeAsBytes(zipData!);
+    await File(zipPath).writeAsBytes(zipData);
   }
 }
