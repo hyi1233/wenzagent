@@ -11,6 +11,7 @@ import '../agent/client/cached_agent_proxy.dart';
 import '../agent/entity/entity.dart';
 import '../agent/rpc/agent_rpc_config.dart';
 import '../agent/notification/agent_notification_hub.dart';
+import '../host/host_rpc_methods.dart';
 import '../entity/lan_device_info.dart';
 import '../entity/lan_message.dart';
 import '../persistence/persistence.dart';
@@ -113,6 +114,24 @@ enum DeviceConnectionState {
 /// LAN消息处理器
 typedef LanMessageHandler = void Function(LanMessage message);
 
+/// 模型配置查询回调类型
+///
+/// 前端注册此回调，当其他设备通过 LAN RPC 查询本设备的模型配置时，
+/// 后端调用此回调从前端获取模型配置数据。
+///
+/// 返回 `List<Map<String, dynamic>>`，每条记录包含:
+///   - employeeId: String       员工ID
+///   - provider: String         提供商 (openai/anthropic/google/ollama/deepseek)
+///   - model: String            模型标识
+///   - apiKey: String?          API 密钥
+///   - baseUrl: String?         API 基础 URL
+///   - options: Map?            模型参数 (temperature, maxTokens, topP, stop)
+///   - organization: String?    组织 ID
+///   - compression: Map?        压缩配置
+///   - retry: Map?              重试配置
+///   - updateTime: int          更新时间戳 (millisecondsSinceEpoch)
+typedef ModelConfigQueryCallback = Future<List<Map<String, dynamic>>> Function();
+
 /// DeviceClient - 设备级统一入口
 ///
 /// 核心概念：
@@ -154,6 +173,25 @@ class DeviceClient {
 
   /// 获取 Skill 文件夹存储根路径
   String get skillsDir => _skillsDir;
+
+  // ===== 模型配置查询回调 =====
+
+  /// 模型配置查询回调（由前端注册）
+  ///
+  /// 当其他设备通过 LAN RPC 查询本设备的模型配置时，
+  /// 调用此回调获取数据。
+  ///
+  /// **重要**：必须在调用 [connect] 之前通过 [setModelConfigQueryCallback] 注册。
+  /// 如果在 connect 之后注册，窗口期内的 RPC 请求将返回空列表。
+  ModelConfigQueryCallback? _onModelConfigQuery;
+
+  // ===== 远端模型配置缓存 =====
+
+  /// 远端设备模型配置缓存（按设备 ID 分组，仅内存缓存，不落库）
+  final Map<String, _ModelConfigCacheEntry> _remoteModelConfigCaches = {};
+
+  /// 缓存过期时间：5 分钟
+  static const _modelConfigCacheTTL = Duration(minutes: 5);
 
   // ===== AppContext 依赖注入 =====
 
@@ -1258,6 +1296,216 @@ class DeviceClient {
     employeeId: employeeId,
     deviceId: deviceId,
   );
+
+  // ===== 模型配置查询 API =====
+
+  /// 注册模型配置查询回调
+  ///
+  /// 前端在项目初始化时调用此方法注册回调，用于返回前端持久化的模型配置列表。
+  ///
+  /// **重要**：必须在调用 [connect] 之前注册。如果在 connect 之后注册，
+  /// 窗口期内到达的 RPC 请求将返回空列表。
+  ///
+  /// 示例:
+  /// ```dart
+  /// deviceClient.setModelConfigQueryCallback(() async {
+  ///   final configs = myConfigStorage.getAllModelConfigs();
+  ///   return configs.map((c) => c.toMap()).toList();
+  /// });
+  /// ```
+  void setModelConfigQueryCallback(ModelConfigQueryCallback callback) {
+    _onModelConfigQuery = callback;
+  }
+
+  /// 获取当前注册的模型配置查询回调（内部使用）
+  ///
+  /// [DeviceRpcHandler] 通过此 getter 访问回调，
+  /// 避免在 DeviceRpcHandler 中直接持有 DeviceClient 引用。
+  ModelConfigQueryCallback? get onModelConfigQueryCallback =>
+      _onModelConfigQuery;
+
+  // ===== 远端模型配置更新通知 =====
+
+  /// 远端模型配置更新回调列表（由前端注册）
+  ///
+  /// 当本设备收到其他设备的模型配置变更通知（[hostSyncModelConfigs]）并成功拉取
+  /// 最新配置后，遍历此列表通知前端刷新模型选择器等 UI 组件。
+  final List<void Function()> _remoteModelConfigUpdatedCallbacks = [];
+
+  /// 注册远端模型配置更新回调
+  ///
+  /// 前端注册此回调后，当远端设备模型配置变更通知到达时，
+  /// 会自动触发回调以便 UI 刷新模型配置列表。
+  /// 支持多个回调同时注册（如多个聊天窗口）。
+  ///
+  /// 示例:
+  /// ```dart
+  /// deviceClient.addRemoteModelConfigUpdatedCallback(() {
+  ///   modelSelectorController.refresh();
+  /// });
+  /// ```
+  void addRemoteModelConfigUpdatedCallback(void Function() callback) {
+    _remoteModelConfigUpdatedCallbacks.add(callback);
+  }
+
+  /// 移除远端模型配置更新回调
+  void removeRemoteModelConfigUpdatedCallback(void Function() callback) {
+    _remoteModelConfigUpdatedCallbacks.remove(callback);
+  }
+
+  /// 触发远端模型配置更新回调（内部使用）
+  ///
+  /// [DeviceRpcHandler.hostSyncModelConfigs] 在成功拉取远端配置后调用此方法。
+  void notifyRemoteModelConfigUpdated() {
+    for (final cb in _remoteModelConfigUpdatedCallbacks) {
+      cb();
+    }
+  }
+
+  /// 查询指定设备的所有模型配置（方式2：按需拉取）
+  ///
+  /// 通过 LAN RPC 调用目标设备的 [hostGetModelConfigs] 方法，
+  /// 目标设备会回调前端获取模型配置数据。
+  /// 结果缓存在内存中，[cacheTtl] 内复用缓存。
+  ///
+  /// [targetDeviceId] 目标设备 ID
+  /// [forceRefresh] 是否强制刷新（忽略缓存）
+  ///
+  /// 返回: `Map<employeeId, 模型配置Map>`
+  ///
+  /// 可能抛出 [StateError]（未连接）或 RPC 超时/网络异常。
+  Future<Map<String, Map<String, dynamic>>> getModelConfigsFromDevice(
+    String targetDeviceId, {
+    bool forceRefresh = false,
+  }) async {
+    final now = DateTime.now();
+
+    // 本机短路：直接调用回调返回本地数据
+    if (targetDeviceId == _deviceId) {
+      if (_onModelConfigQuery == null) return {};
+      final localConfigs = await _onModelConfigQuery!();
+      final result = <String, Map<String, dynamic>>{};
+      for (final cfg in localConfigs) {
+        final employeeId = cfg['employeeId'] as String?;
+        if (employeeId != null) {
+          result[employeeId] = cfg;
+        }
+      }
+      return result;
+    }
+
+    // 检查缓存
+    if (!forceRefresh) {
+      final cached = _remoteModelConfigCaches[targetDeviceId];
+      if (cached != null &&
+          now.difference(cached.time) < _modelConfigCacheTTL) {
+        return Map<String, Map<String, dynamic>>.from(cached.configs);
+      }
+    }
+
+    // 从远端拉取
+    final result = await _connectionManager.invokeRemote(
+      targetDeviceId,
+      HostRpcConfig.methodGetModelConfigs,
+      {},
+    );
+
+    final rpcResult = result['result'] as Map<String, dynamic>?;
+    final configs = <String, Map<String, dynamic>>{};
+
+    if (rpcResult != null) {
+      final list = rpcResult['modelConfigs'] as List? ?? [];
+      for (final data in list) {
+        final map = data as Map<String, dynamic>;
+        final uuid = map['uuid'] as String?;
+        if (uuid != null && uuid.isNotEmpty) {
+          configs[uuid] = map;
+        }
+      }
+    }
+
+    // 更新缓存
+    _remoteModelConfigCaches[targetDeviceId] = _ModelConfigCacheEntry(
+      configs: Map<String, Map<String, dynamic>>.from(configs),
+      time: now,
+    );
+
+    return configs;
+  }
+
+  /// 查询指定设备的单个员工模型配置
+  ///
+  /// [targetDeviceId] 目标设备 ID
+  /// [employeeId] 员工 UUID
+  /// [forceRefresh] 是否强制刷新（忽略缓存）
+  ///
+  /// 返回: 模型配置 Map，未找到时返回 null
+  Future<Map<String, dynamic>?> getModelConfigFromDevice(
+    String targetDeviceId,
+    String employeeId, {
+    bool forceRefresh = false,
+  }) async {
+    final configs = await getModelConfigsFromDevice(
+      targetDeviceId,
+      forceRefresh: forceRefresh,
+    );
+    return configs[employeeId];
+  }
+
+  /// 清除指定设备的远端模型配置缓存
+  ///
+  /// 不传 [targetDeviceId] 时清除所有设备的缓存。
+  void invalidateModelConfigCache({String? targetDeviceId}) {
+    if (targetDeviceId != null) {
+      _remoteModelConfigCaches.remove(targetDeviceId);
+    } else {
+      _remoteModelConfigCaches.clear();
+    }
+  }
+
+  // ===== 模型配置广播 API（方式1：主动推送） =====
+
+  /// 广播模型配置变更通知到所有在线设备（方式1：主动推送）
+  ///
+  /// 前端在本地模型配置发生变更后调用此方法。
+  /// 广播仅携带本机 [deviceId]（变更通知），不携带配置数据。
+  /// 接收方收到通知后通过 [getModelConfigsFromDevice] 主动拉取最新配置。
+  ///
+  /// 示例:
+  /// ```dart
+  /// // 模型配置保存后触发广播
+  /// await myConfigStorage.saveConfig(newConfig);
+  /// await deviceClient.broadcastModelConfigs();
+  /// ```
+  Future<void> broadcastModelConfigs() async {
+    if (!isConnected) return;
+
+    // 仅广播变更通知（只传 deviceId，不传配置数据）
+    final devices = await _deviceRegistry.getOnlineDevices();
+    for (final device in devices) {
+      if (device.id == _deviceId) continue;
+      try {
+        await _connectionManager.invokeRemote(
+          device.id,
+          HostRpcConfig.methodSyncModelConfigs,
+          {'sourceDeviceId': _deviceId},
+        );
+      } catch (_) {
+        // 单个设备失败不阻塞其他设备的通知
+      }
+    }
+  }
+}
+
+/// 模型配置缓存条目（内部使用）
+class _ModelConfigCacheEntry {
+  final Map<String, Map<String, dynamic>> configs;
+  final DateTime time;
+
+  _ModelConfigCacheEntry({
+    required this.configs,
+    required this.time,
+  });
 }
 
 /// 员工在线状态变化事件

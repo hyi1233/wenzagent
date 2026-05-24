@@ -1041,16 +1041,16 @@ class DataSyncManager {
 
     // 员工级
     final skills = await _skillManager.getAllSkills();
-    for (final s in skills) {
-      if (s.skillType == 'folder' && s.deleted != 1) {
-        final folderPath = _resolveDynamicFolderPath(skillsDir, s.name);
+    for (final skill in skills) {
+      if (skill.skillType == 'folder' && skill.deleted != 1) {
+        final folderPath = _resolveDynamicFolderPath(skillsDir, skill.name);
         if (!await Directory(folderPath).exists()) {
           folderSkills.add({
-            'skillId': s.uuid,
+            'skillId': skill.uuid,
             'folderPath': folderPath,
-            'skillName': s.name,
+            'skillName': skill.name,
             'type': 'employee',
-            'employeeId': s.employeeId,
+            'employeeId': skill.employeeId,
           });
         }
       }

@@ -1516,6 +1516,56 @@ class DeviceRpcHandler {
       await _configManager.updateDeviceInfo(deviceInfo);
       return {'success': true};
     });
+
+    // ===== 模型配置查询方法 =====
+
+    // 获取本设备的模型配置（通过回调从前端获取）
+    //
+    // 当其他设备通过 LAN RPC 查询本设备的模型配置时，
+    // 调用 DeviceClient 中前端注册的回调获取数据。
+    // 如果前端未注册回调，返回空列表。
+    rpcServer.register(HostRpcConfig.methodGetModelConfigs, (params) async {
+      final deviceClient = DeviceClient.getInstance(_deviceId);
+      final callback = deviceClient.onModelConfigQueryCallback;
+
+      if (callback == null) {
+        return {'modelConfigs': <Map<String, dynamic>>[]};
+      }
+
+      try {
+        final configs = await callback();
+        return {'modelConfigs': configs};
+      } catch (e, st) {
+        _log.error('hostGetModelConfigs: 回调执行失败', e, st);
+        return {'modelConfigs': <Map<String, dynamic>>[]};
+      }
+    });
+
+    // 接收模型配置变更通知（方式1：主动推送）
+    //
+    // 当其他设备前端模型配置变更后，通过 broadcastModelConfigs() 发送通知到此方法。
+    // 广播仅携带 sourceDeviceId，接收方主动调用 getModelConfigsFromDevice 拉取最新配置。
+    rpcServer.register(HostRpcConfig.methodSyncModelConfigs, (params) async {
+      final sourceDeviceId = params['sourceDeviceId'] as String?;
+      if (sourceDeviceId == null || sourceDeviceId.isEmpty) {
+        return {'success': false, 'error': 'sourceDeviceId is required'};
+      }
+
+      try {
+        final deviceClient = DeviceClient.getInstance(_deviceId);
+        // 强制刷新：绕过缓存，从远端拉取最新配置
+        await deviceClient.getModelConfigsFromDevice(
+          sourceDeviceId,
+          forceRefresh: true,
+        );
+        // 通知前端刷新模型选择器等 UI 组件
+        deviceClient.notifyRemoteModelConfigUpdated();
+        return {'success': true};
+      } catch (e, st) {
+        _log.error('hostSyncModelConfigs: 拉取远端配置失败', e, st);
+        return {'success': false, 'error': e.toString()};
+      }
+    });
   }
 
   /// 构造二进制帧

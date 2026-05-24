@@ -70,6 +70,19 @@ class HostRpcConfig {
 
   // ===== 设备配置查询 =====
   static const String methodGetDeviceConfig = 'hostGetDeviceConfig';
+
+  // ===== 模型配置查询 =====
+  //
+  // 注意：此 RPC 方法实际在 Device 端注册（DeviceRpcHandler._registerHostMethods），
+  // 被其他设备通过 LAN RPC 调用来获取本设备的模型配置数据。
+  // 常量定义在此处仅为统一管理 RPC 方法名。
+  static const String methodGetModelConfigs = 'hostGetModelConfigs';
+
+  /// 接收模型配置广播（主动推送）
+  ///
+  /// 当某设备前端模型配置变更后，通过 broadcastModelConfigs() 广播到此 RPC 方法。
+  /// 接收方将数据写入内存缓存，供后续查询使用。
+  static const String methodSyncModelConfigs = 'hostSyncModelConfigs';
 }
 
 /// 注册Host端RPC方法

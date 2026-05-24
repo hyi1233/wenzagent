@@ -24,6 +24,7 @@ import 'device_registry.dart';
 import 'device_state_holder.dart';
 
 part 'device_agent_manager_lifecycle.dart';
+
 part 'device_agent_manager_events.dart';
 
 /// Agent 管理器
@@ -155,9 +156,7 @@ class DeviceAgentManager {
           ? Future.value(employee)
           : _employeeManager.getEmployee(employeeId),
     ]);
-    _log.debug(
-      'Future.wait (session+employee): ${sw.elapsedMilliseconds}ms',
-    );
+    _log.debug('Future.wait (session+employee): ${sw.elapsedMilliseconds}ms');
     var session = results[0] as AiEmployeeSessionEntity?;
     employee = results[1] as AiEmployeeEntity?;
     if (employee == null) {
@@ -192,9 +191,7 @@ class DeviceAgentManager {
 
       sw.reset();
       final agent = await _getOrCreateLocalAgent(employeeId, employee, session);
-      _log.info(
-        '_getOrCreateLocalAgent: ${sw.elapsedMilliseconds}ms',
-      );
+      _log.info('_getOrCreateLocalAgent: ${sw.elapsedMilliseconds}ms');
       final proxy = AgentProxy.local(
         employeeId: employeeId,
         deviceId: targetDeviceId,
@@ -214,7 +211,9 @@ class DeviceAgentManager {
             count: summary.unreadCount,
           );
           if (summary.hasLatestMessage) {
-            final agentMsg = _notificationManager.summaryToAgentMessage(summary);
+            final agentMsg = _notificationManager.summaryToAgentMessage(
+              summary,
+            );
             _stateHolder.notificationHub.onLatestMessageUpdated(
               message: agentMsg,
               employeeId: empId,
@@ -253,9 +252,7 @@ class DeviceAgentManager {
           _connectionManager.invokeRemote(targetDeviceId, method, params),
       remoteEventStream: _stateHolder.onAgentEvent,
     );
-    _log.debug(
-      'AgentProxy.remote created: ${sw.elapsedMilliseconds}ms',
-    );
+    _log.debug('AgentProxy.remote created: ${sw.elapsedMilliseconds}ms');
 
     cachedProxy = CachedAgentProxy(
       proxy: proxy,
