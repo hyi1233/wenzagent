@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:archive/archive.dart';
+import 'package:meta/meta.dart';
 import 'package:crypto/crypto.dart';
 import 'package:path/path.dart' as p;
 import 'package:uuid/uuid.dart';
@@ -1149,8 +1150,40 @@ class DeviceClient {
     }
   }
 
-  /// 解压 ZIP 文件到目标目录
-  static Future<void> _unpackZip(String zipPath, String targetDir) async {
+  /// 解压 ZIP 文件到目标目录（智能识别 SKILL.md 结构）
+  ///
+  /// 支持三种 ZIP 内部格式：
+  ///
+  /// **格式 A — 扁平结构（单 skill，无根目录包裹）：**
+  /// ```
+  /// SKILL.md
+  /// prompt/translate.md
+  /// ```
+  /// → 直接解压到 targetDir，结果：targetDir/SKILL.md
+  ///
+  /// **格式 B — 单层包裹（单 skill，带同名根目录）：**
+  /// ```
+  /// translator/SKILL.md
+  /// translator/prompt/translate.md
+  /// ```
+  /// → 自动剥离根目录层，结果：targetDir/SKILL.md
+  ///
+  /// **格式 C — 多 skill 包裹：**
+  /// ```
+  /// skill1/SKILL.md
+  /// skill1/prompt/a.md
+  /// skill2/SKILL.md
+  /// skill2/prompt/b.md
+  /// ```
+  /// → 每个 skill 解压为独立文件夹，结果：targetDir/skill1/SKILL.md, targetDir/skill2/SKILL.md
+  ///
+  /// 返回解压后所有 skill 文件夹的路径列表。
+  /// 测试用：公开 _unpackZip 供测试调用
+  @visibleForTesting
+  static Future<List<String>> unpackZipForTest(String zipPath, String targetDir) =>
+      _unpackZip(zipPath, targetDir);
+
+  static Future<List<String>> _unpackZip(String zipPath, String targetDir) async {
     final target = Directory(targetDir);
     if (await target.exists()) {
       await target.delete(recursive: true);
@@ -1160,18 +1193,194 @@ class DeviceClient {
     final zipBytes = await File(zipPath).readAsBytes();
     final archive = ZipDecoder().decodeBytes(zipBytes);
 
+    // 1. 识别 ZIP 内部结构
+    final structure = _analyzeZipStructure(archive);
+    _log.info(
+      'ZIP 结构分析: format=${structure.format}, '
+      'skillRoots=${structure.skillRoots}, '
+      'stripPrefix="${structure.stripPrefix}"',
+    );
+
+    // 2. 安全校验：拒绝路径穿越
     for (final file in archive) {
-      final filePath =
-          p.join(targetDir, file.name.replaceAll('/', Platform.pathSeparator));
+      final normalizedName = file.name.replaceAll('\\', '/');
+      if (normalizedName.contains('..')) {
+        throw FileSystemException('ZIP 条目包含非法路径穿越: ${file.name}');
+      }
+    }
+
+    // 3. 根据结构解压
+    final skillPaths = <String>[];
+    final String stripPrefix = structure.stripPrefix;
+
+    for (final file in archive) {
+      String entryName = file.name.replaceAll('\\', '/');
+
+      // 剥离前缀（格式 B 的单层包裹）
+      if (stripPrefix.isNotEmpty && entryName.startsWith(stripPrefix)) {
+        entryName = entryName.substring(stripPrefix.length);
+      }
+
+      // 跳过空条目（剥离后可能为空）
+      if (entryName.isEmpty) continue;
+
+      final filePath = p.join(targetDir, entryName.replaceAll('/', Platform.pathSeparator));
+
       if (file.isFile) {
         final outFile = File(filePath);
         await outFile.parent.create(recursive: true);
         await outFile.writeAsBytes(file.content as List<int>);
       } else {
-        await Directory(filePath).create(recursive: true);
+        // 仅在目录不是以 stripPrefix 本身结尾时创建
+        // （避免创建多余的空目录）
+        if (entryName != '/' && !entryName.endsWith('/')) {
+          await Directory(filePath).create(recursive: true);
+        }
       }
     }
+
+    // 4. 收集解压后的 skill 文件夹路径
+    for (final root in structure.skillRoots) {
+      // 格式 A：root 为空，skill 直接在 targetDir 下
+      if (root.isEmpty) {
+        // 检查 targetDir 下是否存在 SKILL.md
+        if (await File(p.join(targetDir, 'SKILL.md')).exists()) {
+          skillPaths.add(targetDir);
+        }
+      } else {
+        final skillDir = p.join(targetDir, root);
+        if (await File(p.join(skillDir, 'SKILL.md')).exists()) {
+          skillPaths.add(skillDir);
+        }
+      }
+    }
+
+    _log.info('ZIP 解压完成: ${skillPaths.length} 个 skill, paths=$skillPaths');
+    return skillPaths;
   }
+
+  /// ZIP 内部结构分析结果
+  static const String _skillMarker = 'SKILL.md';
+
+  /// 分析 ZIP 内部结构，确定格式类型和需要剥离的前缀
+  static _ZipStructure _analyzeZipStructure(Archive archive) {
+    // 收集所有非目录条目的归一化路径
+    final allFiles = <String>[];
+    for (final f in archive) {
+      final name = f.name.replaceAll('\\', '/');
+      if (f.isFile && name.isNotEmpty) {
+        allFiles.add(name);
+      }
+    }
+
+    if (allFiles.isEmpty) {
+      return _ZipStructure(format: _ZipFormat.flat, skillRoots: [], stripPrefix: '');
+    }
+
+    // 查找所有 SKILL.md 的位置
+    final skillMdPaths = <String>[];
+    for (final filePath in allFiles) {
+      final parts = filePath.split('/');
+      if (parts.contains(_skillMarker)) {
+        skillMdPaths.add(filePath);
+      }
+    }
+
+    if (skillMdPaths.isEmpty) {
+      // 无 SKILL.md，按扁平结构处理
+      return _ZipStructure(format: _ZipFormat.flat, skillRoots: [], stripPrefix: '');
+    }
+
+    // 判断每个 SKILL.md 的深度（所在目录层级）
+    // depth 0 = SKILL.md 在 ZIP 根
+    // depth 1 = xxx/SKILL.md
+    // depth 2 = xxx/yyy/SKILL.md
+    final skillDepths = <int, List<String>>{};
+    for (final skillPath in skillMdPaths) {
+      final parts = skillPath.split('/');
+      final depth = parts.indexOf(_skillMarker); // SKILL.md 之前有几级目录
+      skillDepths.putIfAbsent(depth, () => []).add(skillPath);
+    }
+
+    // 取最小深度作为基准
+    final minDepth = skillDepths.keys.reduce((a, b) => a < b ? a : b);
+
+    if (minDepth == 0) {
+      // 格式 A：SKILL.md 在 ZIP 根，扁平结构
+      return _ZipStructure(
+        format: _ZipFormat.flat,
+        skillRoots: [''],
+        stripPrefix: '',
+      );
+    }
+
+    if (minDepth == 1) {
+      // SKILL.md 在一级子目录下
+      final skillDirs = <String>[];
+      for (final skillPath in skillDepths[minDepth]!) {
+        final parts = skillPath.split('/');
+        skillDirs.add(parts[0]);
+      }
+      final uniqueDirs = skillDirs.toSet().toList();
+
+      if (uniqueDirs.length == 1) {
+        // 格式 B：单 skill，带一层根目录包裹
+        // → 剥离这层根目录
+        final rootDir = uniqueDirs[0];
+        return _ZipStructure(
+          format: _ZipFormat.singleWrapped,
+          skillRoots: [''],
+          stripPrefix: '$rootDir/',
+        );
+      } else {
+        // 格式 C：多个 skill，每个在独立子目录下
+        // → 不剥离前缀，保留各自的目录
+        return _ZipStructure(
+          format: _ZipFormat.multiSkill,
+          skillRoots: uniqueDirs,
+          stripPrefix: '',
+        );
+      }
+    }
+
+    // minDepth >= 2：SKILL.md 埋得较深
+    // 尝试找到包含 SKILL.md 的公共父目录层级
+    // 例如：some-prefix/translator/SKILL.md → 剥离 some-prefix/
+    final skillDirs = <String>[];
+    for (final skillPath in skillDepths[minDepth]!) {
+      final parts = skillPath.split('/');
+      // SKILL.md 前面 minDepth 级目录，取最后 1 级作为 skill 名
+      skillDirs.add(parts[minDepth - 1]);
+    }
+    final uniqueDirs = skillDirs.toSet().toList();
+
+    // 计算需要剥离的公共前缀层数
+    // 所有 SKILL.md 路径的前 (minDepth - 1) 级就是外层包裹
+    final prefixParts = skillDepths[minDepth]!.first.split('/');
+    final stripParts = prefixParts.sublist(0, minDepth - 1);
+    final stripPrefix = '${stripParts.join('/')}/';
+
+    if (uniqueDirs.length == 1) {
+      // 深层嵌套单 skill：prefix/skill-name/SKILL.md
+      // → 剥离 prefix/ 和 skill-name/，直接放到 targetDir
+      final fullStrip = prefixParts.sublist(0, minDepth).join('/');
+      return _ZipStructure(
+        format: _ZipFormat.singleWrapped,
+        skillRoots: [''],
+        stripPrefix: '$fullStrip/',
+      );
+    } else {
+      // 深层嵌套多 skill：prefix/skill1/SKILL.md, prefix/skill2/SKILL.md
+      // → 剥离公共前缀，保留 skill 目录名
+      return _ZipStructure(
+        format: _ZipFormat.multiSkill,
+        skillRoots: uniqueDirs,
+        stripPrefix: stripPrefix,
+      );
+    }
+  }
+
+
 
   // ===== 当前打开的会话状态 =====
 
@@ -1495,6 +1704,35 @@ class DeviceClient {
       }
     }
   }
+}
+
+/// ZIP 内部格式枚举
+enum _ZipFormat {
+  /// 扁平结构：SKILL.md 在 ZIP 根
+  flat,
+
+  /// 单层包裹：skill-name/SKILL.md，需剥离根目录
+  singleWrapped,
+
+  /// 多 skill：skill1/SKILL.md, skill2/SKILL.md
+  multiSkill,
+}
+
+/// ZIP 结构分析结果
+class _ZipStructure {
+  final _ZipFormat format;
+
+  /// 各个 skill 的相对根目录名（格式 A 为 ['']，格式 C 为 ['skill1', 'skill2']）
+  final List<String> skillRoots;
+
+  /// 需要从 ZIP 条目名中剥离的前缀（含尾部斜杠）
+  final String stripPrefix;
+
+  const _ZipStructure({
+    required this.format,
+    required this.skillRoots,
+    required this.stripPrefix,
+  });
 }
 
 /// 模型配置缓存条目（内部使用）

@@ -15,6 +15,7 @@ import 'file_patch_tool.dart';
 import 'file_read_tool.dart';
 import 'file_write_tool.dart';
 import 'git_operations_tool.dart';
+import 'project_list_tool.dart';
 import 'schedule_task_tool.dart';
 import 'spawn_sub_agent_tool.dart';
 import 'todo_manage_tool.dart';
@@ -37,6 +38,7 @@ class BuiltinTools {
     'spec_manage', // 规格管理
     'spawn_sub_agent', // 委派子 Agent 执行
     'schedule_task', // 定时任务
+    'project_list', // 项目列表查询
     'confirm', // 确认请求
     'end', // 主动结束对话循环
   };
@@ -47,6 +49,7 @@ class BuiltinTools {
   static const Set<String> executorToolNames = {
     'end',
     'confirm',
+    'project_list',
     'file_read',
     'file_write',
     'file_list',
@@ -91,6 +94,7 @@ class BuiltinTools {
       CodeSymbolsTool(),
       TodoManageTool(),
       SpecManageTool(),
+      ProjectListTool(),
       SendFileMessageTool(),
     ];
   }

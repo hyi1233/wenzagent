@@ -12,6 +12,7 @@ import '../../device/impl/data_sync_manager.dart';
 import '../../utils/logger.dart';
 import '../tool/builtin/bg_command_tool.dart';
 import '../tool/builtin/command_session_pool.dart';
+import '../tool/builtin/project_list_tool.dart';
 import '../tool/builtin/send_file_message_tool.dart';
 import '../tool/builtin/spec_manage_tool.dart';
 import '../tool/builtin_tool_provider.dart';
@@ -284,6 +285,9 @@ class AgentImpl extends _AgentImplBase
 
     // 注入 SendFileMessageTool 回调
     _injectSendFileMessageCallbacks();
+
+    // 注入 ProjectListTool 回调
+    _injectProjectListCallbacks();
 
     // 技能系统由 warmup 后台加载，不在 initialize 中阻塞
 
@@ -1304,6 +1308,49 @@ class AgentImpl extends _AgentImplBase
       '.zip': 'application/zip',
     };
     return mimeMap[ext];
+  }
+
+  /// 注入 ProjectListTool 回调
+  ///
+  /// 基于 ProjectManager 注入项目列表查询回调。
+  /// 工具本身不直接依赖 ProjectManager，保持可测试性。
+  void _injectProjectListCallbacks() {
+    final projectListTool = _toolRegistry.getTool('project_list');
+    if (projectListTool is! ProjectListTool) {
+      _AgentImplBase._log.warn(
+        'ProjectListTool not found in registry for injection. '
+        'Available tools: ${_toolRegistry.toolNames}',
+      );
+      return;
+    }
+
+    final agentDeviceId = deviceId;
+
+    projectListTool.employeeId = employeeId;
+
+    projectListTool.getCurrentProjectUuid = () => getCurrentProjectUuid();
+
+    projectListTool.listAllProjects = () async {
+      final pm = ProjectManager.getInstance(agentDeviceId);
+      final projects = await pm.getAllProjects();
+      return projects.map((p) => p.toMap()).toList();
+    };
+
+    projectListTool.searchProjects = (keyword) async {
+      final pm = ProjectManager.getInstance(agentDeviceId);
+      final projects = await pm.searchProjects(keyword);
+      return projects.map((p) => p.toMap()).toList();
+    };
+
+    projectListTool.getProjectDetail = (uuid) async {
+      final pm = ProjectManager.getInstance(agentDeviceId);
+      final project = await pm.getProject(uuid);
+      return project?.toMap();
+    };
+
+    _AgentImplBase._log.info(
+      'ProjectListTool injected (ProjectManager callbacks) for $employeeId',
+    );
   }
 
   /// 注入 BgCommandTool 的 CommandSessionPool 引用和监控 LLM 回调
