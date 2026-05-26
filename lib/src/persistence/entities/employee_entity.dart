@@ -203,6 +203,14 @@ class AiEmployeeEntity {
   }
 
   /// 复制并修改
+  ///
+  /// 对于可空 String 字段（projectUuid、projectName、projectContext、workPath），
+  /// 使用哨兵值模式区分"未传参"和"显式传 null"：
+  /// - 不传参 → 保持原值
+  /// - 传 null → 清除为 null
+  /// - 传非 null 值 → 使用新值
+  ///
+  /// 这解决了 setProject(null) 时 copyWith 无法清除项目字段的 bug。
   AiEmployeeEntity copyWith({
     String? uuid,
     String? name,
@@ -218,10 +226,10 @@ class AiEmployeeEntity {
     String? modelConfig,
     int? enableTools,
     int? enableMcp,
-    String? projectUuid,
-    String? projectName,
-    String? projectContext,
-    String? workPath,
+    Object? projectUuid = _sentinel,
+    Object? projectName = _sentinel,
+    Object? projectContext = _sentinel,
+    Object? workPath = _sentinel,
     String? mcpConfig,
     String? permissionConfig,
     String? deviceId,
@@ -249,10 +257,18 @@ class AiEmployeeEntity {
       modelConfig: modelConfig ?? this.modelConfig,
       enableTools: enableTools ?? this.enableTools,
       enableMcp: enableMcp ?? this.enableMcp,
-      projectUuid: projectUuid ?? this.projectUuid,
-      projectName: projectName ?? this.projectName,
-      projectContext: projectContext ?? this.projectContext,
-      workPath: workPath ?? this.workPath,
+      projectUuid: identical(projectUuid, _sentinel)
+          ? this.projectUuid
+          : projectUuid as String?,
+      projectName: identical(projectName, _sentinel)
+          ? this.projectName
+          : projectName as String?,
+      projectContext: identical(projectContext, _sentinel)
+          ? this.projectContext
+          : projectContext as String?,
+      workPath: identical(workPath, _sentinel)
+          ? this.workPath
+          : workPath as String?,
       mcpConfig: mcpConfig ?? this.mcpConfig,
       permissionConfig: permissionConfig ?? this.permissionConfig,
       deviceId: deviceId ?? this.deviceId,

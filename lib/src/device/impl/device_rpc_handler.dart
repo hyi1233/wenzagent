@@ -470,18 +470,27 @@ class DeviceRpcHandler {
       await agent.setProject(projectData);
 
       // 同步更新 Employee 实体的项目信息
+      // 使用哨兵值模式：当 projectData 为 null 时，显式清除所有项目字段
+      // copyWith(projectUuid: null) 会清除字段（哨兵值模式）
       final projectUuid = projectData?.projectUuid;
       final employee = await _employeeManager.getEmployee(request.employeeId);
-      if (employee != null && employee.projectUuid != projectUuid) {
-        await _employeeManager.updateEmployee(
-          employee.copyWith(
-            projectUuid: projectUuid,
-            projectName: projectData?.projectName,
-            projectContext: projectData?.projectContext,
-            workPath: projectData?.workPath,
-          ),
-        );
-        _log.info('agentSetProject: Employee project synced: uuid=${employee.projectUuid} -> $projectUuid, name=${projectData?.projectName}');
+      if (employee != null) {
+        // 检查是否有实际变化（包括从有值变为 null 的清除操作）
+        final hasProjectChange = employee.projectUuid != projectUuid ||
+            employee.projectName != projectData?.projectName ||
+            employee.projectContext != projectData?.projectContext ||
+            employee.workPath != projectData?.workPath;
+        if (hasProjectChange) {
+          await _employeeManager.updateEmployee(
+            employee.copyWith(
+              projectUuid: projectUuid, // null 会清除字段（哨兵值模式）
+              projectName: projectData?.projectName,
+              projectContext: projectData?.projectContext,
+              workPath: projectData?.workPath,
+            ),
+          );
+          _log.info('agentSetProject: Employee project synced: uuid=${employee.projectUuid} -> $projectUuid, name=${projectData?.projectName}');
+        }
       }
 
       // 广播到其他设备
@@ -493,7 +502,11 @@ class DeviceRpcHandler {
     rpcServer.register(AgentRpcConfig.methodGetProjectUuid, (params) async {
       final request = GetProjectUuidRequest.fromMap(params);
       final agent = await _agentManager.ensureLocalAgentForRpc(request.employeeId);
-      return {'projectUuid': agent.getCurrentProjectUuid()};
+      final uuid = agent.getCurrentProjectUuid();
+      if (uuid != null) return {'projectUuid': uuid};
+      // Agent Session 重建后为空，回退到 Employee 持久化记录
+      final employee = await _employeeManager.getEmployee(request.employeeId);
+      return {'projectUuid': employee?.projectUuid};
     });
 
     // 文件系统操作
