@@ -254,6 +254,15 @@ class TodoStore {
     return result;
   }
 
+  /// 统计所有非删除 topic 的总数量（含已完成）
+  int countAllTopics(String employeeId) {
+    final resultSet = _db.select(
+      'SELECT COUNT(*) as cnt FROM todo_topics WHERE employee_id = ? AND deleted = 0',
+      [employeeId],
+    );
+    return resultSet.first['cnt'] as int;
+  }
+
   // ===== TodoTaskItem 操作 =====
 
   TodoTaskItemEntity _rowToTaskItem(Row row) {

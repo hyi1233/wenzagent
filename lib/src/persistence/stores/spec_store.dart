@@ -250,4 +250,13 @@ class SpecStore {
     }
     return result;
   }
+
+  /// 统计所有非删除 spec 的总数量（含已完成）
+  int countAll(String employeeId) {
+    final resultSet = _db.select(
+      'SELECT COUNT(*) as cnt FROM spec_items WHERE employee_id = ? AND deleted = 0',
+      [employeeId],
+    );
+    return resultSet.first['cnt'] as int;
+  }
 }
