@@ -1,3 +1,6 @@
+import 'package:path/path.dart' as p;
+
+import '../device/device_client.dart';
 import '../persistence/persistence.dart';
 import '../rpc/remote_call_server.dart';
 import '../service/service.dart';
@@ -202,7 +205,18 @@ void registerHostRpcMethods({
   rpcServer.register(HostRpcConfig.methodGetSkills, (params) async {
     final employeeId = params['employeeId'] as String;
     final skills = await skillManager.getSkills(employeeId);
-    return {'skills': skills.map((s) => s.toMap()).toList()};
+    // 对 folder 类型 skill 补充真实路径（skillsDir + skill.name）
+    final deviceClient = DeviceClient.getInstance(deviceId);
+    final skillsData = skills.map((s) {
+      final map = s.toMap();
+      if (s.skillType == 'folder') {
+        map['resolvedPath'] = p.normalize(
+          p.absolute(p.join(deviceClient.skillsDir, s.name)),
+        );
+      }
+      return map;
+    }).toList();
+    return {'skills': skillsData};
   });
 
   // 创建技能

@@ -441,7 +441,18 @@ class DeviceRpcHandler {
       final request = AgentGetSkillsRequest.fromMap(params);
       final store = SkillStore(deviceId: _deviceId);
       final entities = await store.findByEmployee(request.employeeId);
-      return {'skills': entities.map((e) => e.toMap()).toList()};
+      // 对 folder 类型 skill 补充真实路径（skillsDir + skill.name）
+      final deviceClient = DeviceClient.getInstance(_deviceId);
+      final skillsData = entities.map((e) {
+        final map = e.toMap();
+        if (e.skillType == 'folder') {
+          map['resolvedPath'] = p.normalize(
+            p.absolute(p.join(deviceClient.skillsDir, e.name)),
+          );
+        }
+        return map;
+      }).toList();
+      return {'skills': skillsData};
     });
 
     // MCP 管理
@@ -1222,7 +1233,18 @@ class DeviceRpcHandler {
     rpcServer.register(HostRpcConfig.methodGetSkills, (params) async {
       final request = GetSkillsRequest.fromMap(params);
       final skills = await _skillManager.getSkills(request.employeeId);
-      return {'skills': skills.map((s) => s.toMap()).toList()};
+      // 对 folder 类型 skill 补充真实路径（skillsDir + skill.name）
+      final deviceClient = DeviceClient.getInstance(_deviceId);
+      final skillsData = skills.map((s) {
+        final map = s.toMap();
+        if (s.skillType == 'folder') {
+          map['resolvedPath'] = p.normalize(
+            p.absolute(p.join(deviceClient.skillsDir, s.name)),
+          );
+        }
+        return map;
+      }).toList();
+      return {'skills': skillsData};
     });
 
     // 数据同步方法
