@@ -385,12 +385,7 @@ class AgentImpl extends _AgentImplBase
       );
     });
 
-    // 初始化消息处理调度器
-    // 创建打断判断器
-    final interruptJudge = InterruptJudge((prompt) async {
-      return await _chatAdapter.invokeOnce(prompt);
-    });
-
+    // 初始化消息处理调度器（不再自动打断判断，中断由用户手动触发）
     _processor = MessageProcessor(
       streamMessage: (messageId, message, {cancellationToken}) {
         return _chatAdapter
@@ -406,7 +401,6 @@ class AgentImpl extends _AgentImplBase
             );
       },
       stopStreaming: () => _chatAdapter.stopStreaming(),
-      interruptJudge: interruptJudge,
     );
 
     // 监听处理器状态变更
@@ -1346,7 +1340,11 @@ class AgentImpl extends _AgentImplBase
     );
   }
 
-  /// 注入 ConfirmTool 回调  ///  /// 设置 onConfirmRequest 回调：创建 Completer、广播事件、  /// 等待用户选择后返回结果。  void _injectConfirmToolCallbacks() {
+  /// 注入 ConfirmTool 回调
+  ///
+  /// 设置 onConfirmRequest 回调：创建 Completer、广播事件、
+  /// 等待用户选择后返回结果。
+  void _injectConfirmToolCallbacks() {
     final confirmTool = _toolRegistry.getTool('confirm');
     if (confirmTool is! ConfirmTool) {
       _AgentImplBase._log.warn(

@@ -3,7 +3,6 @@ import '../entity/entity.dart';
 import '../tool/permission_manager.dart';
 import '../tool/tool_registry.dart';
 import 'cancellation_token.dart';
-import 'interrupt_judge.dart';
 import 'message_queue.dart';
 import 'message_tracker.dart';
 import '../../utils/logger.dart';
@@ -212,6 +211,8 @@ typedef StreamMessageFunc =
 /// 消息处理器
 ///
 /// 负责消息的排队、处理、中断等逻辑。
+/// 消息到达后直接加入队列，不自动打断当前处理；
+/// 中断操作由用户通过 [interruptCurrentTask] 手动触发。
 class MessageProcessor {
   static final _log = Logger('MessageProcessor');
 
@@ -225,14 +226,8 @@ class MessageProcessor {
 
   AgentStatus _status = AgentStatus.idle;
 
-  /// 打断判断器（可选）
-  final InterruptJudge? _interruptJudge;
-
   /// 消息追踪器
   final MessageTracker _tracker = MessageTracker();
-
-  /// 是否正在进行打断判断（防止并发）
-  bool _isJudging = false;
 
   /// 待处理的权限请求数量（引用计数，支持多个并发权限请求）
   int _permissionBlockCount = 0;
@@ -260,10 +255,8 @@ class MessageProcessor {
   MessageProcessor({
     required StreamMessageFunc streamMessage,
     required Future<void> Function() stopStreaming,
-    InterruptJudge? interruptJudge,
   }) : _streamMessage = streamMessage,
-       _stopStreaming = stopStreaming,
-       _interruptJudge = interruptJudge;
+       _stopStreaming = stopStreaming;
 
   /// 当前处理中的消息ID
   String? get currentProcessingMessageId => _currentProcessingMessageId;
@@ -284,6 +277,10 @@ class MessageProcessor {
   List<TrackedMessage> get allTrackedMessages => _tracker.allMessages;
 
   /// 提交消息到队列
+  ///
+  /// 消息到达后直接加入队列，不自动打断当前处理。
+  /// 如果处理器空闲则立即处理；如果正在处理则排队等待。
+  /// 中断操作由用户通过 [interruptCurrentTask] 手动触发。
   Future<void> submitMessage(
     String messageId,
     Map<String, dynamic> messageData, {
@@ -314,50 +311,18 @@ class MessageProcessor {
     _log.debug('message queued, queue length: ${_queue.length}');
     _log.debug('current status: $_status');
 
-    // 3. 如果空闲，直接处理（无需打断判断）
+    // 3. 如果空闲，直接处理
     if (_status == AgentStatus.idle) {
       _log.debug('status is idle, calling _processNext');
       _processNext();
       return;
     }
 
-    // 4. 当前有消息在处理 → 尝试打断判断
-    if (_interruptJudge != null && !_isJudging) {
-      _isJudging = true;
-      try {
-        final processing = _tracker.getProcessingMessage();
-        final queued = _tracker.getQueuedMessages();
-        if (processing != null && queued.isNotEmpty) {
-          _log.debug('running interrupt judgment...');
-          final result = await _interruptJudge.shouldInterrupt(
-            currentProcessing: processing,
-            queuedMessages: queued,
-          );
-          _log.debug('interrupt judgment result: $result');
-
-          if (result.decision == InterruptDecision.interrupt &&
-              result.targetMessageId != null) {
-            // 验证 targetMessageId 仍然是当前处理的消息
-            // 防止判断期间消息已经完成或状态变化导致打断错误的消息
-            if (_currentProcessingMessageId == result.targetMessageId) {
-              _log.debug(
-                'interrupting message: $_currentProcessingMessageId',
-              );
-              await interruptCurrentTask();
-            } else {
-              _log.debug(
-                'targetMessageId mismatch, skipping interrupt',
-              );
-            }
-          }
-        }
-      } finally {
-        _isJudging = false;
-      }
-    }
+    // 4. 当前有消息在处理 → 直接排队，中断由用户决定
+    _log.debug('message queued while processing (status: $_status), interrupt decision left to user');
   }
 
-  /// 中断当前处理
+  /// 中断当前处理（由用户手动调用）
   Future<void> interruptCurrentTask() async {
     if (_currentCancellationToken != null) {
       _currentCancellationToken!.cancel();
